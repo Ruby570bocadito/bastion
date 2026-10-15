@@ -73,7 +73,7 @@ func (registryProbe) Collect(_ context.Context, p Params) (Observation, error) {
 	if !strings.Contains(sub, "*") {
 		v, typ, found, err := readRegValue(root, sub, name)
 		if err != nil {
-			return Observation{}, err
+			return Observation{}, permissionErr(err, src)
 		}
 		if !found {
 			return Observation{Found: false, Source: src}, nil
@@ -98,7 +98,7 @@ func (registryProbe) Collect(_ context.Context, p Params) (Observation, error) {
 		return Observation{Found: false, Source: src}, nil
 	}
 	if err != nil {
-		return Observation{}, err
+		return Observation{}, permissionErr(err, p.String("path"))
 	}
 	names, err := k.ReadSubKeyNames(-1)
 	k.Close()
@@ -187,6 +187,10 @@ func (secpolProbe) Collect(ctx context.Context, p Params) (Observation, error) {
 
 // ReadAuditpol lee la directiva de auditoría avanzada actual (sin caché).
 func ReadAuditpol(ctx context.Context) (map[string]AuditSetting, error) {
+	// auditpol /backup exige un token elevado: sin él ni se intenta.
+	if !Privileged() {
+		return nil, NeedsPrivilege("la directiva de auditoría solo se puede leer como administrador")
+	}
 	dir, err := privateTempDir()
 	if err != nil {
 		return nil, err
@@ -199,7 +203,7 @@ func ReadAuditpol(ctx context.Context) (map[string]AuditSetting, error) {
 	}
 	b, err := os.ReadFile(out)
 	if res.ExitCode != 0 || err != nil {
-		return nil, errors.New("auditpol /backup falló: ejecuta Bastion como administrador")
+		return nil, fmt.Errorf("auditpol /backup falló (código %d)", res.ExitCode)
 	}
 	return parseAuditpolBackup(decodeText(b))
 }
@@ -212,6 +216,9 @@ func QueryPS(ctx context.Context, name string) (map[string]any, error) {
 	q, ok := psQueries[name]
 	if !ok {
 		return nil, fmt.Errorf("consulta PowerShell %q no permitida", name)
+	}
+	if psAdminQueries[name] && !Privileged() {
+		return nil, NeedsPrivilege("%s solo responde como administrador", q.desc)
 	}
 	data, err := runPS(ctx, q.script)
 	if err != nil {
@@ -230,6 +237,9 @@ func PrivateTempDir() (string, error) { return privateTempDir() }
 func System32(exe string) string { return sys32(exe) }
 
 func exportSecpol(ctx context.Context) (map[string]map[string]string, error) {
+	if !Privileged() {
+		return nil, NeedsPrivilege("la directiva de seguridad local solo se puede leer como administrador")
+	}
 	dir, err := privateTempDir()
 	if err != nil {
 		return nil, err
@@ -242,7 +252,7 @@ func exportSecpol(ctx context.Context) (map[string]map[string]string, error) {
 	}
 	b, err := os.ReadFile(out)
 	if res.ExitCode != 0 || err != nil {
-		return nil, errors.New("secedit /export falló: ejecuta Bastion como administrador")
+		return nil, fmt.Errorf("secedit /export falló (código %d)", res.ExitCode)
 	}
 	return parseSecpolINF(decodeText(b)), nil
 }
@@ -333,6 +343,10 @@ func (serviceProbe) Collect(_ context.Context, p Params) (Observation, error) {
 // psQueries son las únicas consultas PowerShell que puede pedir una regla.
 // Las reglas eligen una por nombre; no pueden aportar código. Los scripts no
 // usan comillas dobles para que el paso de argumentos sea seguro.
+// psAdminQueries son las consultas que Windows solo responde con un token
+// elevado: sin él no se ejecutan (y no se confunden con "no disponible").
+var psAdminQueries = map[string]bool{"bitlocker_os": true, "optional_features": true}
+
 var psQueries = map[string]struct{ desc, script string }{
 	"smb_server": {"Get-SmbServerConfiguration",
 		`Get-SmbServerConfiguration | Select-Object EnableSMB1Protocol,EnableSMB2Protocol,RequireSecuritySignature,EnableSecuritySignature,EncryptData,RejectUnencryptedAccess | ConvertTo-Json -Compress`},
@@ -374,6 +388,9 @@ func (psProbe) Collect(ctx context.Context, p Params) (Observation, error) {
 	if !ok {
 		return Observation{}, fmt.Errorf("consulta PowerShell %q no permitida", name)
 	}
+	if psAdminQueries[name] && !Privileged() {
+		return Observation{}, NeedsPrivilege("%s solo responde como administrador", q.desc)
+	}
 	data, err := cached(ctx, "ps:"+name, func() (map[string]any, error) { return runPS(ctx, q.script) })
 	if err != nil {
 		return Observation{}, err
@@ -382,7 +399,11 @@ func (psProbe) Collect(ctx context.Context, p Params) (Observation, error) {
 		return Observation{}, NotApplicable("%s", psNotApplicable[code])
 	}
 	if msg, ok := data["__err"].(string); ok {
-		return Observation{}, fmt.Errorf("%s: %s (¿se ejecuta como administrador?)", q.desc, msg)
+		msg = strings.Join(strings.Fields(msg), " ")
+		if !Privileged() {
+			return Observation{}, NeedsPrivilege("%s: %s", q.desc, msg)
+		}
+		return Observation{}, fmt.Errorf("%s: %s", q.desc, msg)
 	}
 	return Observation{Found: true, Source: "PowerShell " + q.desc, Fields: data}, nil
 }

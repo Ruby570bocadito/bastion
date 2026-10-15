@@ -150,7 +150,7 @@ func (fileContentProbe) Collect(_ context.Context, p Params) (Observation, error
 		return Observation{Found: false, Source: path}, nil
 	}
 	if err != nil {
-		return Observation{}, err
+		return Observation{}, permissionErr(err, path)
 	}
 	return Observation{Found: true, Source: path, Fields: map[string]any{
 		"value": strings.TrimSpace(decodeText(b)),
@@ -183,10 +183,7 @@ func (fileRegexProbe) Collect(_ context.Context, p Params) (Observation, error) 
 	for _, f := range files {
 		b, err := readFileLimited(f)
 		if err != nil {
-			if errors.Is(err, os.ErrPermission) {
-				return Observation{}, fmt.Errorf("sin permiso para leer %s (ejecuta como administrador/root)", f)
-			}
-			return Observation{}, err
+			return Observation{}, permissionErr(err, f)
 		}
 		sc := bufio.NewScanner(strings.NewReader(decodeText(b)))
 		sc.Buffer(make([]byte, 64*1024), 1024*1024)
@@ -236,7 +233,7 @@ func (fileKVProbe) Collect(_ context.Context, p Params) (Observation, error) {
 	for _, f := range files {
 		b, err := readFileLimited(f)
 		if err != nil {
-			return Observation{}, err
+			return Observation{}, permissionErr(err, f)
 		}
 		if v, ok := parseKV(decodeText(b), key, sep, ci); ok {
 			value, from, found = v, f, true // gana la última aparición (semántica systemd)

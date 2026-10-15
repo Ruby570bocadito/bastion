@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"sort"
 	"strconv"
 	"strings"
@@ -51,6 +52,46 @@ func AsNotApplicable(err error) (string, bool) {
 		return na.Reason, true
 	}
 	return "", false
+}
+
+// PrivilegeError indica que el dato solo se puede leer con privilegios de
+// administrador (Windows) o root (Linux). El motor lo muestra como "sin
+// evaluar" en lugar de como error: no es un fallo del control ni de Bastion.
+type PrivilegeError struct{ Reason string }
+
+func (e *PrivilegeError) Error() string { return e.Reason }
+
+// NeedsPrivilege crea un PrivilegeError.
+func NeedsPrivilege(format string, a ...any) error {
+	return &PrivilegeError{Reason: fmt.Sprintf(format, a...)}
+}
+
+// AsPrivilege devuelve el motivo si err se debe a la falta de privilegios:
+// un PrivilegeError o un "permiso denegado" cuando el proceso no está
+// elevado. Con privilegios, un permiso denegado (p. ej. por SELinux) es un
+// error real y se informa como tal.
+func AsPrivilege(err error) (string, bool) {
+	var pe *PrivilegeError
+	if errors.As(err, &pe) {
+		return pe.Reason, true
+	}
+	if errors.Is(err, fs.ErrPermission) && !Privileged() {
+		return err.Error(), true
+	}
+	return "", false
+}
+
+// Privileged indica si el proceso se ejecuta como root o elevado (UAC).
+// Es una variable para poder simularlo en las pruebas.
+var Privileged = sync.OnceValue(isPrivileged)
+
+// permissionErr traduce un permiso denegado a PrivilegeError cuando el
+// proceso no tiene privilegios.
+func permissionErr(err error, what string) error {
+	if errors.Is(err, fs.ErrPermission) && !Privileged() {
+		return NeedsPrivilege("sin permiso para leer %s", what)
+	}
+	return err
 }
 
 var (

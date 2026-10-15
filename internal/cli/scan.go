@@ -67,10 +67,7 @@ func runScan(f scanFlags) error {
 	if f.format != "console" && f.format != "json" {
 		return fmt.Errorf("--format debe ser console o json")
 	}
-	cfg, err := config.Load()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "aviso:", err)
-	}
+	cfg := loadConfig()
 	cat, err := loadCatalog(cfg)
 	if err != nil {
 		return err
@@ -145,14 +142,20 @@ func runScan(f scanFlags) error {
 		fmt.Fprintf(msgs, "  %s Informe guardado: %s\n", s.Cyan(report.Sym("→")), o)
 	}
 	if f.save || (f.open && htmlOut == "") {
-		h, j, err := report.Save(cfg.Reports.Dir, rep, cfg.Reports.Keep)
+		dir, userDir := reportsDir(cfg)
+		h, j, err := report.Save(dir, rep, cfg.Reports.Keep)
 		if err != nil {
-			return fmt.Errorf("no se pudo guardar el informe en %s: %w", cfg.Reports.Dir, err)
+			return fmt.Errorf("no se pudo guardar el informe en %s: %w", dir, err)
 		}
-		_ = config.GrantUserRead(cfg.Reports.Dir) // que el navegador sin elevar pueda abrirlo
+		if !userDir {
+			_ = config.GrantUserRead(dir) // que el navegador sin elevar pueda abrirlo
+		}
 		htmlOut = h
 		fmt.Fprintf(msgs, "  %s Informe HTML: %s\n", s.Cyan(report.Sym("→")), h)
 		fmt.Fprintf(msgs, "  %s Informe JSON: %s\n", s.Cyan(report.Sym("→")), j)
+		if userDir {
+			fmt.Fprintf(msgs, "    %s\n", s.Dim("(en tu carpeta de usuario: sin privilegios no se puede escribir en "+cfg.Reports.Dir+")"))
+		}
 	}
 	if f.open && htmlOut != "" {
 		if err := report.Open(htmlOut); err != nil {

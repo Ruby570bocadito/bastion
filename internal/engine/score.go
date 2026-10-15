@@ -10,11 +10,12 @@ import (
 
 // Counts agrupa resultados por estado.
 type Counts struct {
-	Total  int `json:"total"`
-	Passed int `json:"passed"`
-	Failed int `json:"failed"`
-	Errors int `json:"errors"`
-	NA     int `json:"na"`
+	Total   int `json:"total"`
+	Passed  int `json:"passed"`
+	Failed  int `json:"failed"`
+	Errors  int `json:"errors"`
+	Skipped int `json:"skipped"`
+	NA      int `json:"na"`
 }
 
 func (c *Counts) add(s Status) {
@@ -26,6 +27,8 @@ func (c *Counts) add(s Status) {
 		c.Failed++
 	case Error:
 		c.Errors++
+	case Skipped:
+		c.Skipped++
 	default:
 		c.NA++
 	}
@@ -41,8 +44,9 @@ type CategoryScore struct {
 // Score resume la postura de seguridad del equipo.
 //
 // Valor = Σ peso(superados) / Σ peso(superados + fallidos) × 100, con pesos
-// crítico 10, alto 5, medio 3, bajo 1. Los errores y los "no aplica" no
-// cuentan; si hay errores la puntuación se marca como parcial.
+// crítico 10, alto 5, medio 3, bajo 1. Los errores, los no evaluados por
+// falta de privilegios y los "no aplica" no cuentan; si hay errores o no
+// evaluados la puntuación se marca como parcial.
 type Score struct {
 	Value      int               `json:"value"`
 	Grade      string            `json:"grade"`
@@ -87,7 +91,7 @@ func ComputeScore(results []Result) Score {
 	}
 	s.Value = pct(got, max)
 	s.Grade = grade(s.Value)
-	s.Partial = s.Errors > 0
+	s.Partial = s.Errors > 0 || s.Skipped > 0
 	for name, c := range cats {
 		c.Value = pct(catW[name][0], catW[name][1])
 		s.ByCategory = append(s.ByCategory, *c)

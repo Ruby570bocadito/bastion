@@ -47,7 +47,7 @@ Bastion es una **suite de 16 herramientas sobre el mismo motor y el mismo agente
 - **Detección automática** de edición, build, rol (estación, servidor miembro, DC), unión a dominio y distro, para elegir solo las reglas aplicables.
 - **Valor efectivo**: `sshd -T`, sysctl en ejecución, firewall en *ActiveStore*, `auditpol /backup`.
 - **Evidencia por control**: valor actual, valor esperado, origen del dato y subcomprobaciones.
-- **Estados**: `pass` · `fail` · `error` · `na` (🔜 `exception`, `manual`).
+- **Estados**: `pass` · `fail` · `error` · `skipped` (requiere privilegios) · `na` (🔜 `exception`, `manual`).
 - **Rápido**: probes en paralelo con caché por escaneo (57 controles en unos 40 ms en Linux).
 - **Portable**: un único binario sin instalación; ideal en un USB para consultores.
 - 🔜 Detectar **quién gestiona el valor** (GPO de dominio, Intune/MDM o local).

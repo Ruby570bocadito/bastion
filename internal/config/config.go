@@ -66,6 +66,28 @@ func programData() string {
 	return filepath.Join(pd, "Bastion")
 }
 
+// UserReportsDir es el directorio de informes del usuario actual. Se usa
+// cuando Bastion se ejecuta sin privilegios y no puede escribir en DataDir:
+//
+//	Windows: %LOCALAPPDATA%\Bastion\reports
+//	Linux:   $XDG_DATA_HOME/bastion/reports (~/.local/share/bastion/reports)
+func UserReportsDir() (string, error) {
+	if runtime.GOOS == "windows" {
+		if d := os.Getenv("LOCALAPPDATA"); d != "" {
+			return filepath.Join(d, "Bastion", "reports"), nil
+		}
+		return "", errors.New("LOCALAPPDATA no está definido")
+	}
+	if d := os.Getenv("XDG_DATA_HOME"); d != "" {
+		return filepath.Join(d, "bastion", "reports"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".local", "share", "bastion", "reports"), nil
+}
+
 // File es la ruta de config.yaml.
 func File() string { return filepath.Join(ConfigDir(), "config.yaml") }
 

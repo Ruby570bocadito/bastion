@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,6 +23,9 @@ const (
 	Fail  Status = "fail"
 	Error Status = "error"
 	NA    Status = "na"
+	// Skipped: no se pudo evaluar por falta de privilegios. Como los
+	// errores, no cuenta en la puntuación, que se marca como parcial.
+	Skipped Status = "skipped"
 )
 
 // Eval es la evaluación de una comprobación (hoja o compuesta).
@@ -118,10 +122,12 @@ func statusRank(s Status) int {
 		return 0
 	case Error:
 		return 1
-	case Pass:
+	case Skipped:
 		return 2
+	case Pass:
+		return 3
 	}
-	return 3
+	return 4
 }
 
 func (e *Engine) evalCheck(ctx context.Context, c rule.Check) (ev Eval) {
@@ -142,7 +148,7 @@ func (e *Engine) evalCheck(ctx context.Context, c rule.Check) (ev Eval) {
 
 func (e *Engine) evalComposite(ctx context.Context, c rule.Check, children []rule.Check, all bool) Eval {
 	ev := Eval{Label: c.Label}
-	var pass, fail, errs, na int
+	var pass, fail, errs, skipped, na int
 	for _, ch := range children {
 		r := e.evalCheck(ctx, ch)
 		ev.Children = append(ev.Children, r)
@@ -153,6 +159,8 @@ func (e *Engine) evalComposite(ctx context.Context, c rule.Check, children []rul
 			fail++
 		case Error:
 			errs++
+		case Skipped:
+			skipped++
 		default:
 			na++
 		}
@@ -162,6 +170,8 @@ func (e *Engine) evalComposite(ctx context.Context, c rule.Check, children []rul
 		ev.Status = Fail
 	case all && errs > 0:
 		ev.Status = Error
+	case all && skipped > 0:
+		ev.Status = Skipped
 	case all && pass > 0:
 		ev.Status = Pass
 	case !all && pass > 0:
@@ -170,6 +180,8 @@ func (e *Engine) evalComposite(ctx context.Context, c rule.Check, children []rul
 		ev.Status = Fail
 	case !all && errs > 0:
 		ev.Status = Error
+	case !all && skipped > 0:
+		ev.Status = Skipped
 	default:
 		ev.Status = NA
 	}
@@ -211,6 +223,10 @@ func (e *Engine) evalLeaf(ctx context.Context, c rule.Check) Eval {
 	if err != nil {
 		if reason, ok := probes.AsNotApplicable(err); ok {
 			ev.Status, ev.Message = NA, reason
+			return ev
+		}
+		if reason, ok := probes.AsPrivilege(err); ok {
+			ev.Status, ev.Message = Skipped, reason
 			return ev
 		}
 		ev.Status, ev.Message = Error, err.Error()
@@ -262,7 +278,11 @@ func (e *Engine) evalLeaf(ctx context.Context, c rule.Check) Eval {
 		ev.Status, ev.Message, ev.Actual = Error, err.Error(), formatValue(actual)
 		return ev
 	}
-	ev.Actual = formatValue(actual)
+	if c.Each != "" {
+		ev.Actual = formatEach(c.Op, actual, c.Expected)
+	} else {
+		ev.Actual = formatValue(actual)
+	}
 	if usedDefault {
 		ev.Actual += " (por defecto)"
 	}
@@ -296,4 +316,37 @@ func compareEach(op string, actual, expected any, each string) (bool, error) {
 		}
 	}
 	return each == "all", nil
+}
+
+// formatEach resume una lista evaluada elemento a elemento: agrupa los
+// valores repetidos y dice cuántos cumplen, p. ej. "0 ×8, 2 (cumplen 1 de 9)".
+func formatEach(op string, actual, expected any) string {
+	items := toList(actual)
+	if len(items) <= 1 {
+		return formatValue(actual)
+	}
+	var order []string
+	count := map[string]int{}
+	ok := 0
+	for _, it := range items {
+		v := formatValue(it)
+		if v == "" {
+			v = "(vacío)"
+		}
+		if count[v] == 0 {
+			order = append(order, v)
+		}
+		count[v]++
+		if pass, err := compare(op, it, expected); err == nil && pass {
+			ok++
+		}
+	}
+	parts := make([]string, len(order))
+	for i, v := range order {
+		parts[i] = v
+		if count[v] > 1 {
+			parts[i] = fmt.Sprintf("%s ×%d", v, count[v])
+		}
+	}
+	return fmt.Sprintf("%s (cumplen %d de %d)", strings.Join(parts, ", "), ok, len(items))
 }

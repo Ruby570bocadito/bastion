@@ -9,6 +9,9 @@ func restrictPermissions(dir string) error {
 	if os.Geteuid() != 0 {
 		return nil
 	}
+	if err := os.Chown(dir, 0, 0); err != nil {
+		return err
+	}
 	return os.Chmod(dir, 0o750)
 }
 

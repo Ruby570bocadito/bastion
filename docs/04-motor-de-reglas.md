@@ -122,10 +122,17 @@ check:
 |---|---|---|
 | Algún `fail` | `fail` | `fail` si ninguno pasa |
 | Algún `error` (sin `fail`) | `error` | `error` si ninguno pasa ni falla |
+| Algún `skipped` (sin `fail` ni `error`) | `skipped` | `skipped` si ninguno pasa, falla ni da error |
 | Todos `na` | `na` | `na` |
 | Resto | `pass` | `pass` si alguno pasa |
 
 Los `na` no penalizan dentro de un `all`. Así una regla "IPv4 e IPv6" pasa en un equipo sin IPv6.
+
+Con `each`, la evidencia agrupa los valores repetidos y dice cuántos elementos cumplen, por ejemplo `actual 0 ×8, 2 (cumplen 1 de 9)`.
+
+### Falta de privilegios
+
+Un probe devuelve `PrivilegeError` cuando el dato solo se puede leer como administrador o root: `secedit`, `auditpol`, `Get-BitLockerVolume` o `Get-WindowsOptionalFeature` sin elevar, o un fichero como `/etc/shadow` sin root. Las consultas que Windows solo responde elevado ni siquiera se lanzan. El motor lo marca como `skipped` ("sin evaluar"): no es un fallo del control ni un error de Bastion. Con privilegios, un "permiso denegado" (SELinux, una ACL inusual) sí es un `error`.
 
 ### Patrón "la directiva prevalece sobre la configuración local"
 

@@ -61,32 +61,44 @@ func Console(w io.Writer, rep *engine.Report, o ConsoleOptions) {
 	fmt.Fprintf(w, "  %s %d controles en %s %s\n", s.Dim(pad("Escaneo", 9)), rep.Score.Total,
 		fmtDuration(time.Duration(rep.DurationMs)*time.Millisecond), s.Dim("· "+rep.FinishedAt.Local().Format("2006-01-02 15:04")))
 
-	if !host.IsAdmin {
+	sc := rep.Score
+	if sc.Skipped > 0 {
 		fmt.Fprintln(w)
-		msg := "Sin privilegios de administrador: algunos controles no se pueden leer."
-		if host.Family == "windows" {
-			msg += " Abre PowerShell como administrador."
-		} else {
-			msg += " Ejecuta con sudo."
+		who := "administrador"
+		if host.Family != "windows" {
+			who = "root"
 		}
-		fmt.Fprintf(w, "  %s %s\n", s.Yellow(Sym("⚠")), s.Yellow(msg))
+		fmt.Fprintf(w, "  %s %s\n", s.Yellow(Sym("⚠")), s.Yellow(fmt.Sprintf("Sin privilegios de %s: %s no se %s podido evaluar.",
+			who, plural(sc.Skipped, "control", "controles"), map[bool]string{true: "ha", false: "han"}[sc.Skipped == 1])))
+		fmt.Fprintf(w, "    %s\n", s.Dim(AdminHint(host.Family)))
 	}
 
 	// Puntuación
-	sc := rep.Score
 	fmt.Fprintln(w)
 	gradeColor := scoreColor(s, sc.Value)
 	partial := ""
-	if sc.Partial {
+	switch {
+	case sc.Skipped > 0 && sc.Errors > 0:
+		partial = s.Dim(" (parcial: hay controles sin evaluar y errores)")
+	case sc.Skipped > 0:
+		partial = s.Dim(" (parcial: hay controles sin evaluar)")
+	case sc.Errors > 0:
 		partial = s.Dim(" (parcial: hay errores)")
 	}
 	fmt.Fprintf(w, "  %s  %s %s  %s%s\n", s.Bold("POSTURA"), gradeColor(s.Bold(fmt.Sprintf("%3d/100", sc.Value))),
 		gradeColor(s.Bold(sc.Grade)), bar(s, sc.Value, 36), partial)
-	fmt.Fprintf(w, "           %s   %s   %s   %s\n",
+	counts := []string{
 		s.Green(fmt.Sprintf(Sym("✓")+" %d superados", sc.Passed)),
 		s.Red(fmt.Sprintf(Sym("✗")+" %d fallidos", sc.Failed)),
-		s.Yellow(fmt.Sprintf("! %d errores", sc.Errors)),
-		s.Dim(fmt.Sprintf(Sym("○")+" %d no aplican", sc.NA)))
+	}
+	if sc.Errors > 0 {
+		counts = append(counts, s.Yellow(fmt.Sprintf("! %d errores", sc.Errors)))
+	}
+	if sc.Skipped > 0 {
+		counts = append(counts, s.Yellow(fmt.Sprintf(Sym("⊘")+" %d sin evaluar", sc.Skipped)))
+	}
+	counts = append(counts, s.Dim(fmt.Sprintf(Sym("○")+" %d no aplican", sc.NA)))
+	fmt.Fprintf(w, "           %s\n", strings.Join(counts, "   "))
 
 	// Severidad
 	fmt.Fprintln(w)
@@ -128,7 +140,10 @@ func Console(w io.Writer, rep *engine.Report, o ConsoleOptions) {
 		{engine.Error, "ERRORES", s.Yellow, "!"},
 	}
 	if o.ShowAll {
-		groups = append(groups, group{engine.Pass, "SUPERADOS", s.Green, Sym("✓")}, group{engine.NA, "NO APLICAN", s.Dim, Sym("○")})
+		groups = append(groups,
+			group{engine.Skipped, "SIN EVALUAR · REQUIEREN PRIVILEGIOS", s.Yellow, Sym("⊘")},
+			group{engine.Pass, "SUPERADOS", s.Green, Sym("✓")},
+			group{engine.NA, "NO APLICAN", s.Dim, Sym("○")})
 	}
 	for _, g := range groups {
 		var rs []engine.Result
@@ -147,12 +162,34 @@ func Console(w io.Writer, rep *engine.Report, o ConsoleOptions) {
 			sev := sevColor(s, r.Rule.Severity)(pad(SeverityLabel(r.Rule.Severity), 8))
 			fmt.Fprintf(w, "  %s %s %s %s\n", g.icon(g.mark), sev, s.Cyan(pad(r.Rule.ID, 13)), r.Rule.Title)
 			detail := detailLine(r.Eval)
-			if detail != "" && g.status != engine.Pass {
+			if detail != "" && g.status != engine.Pass && g.status != engine.Skipped {
 				fmt.Fprintf(w, "  %s %s\n", strings.Repeat(" ", 24), s.Dim(detail))
 			}
 		}
 	}
+	// Sin --all, los no evaluados se resumen en una línea: el motivo es el
+	// mismo para todos y ya se ha avisado arriba.
+	if sc.Skipped > 0 && !o.ShowAll {
+		fmt.Fprintln(w)
+		fmt.Fprintf(w, "  %s %s %s\n", s.Yellow(Sym("⊘")), fmt.Sprintf("%s sin evaluar por falta de privilegios.", plural(sc.Skipped, "control", "controles")),
+			s.Dim("Lista: bastion scan --all"))
+	}
 	fmt.Fprintln(w)
+}
+
+// AdminHint explica cómo repetir con privilegios en cada sistema.
+func AdminHint(family string) string {
+	if family == "windows" {
+		return "Abre PowerShell como administrador (clic derecho → Ejecutar como administrador) y repite el comando."
+	}
+	return "Repite el comando con sudo."
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 // detailLine resume la evidencia de una evaluación en una línea.
@@ -162,7 +199,7 @@ func detailLine(ev engine.Eval) string {
 	if leaf.Label != "" {
 		parts = append(parts, leaf.Label+":")
 	}
-	if leaf.Status == engine.NA || leaf.Status == engine.Error {
+	if leaf.Status == engine.NA || leaf.Status == engine.Error || leaf.Status == engine.Skipped {
 		if leaf.Message != "" {
 			parts = append(parts, leaf.Message)
 		}

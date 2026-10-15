@@ -2,7 +2,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strings"
 
@@ -74,6 +76,30 @@ Primeros pasos:
 	root.AddCommand(newScanCmd(), newHardenCmd(), newRollbackCmd(), newHistoryCmd(), newDeadmanCmd(), newInfoCmd(), newRulesCmd(), newProfilesCmd(), newUpdateCmd(), newInitCmd(), newVersionCmd())
 	root.CompletionOptions.HiddenDefaultCmd = true
 	return root
+}
+
+// loadConfig lee config.yaml y avisa de los problemas reales. Sin
+// privilegios el fichero no se puede leer (en Windows la carpeta es solo
+// para administradores): se usan los valores por defecto sin avisar.
+func loadConfig() config.Config {
+	cfg, err := config.Load()
+	if err != nil && !(errors.Is(err, fs.ErrPermission) && !probes.Privileged()) {
+		fmt.Fprintln(os.Stderr, "aviso:", err)
+	}
+	return cfg
+}
+
+// reportsDir es donde "scan --save" guarda los informes: el directorio de
+// la configuración o, sin privilegios, la carpeta del usuario (en Windows
+// solo los administradores pueden escribir en %ProgramData%\Bastion).
+func reportsDir(cfg config.Config) (dir string, user bool) {
+	if probes.Privileged() || os.Getenv("BASTION_HOME") != "" {
+		return cfg.Reports.Dir, false
+	}
+	if d, err := config.UserReportsDir(); err == nil {
+		return d, true
+	}
+	return cfg.Reports.Dir, false
 }
 
 // loadCatalog carga el paquete oficial y las reglas adicionales.

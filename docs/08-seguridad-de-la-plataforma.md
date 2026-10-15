@@ -45,6 +45,8 @@ Bastion se ejecuta como **SYSTEM/root** en equipos críticos. Para un atacante e
 ### Permisos
 - Linux: `/etc/bastion` y `/var/lib/bastion` con `0750` (root). Informes con `0640`.
 - Windows: `%ProgramData%\Bastion` sin herencia, acceso total solo para Administradores (`S-1-5-32-544`) y SYSTEM (`S-1-5-18`), por SID para que funcione en cualquier idioma. El directorio `reports` concede además **lectura** al usuario que ejecutó el escaneo: con UAC, su navegador corre sin elevar y no podría abrir el informe.
+- **Carpeta preparada por un atacante.** Cualquier usuario puede crear carpetas en `%ProgramData%`. Si alguien creara `C:\ProgramData\Bastion` antes de instalar, seguiría siendo su propietario (y el propietario siempre puede cambiar los permisos) y podría dejar un `config.yaml` que apuntara `bastion update` a un espejo suyo. Por eso `bastion init` (lo ejecuta el instalador) pasa la propiedad de todo a Administradores, quita la herencia de la carpeta y restablece los permisos de su contenido para que solo hereden los de la carpeta. En Linux, `/etc/bastion` y `/var/lib/bastion` pasan a `root:root`.
+- Sin privilegios, Bastion no intenta escribir en esas carpetas: los informes van a la carpeta del usuario y `config.yaml` (que no puede leer) se sustituye por los valores por defecto.
 - Las reglas propias (`rules.d`) solo las puede escribir un administrador.
 
 ### Desarrollo seguro

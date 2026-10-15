@@ -286,6 +286,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
   var STATUS = {
     fail: { label: "Fallido", icon: "✕", color: "var(--critical)" },
     error: { label: "Error", icon: "!", color: "var(--warning)" },
+    skipped: { label: "Sin evaluar", icon: "⊘", color: "var(--muted)" },
     pass: { label: "Superado", icon: "✓", color: "var(--good)" },
     na: { label: "No aplica", icon: "–", color: "var(--info)" }
   };
@@ -354,10 +355,11 @@ footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
    ["Bastion", (data.tool && data.tool.version) || ""]
   ].forEach(function (p) { if (p[1]) meta.appendChild(el("span", null, [el("b", { text: p[0] }), p[1]])); });
   var hostSec = el("section", { class: "host" }, [el("h1", { text: h.hostname || "Equipo" }), meta]);
-  if (!h.is_admin) {
+  if (sc.skipped) {
     hostSec.appendChild(el("div", { class: "warn-banner", role: "note" }, [
       el("span", { class: "ico", text: "⚠" }),
-      el("span", { text: "El escaneo se ejecutó sin privilegios de administrador: algunos controles no se pudieron leer y aparecen como error. Repite el escaneo como " + (h.family === "windows" ? "administrador." : "root (sudo).") })
+      el("span", { text: "El escaneo se ejecutó sin privilegios: " + sc.skipped + (sc.skipped === 1 ? " control no se pudo evaluar" : " controles no se pudieron evaluar") +
+        " y no cuentan en la puntuación. Repite el escaneo como " + (h.family === "windows" ? "administrador." : "root (sudo).") })
     ]));
   }
   app.appendChild(hostSec);
@@ -374,11 +376,15 @@ footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
       ]),
       el("div", { class: "meter", role: "img", "aria-label": "Puntuación " + sc.value + " de 100" }, [el("i", { style: "width:" + sc.value + "%;background:" + color })]),
       el("p", { text: "Postura " + scoreWord(sc.value).toLowerCase() + " según el perfil " + (data.profile ? data.profile.id : "") +
-        ". Puntuación ponderada por severidad (crítico 10, alto 5, medio 3, bajo 1)." + (sc.partial ? " Es parcial: hay controles con error." : "") })
+        ". Puntuación ponderada por severidad (crítico 10, alto 5, medio 3, bajo 1)." + (sc.partial ? " Es parcial: hay controles " + (sc.skipped ? "sin evaluar." : "con error.") : "") })
     ])
   ]);
   var kpis = el("div", { class: "kpis" });
-  [["fail", sc.failed, "Fallidos", "requieren acción"], ["pass", sc.passed, "Superados", "conformes"], ["error", sc.errors, "Errores", "no se pudieron leer"], ["na", sc.na, "No aplican", "fuera del alcance de este equipo"]]
+  var unk = (sc.errors || 0) + (sc.skipped || 0);
+  var unkSub = sc.skipped && sc.errors ? sc.skipped + " sin privilegios · " + sc.errors + " con error" :
+    sc.skipped ? "requieren privilegios" : "no se pudieron leer";
+  [["fail", sc.failed, "Fallidos", "requieren acción"], ["pass", sc.passed, "Superados", "conformes"],
+   [sc.skipped ? "skipped" : "error", unk, "Sin evaluar", unkSub], ["na", sc.na, "No aplican", "fuera del alcance de este equipo"]]
     .forEach(function (k) {
       var st = STATUS[k[0]];
       kpis.appendChild(el("div", { class: "card kpi" }, [
@@ -455,12 +461,13 @@ footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
   app.appendChild(el("section", { class: "two" }, [catCard, attCard]));
 
   // ---- Controles ----
-  var counts = { all: results.length, fail: 0, error: 0, pass: 0, na: 0 };
+  var counts = { all: results.length, fail: 0, error: 0, skipped: 0, pass: 0, na: 0 };
   results.forEach(function (r) { counts[r.status]++; });
   var state = { status: counts.fail ? "fail" : "all", sev: "", cat: "", q: "" };
 
   var chips = el("div", { class: "chips", role: "group", "aria-label": "Filtrar por estado" });
-  [["all", "Todos"], ["fail", "Fallidos"], ["error", "Errores"], ["pass", "Superados"], ["na", "No aplican"]].forEach(function (c) {
+  [["all", "Todos"], ["fail", "Fallidos"], ["error", "Errores"], ["skipped", "Sin evaluar"], ["pass", "Superados"], ["na", "No aplican"]].forEach(function (c) {
+    if ((c[0] === "error" || c[0] === "skipped") && !counts[c[0]]) return;
     var b = el("button", { class: "chip", type: "button", "data-s": c[0], "aria-pressed": String(state.status === c[0]) },
       [c[1], el("span", { class: "c", text: String(counts[c[0]]) })]);
     b.addEventListener("click", function () { state.status = c[0]; render(); });

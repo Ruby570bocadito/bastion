@@ -1,6 +1,6 @@
 # 10 · Guía de uso
 
-> Ejecuta Bastion como **administrador** (Windows) o con **sudo** (Linux). Sin privilegios funciona, pero algunos controles (directiva de seguridad, `/etc/shadow`, `sshd -T`...) aparecerán como error y la puntuación será parcial.
+> Ejecuta Bastion como **administrador** (Windows) o con **sudo** (Linux). Sin privilegios funciona, pero algunos controles (directiva de seguridad y de auditoría, BitLocker, `/etc/shadow`, `sudoers`...) quedan **sin evaluar**, no cuentan en la puntuación y esta se marca como parcial. Los informes de `--save` se guardan entonces en tu carpeta de usuario: `%LOCALAPPDATA%\Bastion\reports` en Windows y `~/.local/share/bastion/reports` en Linux.
 
 ## Comandos
 
@@ -85,7 +85,8 @@ Cada control se aplica con instantánea previa, se verifica y, si no se cumple o
 |---|---|---|
 | ✓ **Superado** | El valor real cumple lo esperado | Sí |
 | ✗ **Fallido** | El valor real no cumple (o no está configurado y el valor por defecto del sistema no cumple) | Sí |
-| ! **Error** | No se pudo leer (normalmente por falta de privilegios) | No; la puntuación se marca como **parcial** |
+| ! **Error** | No se pudo leer por un problema inesperado (comando que falla, formato desconocido…) | No; la puntuación se marca como **parcial** |
+| ⊘ **Sin evaluar** | El dato solo se puede leer como administrador o root y el escaneo se ejecutó sin privilegios. En consola se resumen en una línea; `--all` los lista | No; la puntuación se marca como **parcial** |
 | – **No aplica** | El elemento no existe en este equipo (sin OpenSSH, sin systemd, Defender sustituido por otro antivirus…) | No |
 
 Cuando el informe dice `actual 1 (por defecto)`, el valor no estaba configurado explícitamente y Bastion aplicó el valor por defecto documentado del sistema operativo.
@@ -101,7 +102,7 @@ Cuando el informe dice `actual 1 (por defecto)`, el valor no estaba configurado 
   "profile": { "id": "linux-server-l1", "name": "Linux Servidor · Nivel 1" },
   "started_at": "2026-10-15T14:35:00Z", "finished_at": "…", "duration_ms": 39,
   "score": { "value": 65, "grade": "D", "partial": false, "total": 57, "passed": 22, "failed": 15,
-             "errors": 0, "na": 20, "by_severity": { "high": { "failed": 2 } }, "by_category": [ … ] },
+             "errors": 0, "skipped": 0, "na": 20, "by_severity": { "high": { "failed": 2 } }, "by_category": [ … ] },
   "results": [
     { "rule": { "id": "LNX-FW-001", "title": "…", "severity": "high", "category": "Firewall",
                 "references": { … }, "remediation": { … } },

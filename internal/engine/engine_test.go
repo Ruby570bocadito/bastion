@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+	"io/fs"
+	"strings"
 	"testing"
 
 	"github.com/Ruby570bocadito/bastion/internal/probes"
@@ -91,6 +93,12 @@ func (fakeProbe) Collect(_ context.Context, p probes.Params) (probes.Observation
 		return probes.Observation{}, probes.NotApplicable("no aplica")
 	case "list":
 		return probes.Observation{Found: true, Fields: map[string]any{"value": []any{uint64(2), uint64(2)}}}, nil
+	case "netbios":
+		return probes.Observation{Found: true, Fields: map[string]any{"value": []any{uint64(0), uint64(0), uint64(2), uint64(0)}}}, nil
+	case "priv":
+		return probes.Observation{}, probes.NeedsPrivilege("solo como administrador")
+	case "denied":
+		return probes.Observation{}, &fs.PathError{Op: "open", Path: "/etc/shadow", Err: fs.ErrPermission}
 	}
 	return probes.Observation{Found: true, Fields: map[string]any{"value": p.String("key")}}, nil
 }
@@ -133,6 +141,57 @@ func TestEvalEach(t *testing.T) {
 	c.Each = "all"
 	if ev := e.evalCheck(ctx, c); ev.Status != Pass {
 		t.Errorf("each all → %s (%s)", ev.Status, ev.Message)
+	}
+}
+
+func TestEvalEachEvidence(t *testing.T) {
+	e := New()
+	ctx := probes.WithSession(context.Background(), probes.NewSession())
+	c := leaf("netbios", "eq", 2)
+	c.Each = "all"
+	ev := e.evalCheck(ctx, c)
+	if ev.Status != Fail || ev.Actual != "0 ×3, 2 (cumplen 1 de 4)" {
+		t.Errorf("each all → %s %q", ev.Status, ev.Actual)
+	}
+}
+
+func TestEvalPrivilege(t *testing.T) {
+	old := probes.Privileged
+	t.Cleanup(func() { probes.Privileged = old })
+	e := New()
+	ctx := probes.WithSession(context.Background(), probes.NewSession())
+
+	probes.Privileged = func() bool { return false }
+	if ev := e.evalCheck(ctx, leaf("priv", "eq", 1)); ev.Status != Skipped || ev.Message != "solo como administrador" {
+		t.Errorf("PrivilegeError → %s %q", ev.Status, ev.Message)
+	}
+	if ev := e.evalCheck(ctx, leaf("denied", "eq", 1)); ev.Status != Skipped || !strings.Contains(ev.Message, "/etc/shadow") {
+		t.Errorf("permiso denegado sin privilegios → %s %q", ev.Status, ev.Message)
+	}
+	// Con privilegios, un permiso denegado (SELinux, ACL rara) es un error real.
+	probes.Privileged = func() bool { return true }
+	if ev := e.evalCheck(ctx, leaf("denied", "eq", 1)); ev.Status != Error {
+		t.Errorf("permiso denegado con privilegios → %s", ev.Status)
+	}
+	probes.Privileged = func() bool { return false }
+
+	// Compuestas: un fallo manda; sin fallos, lo no evaluado impide dar el control por bueno.
+	if ev := e.evalCheck(ctx, rule.Check{All: []rule.Check{leaf("a", "eq", "a"), leaf("priv", "eq", 1)}}); ev.Status != Skipped {
+		t.Errorf("all pass + skipped → %s", ev.Status)
+	}
+	if ev := e.evalCheck(ctx, rule.Check{All: []rule.Check{leaf("a", "eq", "x"), leaf("priv", "eq", 1)}}); ev.Status != Fail {
+		t.Errorf("all fail + skipped → %s", ev.Status)
+	}
+	if ev := e.evalCheck(ctx, rule.Check{Any: []rule.Check{leaf("priv", "eq", 1), leaf("b", "eq", "b")}}); ev.Status != Pass {
+		t.Errorf("any skipped + pass → %s", ev.Status)
+	}
+
+	// No cuenta en la puntuación, pero la marca como parcial.
+	r1 := &rule.Rule{ID: "T-X-1", Severity: rule.SevHigh, Category: "A"}
+	r2 := &rule.Rule{ID: "T-X-2", Severity: rule.SevCritical, Category: "A"}
+	s := ComputeScore([]Result{{Rule: r1, Eval: Eval{Status: Pass}}, {Rule: r2, Eval: Eval{Status: Skipped}}})
+	if s.Value != 100 || s.Skipped != 1 || !s.Partial {
+		t.Errorf("puntuación con no evaluados: %+v", s)
 	}
 }
 

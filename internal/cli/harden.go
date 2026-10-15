@@ -82,7 +82,7 @@ func runHarden(f hardenFlags) error {
 	if f.wave < 1 || f.wave > 3 {
 		return fmt.Errorf("--wave debe ser 1, 2 o 3")
 	}
-	cfg, _ := config.Load()
+	cfg := loadConfig()
 	cat, err := loadCatalog(cfg)
 	if err != nil {
 		return err
@@ -124,8 +124,15 @@ func runHarden(f hardenFlags) error {
 	if !f.apply {
 		fmt.Printf("\n  %s %s\n", s.Yellow(report.Sym("⚠")), s.Bold("Simulación: no se ha cambiado nada."))
 		if planned > 0 {
-			fmt.Printf("    Para aplicar: %s\n\n", s.Bold(hardenCmdLine(f, true)))
+			fmt.Printf("    Para aplicar: %s\n", s.Bold(hardenCmdLine(f, true)))
 		}
+		if !info.IsAdmin {
+			if n := engine.ComputeScore(before).Skipped; n > 0 {
+				fmt.Printf("    %s\n", s.Dim(fmt.Sprintf("Sin privilegios hay %d controles sin evaluar que no aparecen en el plan.", n)))
+			}
+			fmt.Printf("    %s\n", s.Dim("Aplicar requiere privilegios. "+report.AdminHint(info.Family)))
+		}
+		fmt.Println()
 		return nil
 	}
 	if planned == 0 {

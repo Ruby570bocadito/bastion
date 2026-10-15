@@ -30,15 +30,16 @@ func newInfoCmd() *cobra.Command {
 		Use:   "info",
 		Short: "Mostrar la plataforma detectada, el perfil por defecto y las rutas",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, _ := config.Load()
+			cfg := loadConfig()
 			info := platform.Detect()
 			cat, err := loadCatalog(cfg)
 			if err != nil {
 				return err
 			}
 			prof, _ := resolveProfile(cat, info, cfg.Profile)
+			repDir, _ := reportsDir(cfg)
 			if asJSON {
-				out := map[string]any{"version": version.Version, "host": info, "config": config.File(), "reports": cfg.Reports.Dir}
+				out := map[string]any{"version": version.Version, "host": info, "config": config.File(), "reports": repDir}
 				if prof != nil {
 					out["default_profile"] = prof.ID
 				}
@@ -72,7 +73,7 @@ func newInfoCmd() *cobra.Command {
 			row("Reglas aplicables", fmt.Sprint(len(cat.Select(info.Tags, profID(prof)))))
 			row("Probes disponibles", strings.Join(probes.Available(), ", "))
 			row("Configuración", config.File())
-			row("Informes", cfg.Reports.Dir)
+			row("Informes", repDir)
 			w.Flush()
 			fmt.Fprintln(os.Stdout)
 			return nil
@@ -100,7 +101,7 @@ func newRulesCmd() *cobra.Command {
 		Use:   "list",
 		Short: "Listar las reglas aplicables a este equipo (o todas con --all)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, _ := config.Load()
+			cfg := loadConfig()
 			cat, err := loadCatalog(cfg)
 			if err != nil {
 				return err
@@ -137,7 +138,7 @@ func newRulesCmd() *cobra.Command {
 		Short: "Mostrar el detalle y la remediación de una regla",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, _ := config.Load()
+			cfg := loadConfig()
 			cat, err := loadCatalog(cfg)
 			if err != nil {
 				return err
@@ -169,7 +170,7 @@ func newRulesCmd() *cobra.Command {
 		Use:   "doc",
 		Short: "Generar el catálogo de controles en Markdown (docs/06-catalogo-de-controles.md)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, _ := config.Load()
+			cfg := loadConfig()
 			cat, err := loadCatalog(cfg)
 			if err != nil {
 				return err
@@ -324,7 +325,7 @@ func newProfilesCmd() *cobra.Command {
 		Use:   "profiles",
 		Short: "Listar los perfiles de hardening disponibles",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, _ := config.Load()
+			cfg := loadConfig()
 			cat, err := loadCatalog(cfg)
 			if err != nil {
 				return err
@@ -369,7 +370,7 @@ Las reglas oficiales van incrustadas en el binario, así que también se actuali
 Origen: https://github.com/<repo>/releases (configurable en config.yaml o con
 BASTION_REPO / BASTION_RELEASES_URL para usar un espejo interno).`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, _ := config.Load()
+			cfg := loadConfig()
 			src := selfupdate.Source{
 				Repo:    firstNonEmpty(os.Getenv("BASTION_REPO"), cfg.Update.Repo, version.Repo),
 				BaseURL: firstNonEmpty(os.Getenv("BASTION_RELEASES_URL"), cfg.Update.ReleasesURL),
