@@ -102,6 +102,9 @@ func restoreFile(path string, s State) error {
 }
 
 // writeAtomic escribe en un temporal del mismo directorio y lo renombra.
+// El propietario solo se fija como root: sin privilegios chown fallaría
+// siempre y el fichero queda de todos modos a nombre de quien lo escribe
+// (es lo que pasa en las pruebas, que no se ejecutan como root).
 func writeAtomic(path string, content []byte, mode fs.FileMode, uid, gid int) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -114,7 +117,7 @@ func writeAtomic(path string, content []byte, mode fs.FileMode, uid, gid int) er
 		os.Remove(tmp)
 		return err
 	}
-	if uid >= 0 {
+	if uid >= 0 && os.Geteuid() == 0 {
 		if err := os.Chown(tmp, uid, gid); err != nil {
 			os.Remove(tmp)
 			return err
