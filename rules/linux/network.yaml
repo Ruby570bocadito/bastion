@@ -29,6 +29,14 @@ remediation:
     printf 'net.ipv4.ip_forward = 0\nnet.ipv6.conf.all.forwarding = 0\n' > /etc/sysctl.d/60-bastion-forward.conf
     sysctl --system
   breaking_risk: medium
+  actions:
+    - type: sysctl.set
+      key: net.ipv4.ip_forward
+      value: 0
+    - type: sysctl.set
+      key: net.ipv6.conf.all.forwarding
+      value: 0
+      optional: true
 impact: Los hosts de Docker, Kubernetes, VPN o routers NECESITAN el reenvío activado; crea una excepción para ellos.
 ---
 id: LNX-NET-002
@@ -59,6 +67,21 @@ remediation:
     CONF
     sysctl --system
   breaking_risk: none
+  actions:
+    - type: sysctl.set
+      key: net.ipv4.conf.all.accept_redirects
+      value: 0
+    - type: sysctl.set
+      key: net.ipv4.conf.default.accept_redirects
+      value: 0
+    - type: sysctl.set
+      key: net.ipv6.conf.all.accept_redirects
+      value: 0
+      optional: true
+    - type: sysctl.set
+      key: net.ipv6.conf.default.accept_redirects
+      value: 0
+      optional: true
 ---
 id: LNX-NET-003
 title: No enviar redirecciones ICMP
@@ -80,6 +103,13 @@ remediation:
     printf 'net.ipv4.conf.all.send_redirects = 0\nnet.ipv4.conf.default.send_redirects = 0\n' > /etc/sysctl.d/60-bastion-sendredirects.conf
     sysctl --system
   breaking_risk: none
+  actions:
+    - type: sysctl.set
+      key: net.ipv4.conf.all.send_redirects
+      value: 0
+    - type: sysctl.set
+      key: net.ipv4.conf.default.send_redirects
+      value: 0
 ---
 id: LNX-NET-004
 title: No aceptar paquetes con enrutamiento de origen
@@ -100,6 +130,21 @@ check:
 remediation:
   summary: Fijar accept_source_route = 0 en IPv4 e IPv6.
   breaking_risk: none
+  actions:
+    - type: sysctl.set
+      key: net.ipv4.conf.all.accept_source_route
+      value: 0
+    - type: sysctl.set
+      key: net.ipv4.conf.default.accept_source_route
+      value: 0
+    - type: sysctl.set
+      key: net.ipv6.conf.all.accept_source_route
+      value: 0
+      optional: true
+    - type: sysctl.set
+      key: net.ipv6.conf.default.accept_source_route
+      value: 0
+      optional: true
 ---
 id: LNX-NET-005
 title: Filtro de ruta inversa (anti-spoofing)
@@ -121,6 +166,13 @@ remediation:
     printf 'net.ipv4.conf.all.rp_filter = 1\nnet.ipv4.conf.default.rp_filter = 1\n' > /etc/sysctl.d/60-bastion-rpfilter.conf
     sysctl --system
   breaking_risk: medium
+  actions:
+    - type: sysctl.set
+      key: net.ipv4.conf.all.rp_filter
+      value: 1
+    - type: sysctl.set
+      key: net.ipv4.conf.default.rp_filter
+      value: 1
 impact: En redes con enrutamiento asimétrico (varias interfaces o rutas) puede descartar tráfico legítimo; usa el modo 2 (loose) o una excepción.
 ---
 id: LNX-NET-006
@@ -142,6 +194,10 @@ check:
 remediation:
   summary: Fijar net.ipv4.tcp_syncookies = 1.
   breaking_risk: none
+  actions:
+    - type: sysctl.set
+      key: net.ipv4.tcp_syncookies
+      value: 1
 ---
 id: LNX-NET-007
 title: Registrar paquetes marcianos
@@ -160,6 +216,13 @@ check:
 remediation:
   summary: Fijar log_martians = 1.
   breaking_risk: none
+  actions:
+    - type: sysctl.set
+      key: net.ipv4.conf.all.log_martians
+      value: 1
+    - type: sysctl.set
+      key: net.ipv4.conf.default.log_martians
+      value: 1
 ---
 id: LNX-NET-008
 title: Ignorar ICMP de difusión y respuestas falsas
@@ -178,6 +241,13 @@ check:
 remediation:
   summary: Fijar ambos parámetros a 1.
   breaking_risk: none
+  actions:
+    - type: sysctl.set
+      key: net.ipv4.icmp_echo_ignore_broadcasts
+      value: 1
+    - type: sysctl.set
+      key: net.ipv4.icmp_ignore_bogus_error_responses
+      value: 1
 ---
 id: LNX-NET-009
 title: No aceptar anuncios de router IPv6
@@ -197,4 +267,13 @@ check:
 remediation:
   summary: Fijar accept_ra = 0 y configurar IPv6 de forma estática.
   breaking_risk: high
+  actions:
+    - type: sysctl.set
+      key: net.ipv6.conf.all.accept_ra
+      value: 0
+      optional: true
+    - type: sysctl.set
+      key: net.ipv6.conf.default.accept_ra
+      value: 0
+      optional: true
 impact: En redes que dependen de SLAAC el equipo perderá la conectividad IPv6.

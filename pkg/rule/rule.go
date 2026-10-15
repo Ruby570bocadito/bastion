@@ -4,6 +4,7 @@
 package rule
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -71,6 +72,64 @@ type Remediation struct {
 	Commands       string `yaml:"commands,omitempty" json:"commands,omitempty"`
 	BreakingRisk   string `yaml:"breaking_risk" json:"breaking_risk"`
 	RebootRequired bool   `yaml:"reboot_required,omitempty" json:"reboot_required,omitempty"`
+	// Actions son los cambios tipados que aplica "bastion harden". Si no hay,
+	// la remediación es manual. Nunca existe un tipo "ejecutar comando".
+	Actions []Action `yaml:"actions,omitempty" json:"actions,omitempty"`
+	// Safety "remote-access" marca cambios que pueden cortar el acceso
+	// remoto (SSH, RDP): se aplican con dead-man switch.
+	Safety string `yaml:"safety,omitempty" json:"safety,omitempty"`
+}
+
+// Action es un cambio tipado: un tipo (registry.set, sysctl.set...) y sus
+// parámetros. Ver docs/05-remediacion-segura.md.
+type Action struct {
+	Type   string
+	Params map[string]any
+}
+
+// UnmarshalYAML separa "type" del resto de parámetros.
+func (a *Action) UnmarshalYAML(n *yaml.Node) error {
+	var raw map[string]any
+	if err := n.Decode(&raw); err != nil {
+		return err
+	}
+	t, _ := raw["type"].(string)
+	delete(raw, "type")
+	a.Type, a.Params = t, raw
+	return nil
+}
+
+// MarshalJSON aplana la acción: {"type": "...", ...parámetros}.
+func (a Action) MarshalJSON() ([]byte, error) {
+	m := map[string]any{"type": a.Type}
+	for k, v := range a.Params {
+		m[k] = v
+	}
+	return json.Marshal(m)
+}
+
+// UnmarshalJSON es el inverso de MarshalJSON (manifiestos de cambios).
+func (a *Action) UnmarshalJSON(b []byte) error {
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return err
+	}
+	a.Type, _ = m["type"].(string)
+	delete(m, "type")
+	a.Params = m
+	return nil
+}
+
+// RiskWave es la ola mínima en la que se aplica un riesgo de rotura:
+// 1 = ninguno/bajo, 2 = medio, 3 = alto.
+func RiskWave(breakingRisk string) int {
+	switch breakingRisk {
+	case "medium":
+		return 2
+	case "high":
+		return 3
+	}
+	return 1
 }
 
 // Rule es un control de seguridad evaluable.
@@ -176,7 +235,7 @@ var validBreakingRisk = map[string]bool{"none": true, "low": true, "medium": tru
 
 // Validate comprueba la regla. knownProbes y profiles permiten detectar
 // referencias a probes o perfiles inexistentes.
-func (r *Rule) Validate(knownProbes map[string]bool, profiles map[string]*Profile) []error {
+func (r *Rule) Validate(knownProbes map[string]bool, profiles map[string]*Profile, validateAction func(Action) error) []error {
 	var errs []error
 	add := func(format string, a ...any) { errs = append(errs, fmt.Errorf(format, a...)) }
 
@@ -221,6 +280,22 @@ func (r *Rule) Validate(knownProbes map[string]bool, profiles map[string]*Profil
 	}
 	if !validBreakingRisk[r.Remediation.BreakingRisk] {
 		add("remediation.breaking_risk %q inválido (none|low|medium|high)", r.Remediation.BreakingRisk)
+	}
+	switch r.Remediation.Safety {
+	case "", "remote-access":
+	default:
+		add("remediation.safety %q inválido (remote-access)", r.Remediation.Safety)
+	}
+	for i, a := range r.Remediation.Actions {
+		if a.Type == "" {
+			add("remediation.actions[%d]: falta type", i)
+			continue
+		}
+		if validateAction != nil {
+			if err := validateAction(a); err != nil {
+				add("remediation.actions[%d] (%s): %v", i, a.Type, err)
+			}
+		}
 	}
 	for _, e := range validateCheck(&r.Check, knownProbes, "check") {
 		errs = append(errs, e)

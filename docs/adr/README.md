@@ -10,3 +10,4 @@ Registro de decisiones importantes: contexto, decisión y consecuencias. Una ADR
 | [0004](0004-sin-ejecucion-arbitraria.md) | Sin ejecución arbitraria de comandos | Aceptada |
 | [0005](0005-instalador-de-una-linea.md) | Instalador de una línea con verificación SHA-256 | Aceptada |
 | [0006](0006-informe-html-autocontenido.md) | Informe HTML autocontenido como primera UI | Aceptada |
+| [0007](0007-remediacion-transaccional.md) | Remediación transaccional con acciones tipadas | Aceptada |

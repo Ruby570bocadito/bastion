@@ -6,7 +6,7 @@
 | 02 | [Arquitectura](02-arquitectura.md) | Componentes, modos de uso (standalone y flota), flujos de datos y estructura del código |
 | 03 | [Suite de herramientas](03-herramientas.md) | Las 16 herramientas (Evaluar, Endurecer, Defender, Gobernar) en detalle |
 | 04 | [Motor de reglas](04-motor-de-reglas.md) | Formato de reglas y perfiles, probes, operadores y cómo escribir reglas |
-| 05 | [Remediación segura](05-remediacion-segura.md) | Diseño de `harden`: plan, instantánea, verificación, rollback y dead-man switch |
+| 05 | [Remediación segura](05-remediacion-segura.md) | `bastion harden`: simulación, instantánea, verificación, rollback, olas y dead-man switch |
 | 06 | [Catálogo de controles](06-catalogo-de-controles.md) | Controles implementados (generado) y catálogo objetivo |
 | 07 | [UI y diseño](07-ui-y-diseno.md) | Sistema de diseño, pantallas, informe HTML y futura UI web |
 | 08 | [Seguridad de la plataforma](08-seguridad-de-la-plataforma.md) | Modelo de amenazas y controles de la propia herramienta |

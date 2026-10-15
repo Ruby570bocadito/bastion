@@ -73,6 +73,12 @@ remediation:
     chown root:shadow /etc/shadow 2>/dev/null || chown root:root /etc/shadow
     chmod 640 /etc/shadow
   breaking_risk: none
+  actions:
+    - type: file.mode
+      path: /etc/shadow
+      mode: '0640'
+      owner: root
+      group: [shadow, root]
 ---
 id: LNX-FS-004
 title: Permisos de /etc/passwd
@@ -95,6 +101,12 @@ remediation:
   commands: |
     chown root:root /etc/passwd && chmod 644 /etc/passwd
   breaking_risk: none
+  actions:
+    - type: file.mode
+      path: /etc/passwd
+      mode: '0644'
+      owner: root
+      group: root
 ---
 id: LNX-FS-005
 title: Permisos de /etc/gshadow
@@ -117,6 +129,12 @@ remediation:
     chown root:shadow /etc/gshadow 2>/dev/null || chown root:root /etc/gshadow
     chmod 640 /etc/gshadow
   breaking_risk: none
+  actions:
+    - type: file.mode
+      path: /etc/gshadow
+      mode: '0640'
+      owner: root
+      group: [shadow, root]
 ---
 id: LNX-FS-006
 title: Permisos de /etc/crontab
@@ -139,6 +157,12 @@ remediation:
   commands: |
     chown root:root /etc/crontab && chmod 600 /etc/crontab
   breaking_risk: none
+  actions:
+    - type: file.mode
+      path: /etc/crontab
+      mode: '0600'
+      owner: root
+      group: root
 ---
 id: LNX-BOOT-001
 title: Permisos de la configuración del cargador de arranque
@@ -160,3 +184,9 @@ remediation:
   commands: |
     for f in /boot/grub/grub.cfg /boot/grub2/grub.cfg; do [ -f "$f" ] && chown root:root "$f" && chmod 600 "$f"; done
   breaking_risk: none
+  actions:
+    - type: file.mode
+      path: [/boot/grub/grub.cfg, /boot/grub2/grub.cfg]
+      mode: '0600'
+      owner: root
+      group: root

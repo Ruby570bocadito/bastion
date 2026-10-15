@@ -141,6 +141,11 @@ remediation:
   gpo: Computer Configuration > Administrative Templates > Network > DNS Client > Turn off multicast name resolution
   commands: reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient" /v EnableMulticast /t REG_DWORD /d 0 /f
   breaking_risk: low
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient'
+      name: 'EnableMulticast'
+      value: 0
 ---
 id: WIN-NET-007
 title: NetBIOS sobre TCP/IP deshabilitado
@@ -166,6 +171,11 @@ remediation:
   commands: |
     Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces' | ForEach-Object { Set-ItemProperty $_.PSPath -Name NetbiosOptions -Value 2 }
   breaking_risk: medium
+  actions:
+    - type: registry.set
+      path: 'HKLM\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces\Tcpip_*'
+      name: 'NetbiosOptions'
+      value: 2
 impact: Aplicaciones heredadas que resuelvan nombres por NetBIOS o exploren la red ("Entorno de red") dejarán de hacerlo.
 ---
 id: WIN-NET-008
@@ -190,6 +200,11 @@ remediation:
   summary: Fijar EnableMDNS = 0.
   commands: reg add "HKLM\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters" /v EnableMDNS /t REG_DWORD /d 0 /f
   breaking_risk: low
+  actions:
+    - type: registry.set
+      path: 'HKLM\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters'
+      name: 'EnableMDNS'
+      value: 0
 impact: Puede afectar al descubrimiento de impresoras y dispositivos de proyección.
 ---
 id: WIN-NET-009

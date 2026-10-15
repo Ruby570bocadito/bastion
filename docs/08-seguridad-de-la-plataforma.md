@@ -21,7 +21,14 @@ Bastion se ejecuta como **SYSTEM/root** en equipos críticos. Para un atacante e
 - Comandos usados por los probes: `secedit /export`, `auditpol /backup`, `powershell.exe -NoProfile -NonInteractive -Command <consulta fija>`, `sshd -T`, `systemctl show`, `dpkg-query`, `rpm -q`. Todos son de **solo lectura**.
 - Las consultas PowerShell no usan `-EncodedCommand` ni `-ExecutionPolicy Bypass`, para no parecerse a malware ni generar ruido en el EDR. Quedan en el ScriptBlock Logging de forma legible.
 
-### Solo lectura
+### Cambios controlados (`harden`)
+- Solo **acciones tipadas** (13 tipos). Ninguna ejecuta comandos libres: los cmdlets de Defender reciben GUIDs, enteros o nombres de una lista blanca, ya validados.
+- Los parámetros se validan con listas blancas y expresiones regulares, también en `rules lint`: solo HKLM, claves `secedit` permitidas, rutas `/etc` sin `..`, nada de saltos de línea que inyecten directivas en `sshd_config` o `sudoers`.
+- **Registro previo**: el estado anterior se escribe en el manifiesto antes de aplicar; un fallo a mitad sigue siendo reversible.
+- `sshd -t` y `visudo -c` validan antes de dejar un cambio en SSH o sudoers; si falla, se restaura de inmediato.
+- Dead-man switch en un proceso independiente para los cambios de acceso remoto.
+
+### Solo lectura en `scan`
 - `bastion scan` no modifica el sistema. Los únicos ficheros que escribe son los informes que se piden y ficheros temporales privados (`secpol.inf`, `audit.csv`), que se borran al terminar.
 
 ### Actualizaciones verificadas

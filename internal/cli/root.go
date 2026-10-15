@@ -11,6 +11,7 @@ import (
 	"github.com/Ruby570bocadito/bastion/internal/config"
 	"github.com/Ruby570bocadito/bastion/internal/platform"
 	"github.com/Ruby570bocadito/bastion/internal/probes"
+	"github.com/Ruby570bocadito/bastion/internal/remediate"
 	"github.com/Ruby570bocadito/bastion/internal/report"
 	"github.com/Ruby570bocadito/bastion/internal/version"
 	"github.com/Ruby570bocadito/bastion/pkg/rule"
@@ -70,7 +71,7 @@ Primeros pasos:
 	root.SetVersionTemplate(version.String() + "\n")
 	root.PersistentFlags().BoolVar(&gf.noColor, "no-color", false, "desactivar colores")
 	root.PersistentFlags().StringSliceVar(&gf.rulesDir, "rules-dir", nil, "directorios adicionales de reglas (*.yaml)")
-	root.AddCommand(newScanCmd(), newInfoCmd(), newRulesCmd(), newProfilesCmd(), newUpdateCmd(), newInitCmd(), newVersionCmd())
+	root.AddCommand(newScanCmd(), newHardenCmd(), newRollbackCmd(), newHistoryCmd(), newDeadmanCmd(), newInfoCmd(), newRulesCmd(), newProfilesCmd(), newUpdateCmd(), newInitCmd(), newVersionCmd())
 	root.CompletionOptions.HiddenDefaultCmd = true
 	return root
 }
@@ -88,7 +89,7 @@ func loadCatalog(cfg config.Config) (*rule.Catalog, error) {
 			return nil, fmt.Errorf("reglas de %s: %w", d, err)
 		}
 	}
-	if errs := c.Validate(probes.KnownSet()); len(errs) > 0 {
+	if errs := c.Validate(probes.KnownSet(), remediate.ValidateAction); len(errs) > 0 {
 		var b strings.Builder
 		for _, e := range errs {
 			b.WriteString("\n  · " + e.Error())

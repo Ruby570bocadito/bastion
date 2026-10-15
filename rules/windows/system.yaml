@@ -22,6 +22,11 @@ remediation:
   summary: Habilitar "User Account Control - Run all administrators in Admin Approval Mode".
   breaking_risk: low
   reboot_required: true
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+      name: 'EnableLUA'
+      value: 1
 ---
 id: WIN-SYS-002
 title: UAC pide consentimiento a los administradores
@@ -45,6 +50,11 @@ check:
 remediation:
   summary: Fijar "Behavior of the elevation prompt for administrators" en "Prompt for consent on the secure desktop".
   breaking_risk: low
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+      name: 'ConsentPromptBehaviorAdmin'
+      value: 2
 ---
 id: WIN-SYS-003
 title: Arranque seguro (Secure Boot) activado
@@ -90,6 +100,15 @@ remediation:
   summary: Habilitar "Turn off Autoplay" (todas las unidades) y "Set the default behavior for AutoRun" (no ejecutar).
   gpo: Computer Configuration > Administrative Templates > Windows Components > AutoPlay Policies
   breaking_risk: none
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'
+      name: 'NoDriveTypeAutoRun'
+      value: 255
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'
+      name: 'NoAutorun'
+      value: 1
 ---
 id: WIN-SYS-005
 title: Integridad de memoria (HVCI) en ejecución
@@ -157,6 +176,15 @@ remediation:
   summary: Deshabilitar TLS 1.0/1.1 en SChannel (servidor) y reiniciar.
   breaking_risk: medium
   reboot_required: true
+  actions:
+    - type: registry.set
+      path: 'HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0\Server'
+      name: 'Enabled'
+      value: 0
+    - type: registry.set
+      path: 'HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Server'
+      name: 'Enabled'
+      value: 0
 impact: Clientes antiguos (Windows 7 sin parches, Java antiguo, appliances) no podrán conectar a los servicios TLS del equipo.
 ---
 id: WIN-SVC-001
@@ -182,4 +210,9 @@ remediation:
   summary: Deshabilitar el servicio.
   commands: Set-Service RemoteRegistry -StartupType Disabled; Stop-Service RemoteRegistry
   breaking_risk: low
+  actions:
+    - type: service.config
+      name: RemoteRegistry
+      start_type: disabled
+      stop: true
 impact: Algunas herramientas de inventario y monitorización usan el registro remoto.

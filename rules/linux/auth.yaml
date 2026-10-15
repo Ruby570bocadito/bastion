@@ -69,6 +69,11 @@ remediation:
   commands: |
     sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS\t365/' /etc/login.defs
   breaking_risk: low
+  actions:
+    - type: file.kv_set
+      path: /etc/login.defs
+      key: PASS_MAX_DAYS
+      value: '365'
 ---
 id: LNX-AUTH-004
 title: Algoritmo de hash de contraseñas robusto
@@ -90,6 +95,11 @@ check:
 remediation:
   summary: Fijar ENCRYPT_METHOD YESCRYPT (o SHA512) y forzar el cambio de contraseñas antiguas.
   breaking_risk: none
+  actions:
+    - type: file.kv_set
+      path: /etc/login.defs
+      key: ENCRYPT_METHOD
+      value: 'SHA512'
 ---
 id: LNX-AUTH-005
 title: umask por defecto restrictiva
@@ -110,6 +120,11 @@ check:
 remediation:
   summary: Fijar UMASK 027.
   breaking_risk: low
+  actions:
+    - type: file.kv_set
+      path: /etc/login.defs
+      key: UMASK
+      value: '027'
 ---
 id: LNX-AUTH-006
 title: sudo usa un pseudo-terminal (use_pty)
@@ -134,6 +149,9 @@ remediation:
   commands: |
     echo 'Defaults use_pty' > /etc/sudoers.d/00-bastion && chmod 440 /etc/sudoers.d/00-bastion && visudo -c
   breaking_risk: none
+  actions:
+    - type: sudoers.defaults
+      option: 'use_pty'
 ---
 id: LNX-AUTH-007
 title: sudo registra en fichero propio
@@ -155,6 +173,9 @@ check:
 remediation:
   summary: Añadir 'Defaults logfile="/var/log/sudo.log"' con visudo.
   breaking_risk: none
+  actions:
+    - type: sudoers.defaults
+      option: 'logfile="/var/log/sudo.log"'
 ---
 id: LNX-AUTH-008
 title: sudo exige contraseña (sin NOPASSWD)

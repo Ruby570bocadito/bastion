@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/Ruby570bocadito/bastion/internal/probes"
+	"github.com/Ruby570bocadito/bastion/internal/remediate"
 	"github.com/Ruby570bocadito/bastion/pkg/rule"
 	"github.com/Ruby570bocadito/bastion/rules"
 )
@@ -15,7 +16,7 @@ func TestOfficialPack(t *testing.T) {
 	if err := c.LoadFS(rules.FS, "rules/"); err != nil {
 		t.Fatalf("carga: %v", err)
 	}
-	for _, err := range c.Validate(probes.KnownSet()) {
+	for _, err := range c.Validate(probes.KnownSet(), remediate.ValidateAction) {
 		t.Error(err)
 	}
 	if len(c.Rules) < 100 {

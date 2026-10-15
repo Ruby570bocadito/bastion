@@ -25,6 +25,9 @@ remediation:
     printf 'install cramfs /bin/false\nblacklist cramfs\n' > /etc/modprobe.d/bastion-cramfs.conf
     modprobe -r cramfs 2>/dev/null || true
   breaking_risk: low
+  actions:
+    - type: kmod.block
+      name: cramfs
 ---
 id: LNX-MOD-002
 title: "Módulo deshabilitado: Sistema de ficheros freevxfs"
@@ -50,6 +53,9 @@ remediation:
     printf 'install freevxfs /bin/false\nblacklist freevxfs\n' > /etc/modprobe.d/bastion-freevxfs.conf
     modprobe -r freevxfs 2>/dev/null || true
   breaking_risk: low
+  actions:
+    - type: kmod.block
+      name: freevxfs
 ---
 id: LNX-MOD-003
 title: "Módulo deshabilitado: Sistema de ficheros HFS"
@@ -75,6 +81,9 @@ remediation:
     printf 'install hfs /bin/false\nblacklist hfs\n' > /etc/modprobe.d/bastion-hfs.conf
     modprobe -r hfs 2>/dev/null || true
   breaking_risk: low
+  actions:
+    - type: kmod.block
+      name: hfs
 ---
 id: LNX-MOD-004
 title: "Módulo deshabilitado: Sistema de ficheros HFS+"
@@ -100,6 +109,9 @@ remediation:
     printf 'install hfsplus /bin/false\nblacklist hfsplus\n' > /etc/modprobe.d/bastion-hfsplus.conf
     modprobe -r hfsplus 2>/dev/null || true
   breaking_risk: low
+  actions:
+    - type: kmod.block
+      name: hfsplus
 ---
 id: LNX-MOD-005
 title: "Módulo deshabilitado: Sistema de ficheros JFFS2"
@@ -125,6 +137,9 @@ remediation:
     printf 'install jffs2 /bin/false\nblacklist jffs2\n' > /etc/modprobe.d/bastion-jffs2.conf
     modprobe -r jffs2 2>/dev/null || true
   breaking_risk: low
+  actions:
+    - type: kmod.block
+      name: jffs2
 ---
 id: LNX-MOD-006
 title: "Módulo deshabilitado: Almacenamiento USB"
@@ -151,6 +166,9 @@ remediation:
     printf 'install usb-storage /bin/false\nblacklist usb-storage\n' > /etc/modprobe.d/bastion-usb-storage.conf
     modprobe -r usb_storage 2>/dev/null || true
   breaking_risk: medium
+  actions:
+    - type: kmod.block
+      name: usb-storage
 impact: Las memorias y discos USB dejarán de funcionar en este equipo.
 ---
 id: LNX-MOD-007
@@ -178,6 +196,9 @@ remediation:
     printf 'install dccp /bin/false\nblacklist dccp\n' > /etc/modprobe.d/bastion-dccp.conf
     modprobe -r dccp 2>/dev/null || true
   breaking_risk: low
+  actions:
+    - type: kmod.block
+      name: dccp
 ---
 id: LNX-MOD-008
 title: "Módulo deshabilitado: Protocolo SCTP"
@@ -204,6 +225,9 @@ remediation:
     printf 'install sctp /bin/false\nblacklist sctp\n' > /etc/modprobe.d/bastion-sctp.conf
     modprobe -r sctp 2>/dev/null || true
   breaking_risk: low
+  actions:
+    - type: kmod.block
+      name: sctp
 ---
 id: LNX-MOD-009
 title: "Módulo deshabilitado: Protocolo RDS"
@@ -230,6 +254,9 @@ remediation:
     printf 'install rds /bin/false\nblacklist rds\n' > /etc/modprobe.d/bastion-rds.conf
     modprobe -r rds 2>/dev/null || true
   breaking_risk: low
+  actions:
+    - type: kmod.block
+      name: rds
 ---
 id: LNX-MOD-010
 title: "Módulo deshabilitado: Protocolo TIPC"
@@ -256,3 +283,6 @@ remediation:
     printf 'install tipc /bin/false\nblacklist tipc\n' > /etc/modprobe.d/bastion-tipc.conf
     modprobe -r tipc 2>/dev/null || true
   breaking_risk: low
+  actions:
+    - type: kmod.block
+      name: tipc

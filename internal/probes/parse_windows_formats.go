@@ -66,14 +66,14 @@ func secpolValue(section, raw string) any {
 // GUID de subcategoría (en minúsculas, sin llaves) → nombre y valor numérico
 // (0 sin auditoría, 1 aciertos, 2 errores, 3 ambos). Se usa el valor numérico
 // porque los textos ("Success and Failure") dependen del idioma de Windows.
-func parseAuditpolBackup(text string) (map[string]auditSetting, error) {
+func parseAuditpolBackup(text string) (map[string]AuditSetting, error) {
 	r := csv.NewReader(strings.NewReader(text))
 	r.FieldsPerRecord = -1
 	rows, err := r.ReadAll()
 	if err != nil {
 		return nil, fmt.Errorf("CSV de auditpol inválido: %w", err)
 	}
-	out := map[string]auditSetting{}
+	out := map[string]AuditSetting{}
 	guidCol, nameCol, valCol := -1, -1, -1
 	for i, row := range rows {
 		if i == 0 {
@@ -108,12 +108,13 @@ func parseAuditpolBackup(text string) (map[string]auditSetting, error) {
 		if nameCol >= 0 && nameCol < len(row) {
 			name = row[nameCol]
 		}
-		out[guid] = auditSetting{Name: name, Value: v}
+		out[guid] = AuditSetting{Name: name, Value: v}
 	}
 	return out, nil
 }
 
-type auditSetting struct {
+// AuditSetting es la configuración de una subcategoría de auditoría.
+type AuditSetting struct {
 	Name  string
 	Value int
 }

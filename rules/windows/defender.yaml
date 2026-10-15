@@ -88,6 +88,10 @@ remediation:
   summary: Activar MAPS (Advanced).
   commands: Set-MpPreference -MAPSReporting Advanced
   breaking_risk: none
+  actions:
+    - type: defender.pref
+      name: MAPSReporting
+      value: 2
 ---
 id: WIN-DEF-005
 title: Bloqueo de aplicaciones potencialmente no deseadas (PUA)
@@ -110,6 +114,10 @@ remediation:
   summary: Activar PUA en modo bloqueo.
   commands: Set-MpPreference -PUAProtection Enabled
   breaking_risk: low
+  actions:
+    - type: defender.pref
+      name: PUAProtection
+      value: 1
 ---
 id: WIN-DEF-006
 title: "ASR: bloquear el robo de credenciales de LSASS"
@@ -134,6 +142,10 @@ remediation:
   summary: Activar la regla en modo Bloquear (prueba antes en modo Auditoría, valor 2).
   commands: Add-MpPreference -AttackSurfaceReductionRules_Ids 9e6c4e1f-7d60-472f-ba1a-a39ef669e4b2 -AttackSurfaceReductionRules_Actions Enabled
   breaking_risk: low
+  actions:
+    - type: defender.asr
+      guid: 9e6c4e1f-7d60-472f-ba1a-a39ef669e4b2
+      mode: block
 ---
 id: WIN-DEF-007
 title: "ASR: bloquear procesos hijos de Office"
@@ -158,6 +170,10 @@ remediation:
   summary: Activar la regla en modo Bloquear tras una fase de auditoría.
   commands: Add-MpPreference -AttackSurfaceReductionRules_Ids d4f940ab-401b-4efc-aadc-ad5f3c50688a -AttackSurfaceReductionRules_Actions Enabled
   breaking_risk: medium
+  actions:
+    - type: defender.asr
+      guid: d4f940ab-401b-4efc-aadc-ad5f3c50688a
+      mode: block
 impact: Complementos de Office legítimos que lancen procesos pueden verse bloqueados; revisa el evento 1122 en modo auditoría.
 ---
 id: WIN-DEF-008
@@ -183,6 +199,10 @@ remediation:
   summary: Activar la regla en modo Bloquear.
   commands: Add-MpPreference -AttackSurfaceReductionRules_Ids be9ba2d9-53ea-4cdc-84e5-9b1eeee46550 -AttackSurfaceReductionRules_Actions Enabled
   breaking_risk: low
+  actions:
+    - type: defender.asr
+      guid: be9ba2d9-53ea-4cdc-84e5-9b1eeee46550
+      mode: block
 ---
 id: WIN-DEF-009
 title: "ASR: bloquear controladores firmados vulnerables"
@@ -207,6 +227,10 @@ remediation:
   summary: Activar la regla en modo Bloquear.
   commands: Add-MpPreference -AttackSurfaceReductionRules_Ids 56a863a9-875e-4185-98a7-b882c64b5ce5 -AttackSurfaceReductionRules_Actions Enabled
   breaking_risk: low
+  actions:
+    - type: defender.asr
+      guid: 56a863a9-875e-4185-98a7-b882c64b5ce5
+      mode: block
 ---
 id: WIN-DEF-010
 title: "ASR: bloquear scripts ofuscados"
@@ -230,6 +254,10 @@ check:
 remediation:
   summary: Activar la regla tras una fase de auditoría.
   breaking_risk: medium
+  actions:
+    - type: defender.asr
+      guid: 5beb7efe-fd9a-4556-801d-275e5ffc04cc
+      mode: block
 impact: Algunos scripts de administración comprimidos o minificados pueden bloquearse.
 ---
 id: WIN-DEF-011
@@ -254,6 +282,10 @@ check:
 remediation:
   summary: Activar la regla tras una fase de auditoría.
   breaking_risk: medium
+  actions:
+    - type: defender.asr
+      guid: e6db77e5-3df2-4cf1-b95a-636979351e5b
+      mode: block
 impact: Algunas herramientas de gestión (SCCM, agentes de monitorización) usan WMI; valida en modo auditoría.
 ---
 id: WIN-DEF-012
@@ -278,3 +310,7 @@ remediation:
   summary: Activar Network Protection.
   commands: Set-MpPreference -EnableNetworkProtection Enabled
   breaking_risk: low
+  actions:
+    - type: defender.pref
+      name: EnableNetworkProtection
+      value: 1

@@ -185,6 +185,50 @@ func (secpolProbe) Collect(ctx context.Context, p Params) (Observation, error) {
 	return Observation{Found: true, Source: src, Fields: map[string]any{"value": secpolValue(section, raw)}}, nil
 }
 
+// ReadAuditpol lee la directiva de auditoría avanzada actual (sin caché).
+func ReadAuditpol(ctx context.Context) (map[string]AuditSetting, error) {
+	dir, err := privateTempDir()
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	out := filepath.Join(dir, "audit.csv")
+	res, err := runCmd(ctx, sys32("auditpol.exe"), "/backup", "/file:"+out)
+	if err != nil {
+		return nil, err
+	}
+	b, err := os.ReadFile(out)
+	if res.ExitCode != 0 || err != nil {
+		return nil, errors.New("auditpol /backup falló: ejecuta Bastion como administrador")
+	}
+	return parseAuditpolBackup(decodeText(b))
+}
+
+// ReadSecpol lee la directiva de seguridad local actual (sin caché).
+func ReadSecpol(ctx context.Context) (map[string]map[string]string, error) { return exportSecpol(ctx) }
+
+// QueryPS ejecuta una consulta PowerShell de la lista blanca (sin caché).
+func QueryPS(ctx context.Context, name string) (map[string]any, error) {
+	q, ok := psQueries[name]
+	if !ok {
+		return nil, fmt.Errorf("consulta PowerShell %q no permitida", name)
+	}
+	data, err := runPS(ctx, q.script)
+	if err != nil {
+		return nil, err
+	}
+	if code, ok := data["__na"].(string); ok {
+		return nil, NotApplicable("%s", psNotApplicable[code])
+	}
+	return data, nil
+}
+
+// PrivateTempDir crea un directorio temporal privado sin espacios en la ruta.
+func PrivateTempDir() (string, error) { return privateTempDir() }
+
+// System32 devuelve la ruta absoluta de una herramienta del sistema.
+func System32(exe string) string { return sys32(exe) }
+
 func exportSecpol(ctx context.Context) (map[string]map[string]string, error) {
 	dir, err := privateTempDir()
 	if err != nil {
@@ -214,23 +258,7 @@ func (auditpolProbe) Collect(ctx context.Context, p Params) (Observation, error)
 	if err := p.Require("guid"); err != nil {
 		return Observation{}, err
 	}
-	data, err := cached(ctx, "auditpol", func() (map[string]auditSetting, error) {
-		dir, err := privateTempDir()
-		if err != nil {
-			return nil, err
-		}
-		defer os.RemoveAll(dir)
-		out := filepath.Join(dir, "audit.csv")
-		res, err := runCmd(ctx, sys32("auditpol.exe"), "/backup", "/file:"+out)
-		if err != nil {
-			return nil, err
-		}
-		b, err := os.ReadFile(out)
-		if res.ExitCode != 0 || err != nil {
-			return nil, errors.New("auditpol /backup falló: ejecuta Bastion como administrador")
-		}
-		return parseAuditpolBackup(decodeText(b))
-	})
+	data, err := cached(ctx, "auditpol", func() (map[string]AuditSetting, error) { return ReadAuditpol(ctx) })
 	if err != nil {
 		return Observation{}, err
 	}

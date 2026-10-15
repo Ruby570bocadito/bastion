@@ -22,6 +22,11 @@ remediation:
   gpo: Computer Configuration > Windows Settings > Security Settings > Account Policies > Password Policy > Minimum password length
   commands: net accounts /minpwlen:14
   breaking_risk: low
+  actions:
+    - type: secpol.set
+      section: 'System Access'
+      key: MinimumPasswordLength
+      value: 14
 impact: En equipos unidos a dominio, las cuentas de dominio siguen la directiva del dominio (Default Domain Policy o FGPP).
 ---
 id: WIN-ACC-002
@@ -46,6 +51,11 @@ remediation:
   summary: Habilitar la complejidad de contraseñas.
   gpo: Computer Configuration > Windows Settings > Security Settings > Account Policies > Password Policy > Password must meet complexity requirements
   breaking_risk: none
+  actions:
+    - type: secpol.set
+      section: 'System Access'
+      key: PasswordComplexity
+      value: 1
 ---
 id: WIN-ACC-003
 title: Bloqueo de cuenta tras 5 intentos o menos
@@ -70,6 +80,11 @@ remediation:
   gpo: Computer Configuration > Windows Settings > Security Settings > Account Policies > Account Lockout Policy > Account lockout threshold
   commands: net accounts /lockoutthreshold:5 /lockoutduration:15 /lockoutwindow:15
   breaking_risk: low
+  actions:
+    - type: secpol.set
+      section: 'System Access'
+      key: LockoutBadCount
+      value: 5
 ---
 id: WIN-ACC-004
 title: Cuenta de invitado deshabilitada
@@ -93,6 +108,11 @@ remediation:
   summary: Deshabilitar la cuenta de invitado.
   gpo: Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > Accounts > Guest account status
   breaking_risk: none
+  actions:
+    - type: secpol.set
+      section: 'System Access'
+      key: EnableGuestAccount
+      value: 0
 ---
 id: WIN-ACC-005
 title: Contraseñas en blanco solo en consola local
@@ -116,6 +136,11 @@ remediation:
   summary: Habilitar "Accounts - Limit local account use of blank passwords to console logon only".
   gpo: Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > Accounts > Limit local account use of blank passwords to console logon only
   breaking_risk: none
+  actions:
+    - type: registry.set
+      path: 'HKLM\SYSTEM\CurrentControlSet\Control\Lsa'
+      name: 'LimitBlankPasswordUse'
+      value: 1
 ---
 id: WIN-ACC-006
 title: Contraseña del administrador local gestionada con LAPS

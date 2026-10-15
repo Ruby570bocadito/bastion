@@ -23,6 +23,10 @@ remediation:
   gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
   commands: auditpol /set /subcategory:"{0CCE922B-69AE-11D9-BED3-505054503030}" /success:enable
   breaking_risk: none
+  actions:
+    - type: auditpol.set
+      guid: 0CCE922B-69AE-11D9-BED3-505054503030
+      success: true
 ---
 id: WIN-AUD-003
 title: "Auditoría: Inicio de sesión"
@@ -47,6 +51,11 @@ remediation:
   gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
   commands: auditpol /set /subcategory:"{0CCE9215-69AE-11D9-BED3-505054503030}" /success:enable /failure:enable
   breaking_risk: none
+  actions:
+    - type: auditpol.set
+      guid: 0CCE9215-69AE-11D9-BED3-505054503030
+      success: true
+      failure: true
 ---
 id: WIN-AUD-004
 title: "Auditoría: Validación de credenciales"
@@ -71,6 +80,11 @@ remediation:
   gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
   commands: auditpol /set /subcategory:"{0CCE923F-69AE-11D9-BED3-505054503030}" /success:enable /failure:enable
   breaking_risk: none
+  actions:
+    - type: auditpol.set
+      guid: 0CCE923F-69AE-11D9-BED3-505054503030
+      success: true
+      failure: true
 ---
 id: WIN-AUD-005
 title: "Auditoría: Administración de grupos de seguridad"
@@ -95,6 +109,10 @@ remediation:
   gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
   commands: auditpol /set /subcategory:"{0CCE9237-69AE-11D9-BED3-505054503030}" /success:enable
   breaking_risk: none
+  actions:
+    - type: auditpol.set
+      guid: 0CCE9237-69AE-11D9-BED3-505054503030
+      success: true
 ---
 id: WIN-AUD-006
 title: "Auditoría: Administración de cuentas de usuario"
@@ -119,6 +137,11 @@ remediation:
   gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
   commands: auditpol /set /subcategory:"{0CCE9235-69AE-11D9-BED3-505054503030}" /success:enable /failure:enable
   breaking_risk: none
+  actions:
+    - type: auditpol.set
+      guid: 0CCE9235-69AE-11D9-BED3-505054503030
+      success: true
+      failure: true
 ---
 id: WIN-AUD-007
 title: "Auditoría: Cambio de directiva de auditoría"
@@ -143,6 +166,10 @@ remediation:
   gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
   commands: auditpol /set /subcategory:"{0CCE922F-69AE-11D9-BED3-505054503030}" /success:enable
   breaking_risk: none
+  actions:
+    - type: auditpol.set
+      guid: 0CCE922F-69AE-11D9-BED3-505054503030
+      success: true
 ---
 id: WIN-AUD-008
 title: "Auditoría: Inicio de sesión especial"
@@ -167,6 +194,10 @@ remediation:
   gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
   commands: auditpol /set /subcategory:"{0CCE921B-69AE-11D9-BED3-505054503030}" /success:enable
   breaking_risk: none
+  actions:
+    - type: auditpol.set
+      guid: 0CCE921B-69AE-11D9-BED3-505054503030
+      success: true
 ---
 id: WIN-AUD-009
 title: "Auditoría: Extensión del sistema de seguridad"
@@ -191,6 +222,10 @@ remediation:
   gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
   commands: auditpol /set /subcategory:"{0CCE9211-69AE-11D9-BED3-505054503030}" /success:enable
   breaking_risk: none
+  actions:
+    - type: auditpol.set
+      guid: 0CCE9211-69AE-11D9-BED3-505054503030
+      success: true
 ---
 id: WIN-AUD-002
 title: Línea de comandos en los eventos de creación de procesos
@@ -215,6 +250,11 @@ remediation:
   summary: Habilitar "Include command line in process creation events".
   gpo: Computer Configuration > Administrative Templates > System > Audit Process Creation > Include command line in process creation events
   breaking_risk: none
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit'
+      name: 'ProcessCreationIncludeCmdLine_Enabled'
+      value: 1
 ---
 id: WIN-AUD-010
 title: La auditoría avanzada prevalece sobre la clásica
@@ -237,6 +277,11 @@ check:
 remediation:
   summary: Habilitar "Audit - Force audit policy subcategory settings to override audit policy category settings".
   breaking_risk: none
+  actions:
+    - type: registry.set
+      path: 'HKLM\SYSTEM\CurrentControlSet\Control\Lsa'
+      name: 'SCENoApplyLegacyAuditPolicy'
+      value: 1
 ---
 id: WIN-AUD-011
 title: Registro de Seguridad de 192 MB o más
@@ -257,6 +302,11 @@ remediation:
   summary: Aumentar el tamaño del registro de Seguridad (y reenviar los eventos a un SIEM).
   commands: wevtutil sl Security /ms:201326592
   breaking_risk: none
+  actions:
+    - type: registry.set
+      path: 'HKLM\SYSTEM\CurrentControlSet\Services\EventLog\Security'
+      name: 'MaxSize'
+      value: 201326592
 ---
 id: WIN-PS-001
 title: Registro de bloques de script de PowerShell
@@ -281,6 +331,11 @@ remediation:
   summary: Habilitar "Turn on PowerShell Script Block Logging".
   gpo: Computer Configuration > Administrative Templates > Windows Components > Windows PowerShell > Turn on PowerShell Script Block Logging
   breaking_risk: none
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging'
+      name: 'EnableScriptBlockLogging'
+      value: 1
 ---
 id: WIN-PS-002
 title: PowerShell 2.0 eliminado
@@ -325,6 +380,16 @@ check:
 remediation:
   summary: Habilitar "Turn on Module Logging" con el módulo "*".
   breaking_risk: none
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging'
+      name: 'EnableModuleLogging'
+      value: 1
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging\ModuleNames'
+      name: '*'
+      value: '*'
+      value_type: SZ
 impact: Aumenta el volumen de eventos; dimensiona el registro y el SIEM.
 ---
 id: WIN-PS-004
@@ -348,3 +413,8 @@ check:
 remediation:
   summary: Habilitar "Turn on PowerShell Transcription" con un directorio de salida protegido.
   breaking_risk: none
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription'
+      name: 'EnableTranscripting'
+      value: 1

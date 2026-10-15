@@ -24,6 +24,11 @@ remediation:
     echo 'PermitRootLogin no' > /etc/ssh/sshd_config.d/00-bastion.conf
     sshd -t && systemctl reload ssh 2>/dev/null || systemctl reload sshd
   breaking_risk: medium
+  safety: remote-access
+  actions:
+    - type: sshd.set
+      key: PermitRootLogin
+      value: 'no'
 impact: Comprueba antes que existe otra cuenta con sudo y acceso SSH o te quedarás sin acceso.
 ---
 id: LNX-SSH-002
@@ -46,6 +51,10 @@ check:
 remediation:
   summary: Fijar "PermitEmptyPasswords no".
   breaking_risk: none
+  actions:
+    - type: sshd.set
+      key: PermitEmptyPasswords
+      value: 'no'
 ---
 id: LNX-SSH-003
 title: Limitar intentos de autenticación SSH
@@ -68,6 +77,10 @@ check:
 remediation:
   summary: Fijar "MaxAuthTries 4".
   breaking_risk: low
+  actions:
+    - type: sshd.set
+      key: MaxAuthTries
+      value: '4'
 impact: Usuarios con muchas claves en su agente SSH pueden agotar los intentos; que indiquen la clave con IdentitiesOnly.
 ---
 id: LNX-SSH-004
@@ -89,6 +102,10 @@ check:
 remediation:
   summary: Fijar "X11Forwarding no".
   breaking_risk: low
+  actions:
+    - type: sshd.set
+      key: X11Forwarding
+      value: 'no'
 ---
 id: LNX-SSH-005
 title: Deshabilitar autenticación basada en host (rhosts)
@@ -107,6 +124,13 @@ check:
 remediation:
   summary: Fijar "IgnoreRhosts yes" y "HostbasedAuthentication no".
   breaking_risk: none
+  actions:
+    - type: sshd.set
+      key: IgnoreRhosts
+      value: 'yes'
+    - type: sshd.set
+      key: HostbasedAuthentication
+      value: 'no'
 ---
 id: LNX-SSH-006
 title: Tiempo de gracia de login reducido
@@ -127,6 +151,10 @@ check:
 remediation:
   summary: Fijar "LoginGraceTime 60".
   breaking_risk: none
+  actions:
+    - type: sshd.set
+      key: LoginGraceTime
+      value: '60'
 ---
 id: LNX-SSH-007
 title: Sin cifrados SSH débiles
@@ -150,6 +178,11 @@ remediation:
   commands: |
     echo 'Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr' >> /etc/ssh/sshd_config.d/00-bastion.conf
   breaking_risk: low
+  safety: remote-access
+  actions:
+    - type: sshd.set
+      key: Ciphers
+      value: 'chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr'
 impact: Clientes SSH muy antiguos (equipos de red, appliances) podrían no conectar.
 ---
 id: LNX-SSH-008
@@ -173,6 +206,11 @@ remediation:
   commands: |
     echo 'MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256' >> /etc/ssh/sshd_config.d/00-bastion.conf
   breaking_risk: low
+  safety: remote-access
+  actions:
+    - type: sshd.set
+      key: MACs
+      value: 'hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256'
 ---
 id: LNX-SSH-009
 title: Sin intercambio de claves SSH débil
@@ -193,6 +231,11 @@ check:
 remediation:
   summary: Eliminar los algoritmos con SHA-1 de KexAlgorithms.
   breaking_risk: low
+  safety: remote-access
+  actions:
+    - type: sshd.set
+      key: KexAlgorithms
+      value: 'sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256'
 ---
 id: LNX-SSH-010
 title: Permisos de sshd_config
@@ -214,6 +257,12 @@ remediation:
   commands: |
     chown root:root /etc/ssh/sshd_config && chmod 600 /etc/ssh/sshd_config
   breaking_risk: none
+  actions:
+    - type: file.mode
+      path: /etc/ssh/sshd_config
+      mode: '0600'
+      owner: root
+      group: root
 ---
 id: LNX-SSH-011
 title: Tiempo de inactividad de sesiones SSH
@@ -234,6 +283,13 @@ check:
 remediation:
   summary: Fijar "ClientAliveInterval 300" y "ClientAliveCountMax 3".
   breaking_risk: low
+  actions:
+    - type: sshd.set
+      key: ClientAliveInterval
+      value: '300'
+    - type: sshd.set
+      key: ClientAliveCountMax
+      value: '3'
 ---
 id: LNX-SSH-012
 title: Acceso SSH restringido a usuarios o grupos
@@ -279,4 +335,9 @@ check:
 remediation:
   summary: Desplegar claves públicas a los usuarios y fijar "PasswordAuthentication no".
   breaking_risk: high
+  safety: remote-access
+  actions:
+    - type: sshd.set
+      key: PasswordAuthentication
+      value: 'no'
 impact: Los usuarios sin clave pública configurada no podrán entrar.

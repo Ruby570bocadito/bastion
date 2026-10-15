@@ -23,8 +23,8 @@ Bastion es una **suite de 16 herramientas sobre el mismo motor y el mismo agente
 | `rule` (SDK) | Gobernar | ✅ `list`, `show`, `lint`, `doc` · 🔜 `new`, `test`, `pack` | 1 / 2 |
 | `update` | — | ✅ | 0 |
 | `surface` | Evaluar | 🔜 | 1 |
-| `harden` | Endurecer | 🔜 | 2 |
-| `plan` | Endurecer | 🔜 | 2 |
+| `harden` | Endurecer | ✅ simulación, instantánea, verificación, rollback, dead-man switch · 🔜 *health checks* | 2 |
+| `plan` | Endurecer | ✅ olas por riesgo de rotura (en `harden`) · 🔜 prioridad por exposición y anillos | 2 / 5 |
 | `studio` | Endurecer | 🔜 | 2 |
 | `observe` | Endurecer | 🔜 | 3 |
 | `guard` | Defender | 🔜 | 3 |
@@ -116,7 +116,7 @@ Lectura LDAP con una **cuenta de dominio normal** (no requiere Domain Admin).
  ⚠️ NTLM          3 clientes: 10.0.4.12, ERP-APP01, svc_scan → requiere acción previa
 ```
 
-## `bastion plan`: priorizador y planificador 🔜
+## `bastion plan`: priorizador y planificador 🚧 (olas ✅)
 
 - **Riesgo** = severidad × exposición × explotabilidad (ATT&CK/KEV) × criticidad del activo.
 - **Coste** = riesgo de rotura (dato de `observe` y `breaking_risk` de la regla) + reinicio + esfuerzo.
@@ -124,7 +124,7 @@ Lectura LDAP con una **cuenta de dominio normal** (no requiere Domain Admin).
 - **Anillos** en flota: piloto → 10 % → 50 % → 100 %, con *health gates* y rollback automático.
 - Ventanas de mantenimiento y agrupación de reinicios.
 
-## `bastion harden`: motor de remediación 🔜
+## `bastion harden`: motor de remediación ✅
 
 Diseño completo en [05-remediacion-segura.md](05-remediacion-segura.md). Resumen:
 

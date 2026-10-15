@@ -22,6 +22,12 @@ remediation:
   summary: Habilitar "Require user authentication for remote connections by using Network Level Authentication".
   gpo: Computer Configuration > Administrative Templates > Windows Components > Remote Desktop Services > Remote Desktop Session Host > Security
   breaking_risk: low
+  safety: remote-access
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+      name: 'UserAuthentication'
+      value: 1
 ---
 id: WIN-RDP-002
 title: Asistencia remota solicitada deshabilitada
@@ -45,6 +51,11 @@ remediation:
   summary: Deshabilitar "Configure Solicited Remote Assistance".
   gpo: Computer Configuration > Administrative Templates > System > Remote Assistance > Configure Solicited Remote Assistance
   breaking_risk: low
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+      name: 'fAllowToGetHelp'
+      value: 0
 ---
 id: WIN-WRM-001
 title: WinRM sin autenticación Basic ni tráfico sin cifrar
@@ -64,3 +75,12 @@ check:
 remediation:
   summary: Deshabilitar "Allow Basic authentication" y "Allow unencrypted traffic" en el servicio WinRM.
   breaking_risk: low
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service'
+      name: 'AllowBasic'
+      value: 0
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service'
+      name: 'AllowUnencryptedTraffic'
+      value: 0

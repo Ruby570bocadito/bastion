@@ -21,6 +21,13 @@ remediation:
     systemctl stop avahi-daemon.socket avahi-daemon.service
     systemctl mask avahi-daemon.socket avahi-daemon.service
   breaking_risk: low
+  actions:
+    - type: systemd.disable
+      unit: avahi-daemon.socket
+      mask: true
+    - type: systemd.disable
+      unit: avahi-daemon.service
+      mask: true
 ---
 id: LNX-SVC-002
 title: Servidor de impresión CUPS deshabilitado
@@ -44,6 +51,16 @@ remediation:
     systemctl stop cups.socket cups.service cups-browsed.service 2>/dev/null
     systemctl mask cups.socket cups.service cups-browsed.service
   breaking_risk: low
+  actions:
+    - type: systemd.disable
+      unit: cups.socket
+      mask: true
+    - type: systemd.disable
+      unit: cups.service
+      mask: true
+    - type: systemd.disable
+      unit: cups-browsed.service
+      mask: true
 ---
 id: LNX-SVC-003
 title: rpcbind deshabilitado
@@ -66,6 +83,13 @@ remediation:
     systemctl stop rpcbind.socket rpcbind.service
     systemctl mask rpcbind.socket rpcbind.service
   breaking_risk: medium
+  actions:
+    - type: systemd.disable
+      unit: rpcbind.socket
+      mask: true
+    - type: systemd.disable
+      unit: rpcbind.service
+      mask: true
 impact: Los montajes NFSv3 dejarán de funcionar.
 ---
 id: LNX-SVC-004

@@ -13,6 +13,9 @@
 | `bastion rules show <ID>` | Detalle, remediación, impacto y referencias de un control |
 | `bastion rules lint [dir…]` | Validar el paquete oficial y reglas propias |
 | `bastion rules doc` | Catálogo de controles en Markdown |
+| `bastion harden [--apply] [--wave N]` | Corregir controles fallidos (simulación salvo `--apply`). Ver [05](05-remediacion-segura.md) |
+| `bastion rollback [ID] [--yes]` | Deshacer un cambio de hardening (por defecto, el último) |
+| `bastion history` | Cambios de hardening aplicados |
 | `bastion update [--check] [--force]` | Actualizar Bastion y sus reglas (verificado con SHA-256) |
 | `bastion init` | Crear directorios y configuración (lo hace el instalador) |
 | `bastion version [--short]` | Versión |
@@ -64,6 +67,17 @@ sudo bastion scan --min-score 85 -q -o informe.html || echo "La imagen no cumple
 | 1 | Error (perfil inexistente, reglas inválidas, sin permisos para guardar…) |
 | 2 | Puntuación inferior a `--min-score` |
 | 130 | Interrumpido (Ctrl+C) |
+
+## Corregir: `bastion harden`
+
+```bash
+sudo bastion harden                  # 1. simulación: revisa el plan
+sudo bastion harden --apply          # 2. aplica la ola 1 (riesgo nulo o bajo)
+sudo bastion scan --save --open      # 3. comprueba la nueva postura
+sudo bastion rollback                # si algo no te convence, se deshace todo
+```
+
+Cada control se aplica con instantánea previa, se verifica y, si no se cumple o falla, se revierte solo. Olas, acceso remoto, GPO e instantáneas se explican en [05-remediacion-segura.md](05-remediacion-segura.md).
 
 ## Interpretar los resultados
 

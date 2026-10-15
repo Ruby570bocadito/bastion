@@ -37,8 +37,14 @@ remediation:                       # CÓMO corregirlo
   summary: Habilitar la directiva "Turn off multicast name resolution".
   gpo: Computer Configuration > Administrative Templates > Network > DNS Client > Turn off multicast name resolution
   commands: reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient" /v EnableMulticast /t REG_DWORD /d 0 /f
-  breaking_risk: low               # none | low | medium | high
+  breaking_risk: low               # none | low | medium | high (decide la ola de harden)
   reboot_required: false
+  safety: remote-access            # opcional: puede cortar SSH/RDP → dead-man switch
+  actions:                         # opcional: corrección automática (docs/05)
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient'
+      name: 'EnableMulticast'
+      value: 0
 impact: Texto opcional sobre lo que puede romperse al aplicarlo.
 ```
 

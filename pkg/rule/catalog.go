@@ -118,7 +118,8 @@ func (c *Catalog) loadFile(data []byte, src string, isProfile bool) error {
 func (c *Catalog) Rule(id string) *Rule { return c.byID[strings.ToUpper(id)] }
 
 // Validate valida todas las reglas y perfiles. Devuelve un error por problema.
-func (c *Catalog) Validate(knownProbes map[string]bool) []error {
+// validateAction (opcional) valida el tipo y los parámetros de cada acción.
+func (c *Catalog) Validate(knownProbes map[string]bool, validateAction func(Action) error) []error {
 	var errs []error
 	for _, p := range c.sortedProfiles() {
 		if p.Name == "" {
@@ -136,7 +137,7 @@ func (c *Catalog) Validate(knownProbes map[string]bool) []error {
 		}
 	}
 	for _, r := range c.Rules {
-		for _, e := range r.Validate(knownProbes, c.Profiles) {
+		for _, e := range r.Validate(knownProbes, c.Profiles, validateAction) {
 			errs = append(errs, fmt.Errorf("%s [%s]: %w", r.ID, r.Source, e))
 		}
 	}

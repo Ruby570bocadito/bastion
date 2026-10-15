@@ -22,6 +22,10 @@ remediation:
     echo 'kernel.randomize_va_space = 2' > /etc/sysctl.d/60-bastion-aslr.conf
     sysctl -w kernel.randomize_va_space=2
   breaking_risk: none
+  actions:
+    - type: sysctl.set
+      key: kernel.randomize_va_space
+      value: 2
 ---
 id: LNX-KRN-002
 title: Ocultar direcciones del kernel (kptr_restrict)
@@ -46,6 +50,10 @@ remediation:
     echo 'kernel.kptr_restrict = 2' > /etc/sysctl.d/60-bastion-kptr.conf
     sysctl -w kernel.kptr_restrict=2
   breaking_risk: none
+  actions:
+    - type: sysctl.set
+      key: kernel.kptr_restrict
+      value: 2
 ---
 id: LNX-KRN-003
 title: Restringir dmesg a usuarios privilegiados
@@ -69,6 +77,10 @@ remediation:
     echo 'kernel.dmesg_restrict = 1' > /etc/sysctl.d/60-bastion-dmesg.conf
     sysctl -w kernel.dmesg_restrict=1
   breaking_risk: none
+  actions:
+    - type: sysctl.set
+      key: kernel.dmesg_restrict
+      value: 1
 ---
 id: LNX-KRN-004
 title: Restringir ptrace (Yama)
@@ -94,6 +106,11 @@ remediation:
     echo 'kernel.yama.ptrace_scope = 1' > /etc/sysctl.d/60-bastion-ptrace.conf
     sysctl -w kernel.yama.ptrace_scope=1
   breaking_risk: low
+  actions:
+    - type: sysctl.set
+      key: kernel.yama.ptrace_scope
+      value: 1
+      optional: true
 impact: Los depuradores (gdb, strace -p) solo podrán adjuntarse a procesos hijos salvo que se ejecuten como root.
 ---
 id: LNX-KRN-005
@@ -117,6 +134,10 @@ remediation:
     echo 'fs.suid_dumpable = 0' > /etc/sysctl.d/60-bastion-coredump.conf
     sysctl -w fs.suid_dumpable=0
   breaking_risk: none
+  actions:
+    - type: sysctl.set
+      key: fs.suid_dumpable
+      value: 0
 ---
 id: LNX-KRN-006
 title: Protección de enlaces simbólicos y duros
@@ -147,6 +168,13 @@ remediation:
     printf 'fs.protected_symlinks = 1\nfs.protected_hardlinks = 1\n' > /etc/sysctl.d/60-bastion-links.conf
     sysctl --system
   breaking_risk: none
+  actions:
+    - type: sysctl.set
+      key: fs.protected_symlinks
+      value: 1
+    - type: sysctl.set
+      key: fs.protected_hardlinks
+      value: 1
 ---
 id: LNX-KRN-007
 title: BPF sin privilegios deshabilitado
@@ -172,4 +200,9 @@ remediation:
     echo 'kernel.unprivileged_bpf_disabled = 1' > /etc/sysctl.d/60-bastion-bpf.conf
     sysctl -w kernel.unprivileged_bpf_disabled=1
   breaking_risk: low
+  actions:
+    - type: sysctl.set
+      key: kernel.unprivileged_bpf_disabled
+      value: 2
+      optional: true
 impact: Herramientas eBPF ejecutadas por usuarios sin privilegios dejarán de funcionar.

@@ -23,12 +23,13 @@ calcula una puntuación de postura, la mapea a MITRE ATT&CK y te dice qué corre
 
 | | |
 |---|---|
-| 🔍 **Auditoría de solo lectura** | 131 controles reales para Windows 10/11, Windows Server 2016-2025 (miembro y DC) y Linux (Ubuntu, Debian, RHEL y derivados). Nunca modifica el sistema. |
+| 🔍 **Auditoría de solo lectura** | 131 controles reales para Windows 10/11, Windows Server 2016-2025 (miembro y DC) y Linux (Ubuntu, Debian, RHEL y derivados). `scan` nunca modifica el sistema. |
+| 🛡️ **Hardening seguro** | `bastion harden` corrige 100 controles con simulación, instantánea previa, verificación y **rollback automático**; olas por riesgo de rotura y dead-man switch para SSH/RDP. |
 | 🎯 **Perfiles por rol** | Estación de trabajo, servidor miembro, controlador de dominio y servidor Linux, con niveles L1/L2. Bastion detecta el rol y elige el perfil. |
 | 📊 **Puntuación de postura** | Puntuación ponderada por severidad (0-100, A-F), por categoría y por severidad. |
 | 🧭 **MITRE ATT&CK** | Cada control enlaza técnicas y mitigaciones. El informe muestra qué técnicas quedan expuestas. |
 | 🧾 **Evidencias** | Para cada control: valor real, valor esperado y de dónde sale el dato (clave de registro, `sshd -T`, `secedit`...). |
-| 🛠️ **Remediación guiada** | Resumen, ruta de GPO, comandos listos para copiar, riesgo de rotura e impacto. |
+| 🛠️ **Remediación guiada** | Para lo que no es automático: resumen, ruta de GPO, comandos listos para copiar, riesgo de rotura e impacto. |
 | 🌐 **Informe HTML autocontenido** | Un solo fichero, modo claro y oscuro, filtros, sin conexión, imprimible a PDF. |
 | ⚙️ **Listo para CI/CD** | Salida JSON estable y `--min-score` para fallar un pipeline de imágenes doradas. |
 | 🔄 **Auto-actualización verificada** | `bastion update` descarga, verifica la suma SHA-256 y se reemplaza. Las reglas viajan dentro del binario. |
@@ -61,6 +62,9 @@ bastion scan -p win-workstation-l2  # otro perfil
 bastion scan --format json          # salida JSON (integraciones)
 bastion scan --min-score 80         # código de salida 2 si no llega (CI/CD)
 bastion rules show WIN-NET-001      # detalle y remediación de un control
+bastion harden                      # simulación: qué cambiaría (no toca nada)
+bastion harden --apply              # corregir la ola 1 (riesgo nulo o bajo)
+bastion rollback                    # deshacer el último cambio
 bastion update                      # actualizar Bastion y sus reglas
 ```
 
@@ -89,7 +93,7 @@ Bastion es una suite de 16 herramientas sobre el mismo motor, organizadas en el 
 |---|---|---|
 | 0 · Fundaciones | ✅ | Motor de reglas, probes Windows/Linux, CI, instaladores, documentación |
 | 1 · Auditoría | ✅ base · 🔜 más reglas | `scan`, informes, `rules`, perfiles. Siguiente: `surface` y unas 300 reglas |
-| 2 · Hardening | 🔜 | `harden` con instantánea, rollback y dead-man switch; `plan`; `studio` (exportar a GPO, Intune, Ansible) |
+| 2 · Hardening | ✅ base · 🔜 `studio` | `harden` con instantánea, verificación, rollback, olas y dead-man switch. Siguiente: `studio` (exportar a GPO, Intune, Ansible) |
 | 3 · Flota | 🔜 | Servidor central, agentes con mTLS, UI web (React), `guard` y `observe` |
 | 4 · Defensa | 🔜 | `telemetry`, `hunt`, `lockdown`, `vuln` |
 | 5 · Enterprise | 🔜 | `ad`, anillos de despliegue, SSO, ITSM/SIEM, informes por marco |
@@ -98,7 +102,7 @@ Detalle completo en la [hoja de ruta](docs/13-hoja-de-ruta.md) y en el [diseño 
 
 ## 🔐 Principios de seguridad
 
-- **Solo lectura** mientras no se pida explícitamente lo contrario (`harden` llegará en la fase 2, con simulación y rollback).
+- **Nada cambia sin pedirlo.** `scan` es de solo lectura y `harden` es una simulación salvo que se use `--apply`. Cada cambio guarda antes el estado previo, se verifica y se revierte si falla.
 - **Sin ejecución arbitraria.** Las reglas son datos declarativos: un paquete de reglas no puede ejecutar comandos. Los comandos del sistema que usan los probes están fijados en el código y se invocan con ruta absoluta.
 - **Descargas verificadas** con SHA-256 en el instalador y en `bastion update`.
 - **Informe blindado.** Los datos leídos del sistema nunca se interpretan como HTML y la página tiene una CSP con nonce.

@@ -4,7 +4,7 @@
 |---|---|---|
 | 0 · Fundaciones | ✅ | Base técnica y de producto |
 | 1 · Auditoría | 🚧 | Auditoría completa y creíble en las tres plataformas |
-| 2 · Hardening | 🔜 | Aplicar cambios con seguridad |
+| 2 · Hardening | 🚧 | Aplicar cambios con seguridad |
 | 3 · Flota | 🔜 | Gestión centralizada con consola web |
 | 4 · Defensa | 🔜 | Visibilidad, caza y contención |
 | 5 · Enterprise | 🔜 | Active Directory, escala e integraciones |
@@ -37,13 +37,15 @@
 
 **Terminado cuando:** un auditor puede llevar el binario en un USB, auditar Windows 11, Server 2022 (miembro y DC) y Ubuntu 24.04 y entregar un informe defendible sin falsos positivos conocidos.
 
-## Fase 2 · Hardening 🔜
+## Fase 2 · Hardening 🚧
 
-- [ ] Acciones de remediación tipadas en las reglas ([05](05-remediacion-segura.md)).
-- [ ] `harden` con plan, diff, instantánea, verificación y rollback; `history`, `rollback`, `confirm`.
-- [ ] *Dead-man switch* para el acceso remoto; *health checks*.
-- [ ] Consciencia de GPO e Intune.
-- [ ] `plan` (olas por riesgo de rotura).
+- [x] Acciones de remediación tipadas en las reglas (13 tipos, 100 controles automáticos) ([05](05-remediacion-segura.md)).
+- [x] `harden` con plan, diff, instantánea con registro previo, verificación y rollback automático; `history` y `rollback`.
+- [x] *Dead-man switch* para el acceso remoto (proceso independiente que sobrevive al corte de la sesión).
+- [x] Consciencia de GPO (heurística por ruta de directiva). 🔜 RSoP e Intune precisos.
+- [x] Olas por riesgo de rotura (`--wave 1|2|3`).
+- [x] Ciclo real `harden → verificar → rollback` en CI sobre Ubuntu y Windows Server.
+- [ ] *Health checks* personalizados tras aplicar.
 - [ ] `studio` v1: perfiles propios y exportación a GPO, Ansible, DSC y scripts.
 - [ ] `bastion rules new|test` con fixtures; laboratorio de VMs en CI nocturna.
 

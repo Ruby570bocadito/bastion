@@ -540,6 +540,13 @@ footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
     ]);
     var rem = rule.remediation || {};
     var right = el("div", null, [el("h3", { text: "Remediación" }), el("p", { text: rem.summary })]);
+    if (rem.actions && rem.actions.length && r.status === "fail") {
+      var wave = { medium: 2, high: 3 }[rem.breaking_risk] || 1;
+      var cmdline = "bastion harden --rule " + rule.id + " --apply" + (wave > 1 ? " --wave " + wave : "") + (rem.safety === "remote-access" ? " --include-remote" : "");
+      right.appendChild(el("h3", { text: "Corrección automática" }));
+      right.appendChild(el("pre", null, [el("code", { text: cmdline })]));
+      right.appendChild(el("p", { style: "font-size:13px;color:var(--muted);margin-top:6px", text: "Simula primero sin --apply. Bastion guarda el estado previo y lo revierte si el cambio falla o no surte efecto (bastion rollback para deshacer)." }));
+    }
     if (rem.gpo) { right.appendChild(el("h3", { text: "Directiva de grupo (GPO)" })); right.appendChild(el("p", { class: "mono", text: rem.gpo })); }
     if (rem.commands) {
       right.appendChild(el("h3", { text: "Comandos" }));

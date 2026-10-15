@@ -10,6 +10,9 @@ Una herramienta de hardening solo es creíble si sus resultados son correctos. U
 | Parsers | `sshd_config` (Include, Match, tiempos), `sshd -T`, mountinfo, modprobe.d, clave/valor, INF de secedit, CSV de auditpol, UTF-16, rutas de registro | `internal/probes/parse_test.go` | ✅ |
 | Paquete de reglas | Todas las reglas y perfiles válidos, cada perfil por defecto con reglas, herencia del DC | `rules/rules_test.go` | ✅ |
 | Actualización | Comparación de versiones, `checksums.txt`, espejo simulado, **rechazo de archivo manipulado** | `internal/selfupdate/selfupdate_test.go` | ✅ |
+| Hardening (motor) | Plan por olas, aplicación, fallo con reversión, cambio sin efecto con reversión, rollback desde disco, acceso remoto no confirmado, dead-man switch, GPO, validación de acciones (incluidos intentos de inyección) | `internal/remediate/plan_test.go` | ✅ |
+| Remediadores Linux | Ciclo capturar → aplicar → restaurar en un sistema de ficheros simulado (sysctl, login.defs, permisos, modprobe, sudoers con `visudo` real) | `internal/remediate/linux_test.go` | ✅ |
+| Ciclo real en CI | `harden --apply` en Ubuntu y Windows Server de GitHub: la postura debe subir y, tras `rollback`, volver exactamente al valor inicial | `.github/workflows/ci.yml` | ✅ |
 | Escaneo real en CI | `bastion scan` en Ubuntu y Windows Server de GitHub Actions; informes como artefacto | `.github/workflows/ci.yml` | ✅ |
 | Instaladores | ShellCheck, PSScriptAnalyzer | CI | ✅ |
 | Instaladores de punta a punta | Instalación limpia, reejecución, actualización, archivo manipulado, desinstalación contra un espejo local | Manual, ver abajo | ✅ manual · 🔜 CI |

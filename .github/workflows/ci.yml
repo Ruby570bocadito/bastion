@@ -43,7 +43,43 @@ jobs:
       - name: Escaneo real (Windows)
         if: runner.os == 'Windows'
         run: .\bin\bastion.exe scan --all -o report.html -o report.json
+      # Ciclo completo de hardening en la máquina desechable del runner:
+      # aplicar la ola 1 debe mejorar la postura y el rollback debe dejarla
+      # exactamente como estaba.
+      - name: Ciclo harden → rollback (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          b=./bin/bastion
+          before=$(sudo $b scan --format json | jq .score.value)
+          sudo $b harden --wave 1 --no-color
+          sudo $b harden --wave 1 --apply --yes --no-color
+          after=$(sudo $b scan --format json | jq .score.value)
+          sudo $b history --no-color
+          sudo $b rollback --yes --no-color
+          restored=$(sudo $b scan --format json | jq .score.value)
+          echo "Postura: $before → $after → $restored"
+          test "$after" -gt "$before"
+          test "$restored" -eq "$before"
+      - name: Ciclo harden → rollback (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $b = '.\bin\bastion.exe'
+          $before = (& $b scan --format json | ConvertFrom-Json).score.value
+          & $b harden --wave 1 --no-color
+          & $b harden --wave 1 --apply --yes --no-color
+          if ($LASTEXITCODE -ne 0) { throw 'harden falló' }
+          $after = (& $b scan --format json | ConvertFrom-Json).score.value
+          & $b history --no-color
+          & $b rollback --yes --no-color
+          if ($LASTEXITCODE -ne 0) { throw 'rollback falló' }
+          $restored = (& $b scan --format json | ConvertFrom-Json).score.value
+          "Postura: $before -> $after -> $restored"
+          if ($after -le $before) { throw 'harden no mejoró la postura' }
+          if ($restored -ne $before) { throw "rollback no restauró la postura ($restored distinto de $before)" }
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: informe-${{ matrix.os }}
           path: report.*

@@ -198,7 +198,13 @@ func writeCatalogMarkdown(w io.Writer, cat *rule.Catalog) {
 	sort.Slice(profiles, func(i, j int) bool { return profiles[i].ID < profiles[j].ID })
 
 	fmt.Fprintln(w, "<!-- Generado con \"bastion rules doc\". No editar a mano: edita las reglas en rules/. -->")
-	fmt.Fprintf(w, "\n**%d controles** en el paquete oficial.\n\n", len(cat.Rules))
+	auto := 0
+	for _, r := range cat.Rules {
+		if len(r.Remediation.Actions) > 0 {
+			auto++
+		}
+	}
+	fmt.Fprintf(w, "\n**%d controles** en el paquete oficial, **%d con corrección automática** (`bastion harden`). ⚡ = afecta al acceso remoto (requiere `--include-remote`).\n\n", len(cat.Rules), auto)
 	fmt.Fprintln(w, "### Perfiles")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "| Perfil | Nombre | Hereda de | Por defecto en |")
@@ -225,12 +231,19 @@ func writeCatalogMarkdown(w io.Writer, cat *rule.Catalog) {
 			if r.Category != cur {
 				cur = r.Category
 				fmt.Fprintf(w, "\n#### %s\n\n", cur)
-				fmt.Fprintln(w, "| ID | Control | Severidad | Perfiles | ATT&CK | Riesgo de rotura |")
-				fmt.Fprintln(w, "|---|---|---|---|---|---|")
+				fmt.Fprintln(w, "| ID | Control | Severidad | Perfiles | ATT&CK | Riesgo de rotura | Auto |")
+				fmt.Fprintln(w, "|---|---|---|---|---|---|---|")
 			}
-			fmt.Fprintf(w, "| `%s` | %s | %s | %s | %s | %s |\n", r.ID, strings.ReplaceAll(r.Title, "|", "\\|"),
+			auto := ""
+			if len(r.Remediation.Actions) > 0 {
+				auto = "✓"
+				if r.Remediation.Safety == "remote-access" {
+					auto = "✓ ⚡"
+				}
+			}
+			fmt.Fprintf(w, "| `%s` | %s | %s | %s | %s | %s | %s |\n", r.ID, strings.ReplaceAll(r.Title, "|", "\\|"),
 				strings.ToLower(report.SeverityLabel(r.Severity)), strings.Join(r.Profiles, ", "),
-				strings.Join(r.References.MitreTechniques, ", "), report.RiskLabel(r.Remediation.BreakingRisk))
+				strings.Join(r.References.MitreTechniques, ", "), report.RiskLabel(r.Remediation.BreakingRisk), auto)
 		}
 	}
 }
@@ -261,6 +274,16 @@ func printRule(r *rule.Rule) {
 		for _, l := range strings.Split(strings.TrimRight(r.Remediation.Commands, "\n"), "\n") {
 			fmt.Printf("    %s\n", s.Green(l))
 		}
+	}
+	if n := len(r.Remediation.Actions); n > 0 {
+		cmdline := "bastion harden --rule " + r.ID + " --apply"
+		if w := rule.RiskWave(r.Remediation.BreakingRisk); w > 1 {
+			cmdline += fmt.Sprintf(" --wave %d", w)
+		}
+		if r.Remediation.Safety == "remote-access" {
+			cmdline += " --include-remote"
+		}
+		fmt.Printf("\n  %s %d acción(es) automática(s) · %s\n", s.Green("Corrección automática:"), n, s.Bold(cmdline))
 	}
 	fmt.Printf("\n  %s %s", s.Dim("Riesgo de rotura:"), report.RiskLabel(r.Remediation.BreakingRisk))
 	if r.Remediation.RebootRequired {

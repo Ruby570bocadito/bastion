@@ -22,6 +22,11 @@ remediation:
   summary: Detener y deshabilitar el Spooler en todos los DC.
   commands: Stop-Service Spooler; Set-Service Spooler -StartupType Disabled
   breaking_risk: low
+  actions:
+    - type: service.config
+      name: Spooler
+      start_type: disabled
+      stop: true
 impact: La limpieza automática de impresoras publicadas en AD (pruning) deja de funcionar en ese DC.
 ---
 id: WIN-DC-002
@@ -45,6 +50,11 @@ check:
 remediation:
   summary: Habilitar "Domain controller - LDAP server signing requirements" = Require signing.
   breaking_risk: high
+  actions:
+    - type: registry.set
+      path: 'HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters'
+      name: 'LDAPServerIntegrity'
+      value: 2
 impact: Los clientes que hacen binds simples sin firmar dejarán de funcionar. Revisa antes el evento 2889 en los DC.
 ---
 id: WIN-DC-003
@@ -68,6 +78,11 @@ check:
 remediation:
   summary: Fijar "Domain controller - LDAP server channel binding token requirements" en "When supported" o "Always".
   breaking_risk: medium
+  actions:
+    - type: registry.set
+      path: 'HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters'
+      name: 'LdapEnforceChannelBinding'
+      value: 1
 ---
 id: WIN-KRB-001
 title: Kerberos solo con AES (sin DES ni RC4)
@@ -88,4 +103,9 @@ check:
 remediation:
   summary: Fijar "Network security - Configure encryption types allowed for Kerberos" en AES128, AES256 y Future (2147483640).
   breaking_risk: high
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters'
+      name: 'SupportedEncryptionTypes'
+      value: 2147483640
 impact: Cuentas, aplicaciones o trusts que solo soporten RC4 dejarán de autenticarse. Revisa el evento 4769 (tipo 0x17) en los DC antes de aplicar.
