@@ -13,13 +13,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/tu-usuario/bastion/internal/config"
-	"github.com/tu-usuario/bastion/internal/platform"
-	"github.com/tu-usuario/bastion/internal/probes"
-	"github.com/tu-usuario/bastion/internal/report"
-	"github.com/tu-usuario/bastion/internal/selfupdate"
-	"github.com/tu-usuario/bastion/internal/version"
-	"github.com/tu-usuario/bastion/pkg/rule"
+	"github.com/Ruby570bocadito/bastion/internal/config"
+	"github.com/Ruby570bocadito/bastion/internal/platform"
+	"github.com/Ruby570bocadito/bastion/internal/probes"
+	"github.com/Ruby570bocadito/bastion/internal/report"
+	"github.com/Ruby570bocadito/bastion/internal/selfupdate"
+	"github.com/Ruby570bocadito/bastion/internal/version"
+	"github.com/Ruby570bocadito/bastion/pkg/rule"
 )
 
 // ---- info ------------------------------------------------------------------

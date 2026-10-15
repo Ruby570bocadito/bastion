@@ -4,8 +4,8 @@ package main
 import (
 	"os"
 
-	"github.com/tu-usuario/bastion/internal/cli"
-	"github.com/tu-usuario/bastion/internal/selfupdate"
+	"github.com/Ruby570bocadito/bastion/internal/cli"
+	"github.com/Ruby570bocadito/bastion/internal/selfupdate"
 )
 
 func main() {

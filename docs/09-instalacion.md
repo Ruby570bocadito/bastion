@@ -7,14 +7,14 @@ Un **único comando** instala Bastion, lo actualiza si ya estaba, lo prepara (di
 Requisitos: amd64 o arm64, `curl` o `wget`, `sha256sum` o `shasum`, y root.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.sh | sudo bash
 ```
 
 Con opciones (todo lo que va tras `--` son argumentos del instalador):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.sh | sudo bash -s -- --no-scan
-curl -fsSL https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.sh | sudo bash -s -- --version v0.2.0
+curl -fsSL https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.sh | sudo bash -s -- --no-scan
+curl -fsSL https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.sh | sudo bash -s -- --version v0.2.0
 ```
 
 | Opción | Variable | Descripción |
@@ -41,14 +41,14 @@ Qué hace, paso a paso:
 El script completo está dentro de una función `main` que se invoca en la última línea: si la descarga se corta a medias, no se ejecuta nada.
 
 > **¿Prefieres revisar antes de ejecutar?**
-> `curl -fsSLO https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.sh && less install.sh && sudo bash install.sh`
+> `curl -fsSLO https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.sh && less install.sh && sudo bash install.sh`
 
 ## Windows 10/11 y Windows Server 2016-2025
 
 Abre **PowerShell como administrador** y pega:
 
 ```powershell
-irm https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.ps1 | iex
 ```
 
 Si no lo abres como administrador, el script pide elevación (UAC) y continúa en una ventana nueva.
@@ -56,8 +56,8 @@ Si no lo abres como administrador, el script pide elevación (UAC) y continúa e
 Con parámetros:
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.ps1))) -NoScan
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.ps1))) -Uninstall -Purge
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.ps1))) -NoScan
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.ps1))) -Uninstall -Purge
 ```
 
 | Parámetro | Variable | Descripción |
@@ -133,9 +133,9 @@ Las reglas oficiales van dentro del binario: al actualizar Bastion se actualizan
 ## Desinstalar
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.sh | sudo bash -s -- --uninstall [--purge]
+curl -fsSL https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.sh | sudo bash -s -- --uninstall [--purge]
 ```
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.ps1))) -Uninstall [-Purge]
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.ps1))) -Uninstall [-Purge]
 ```

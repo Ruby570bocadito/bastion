@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tu-usuario/bastion/internal/engine"
-	"github.com/tu-usuario/bastion/pkg/rule"
+	"github.com/Ruby570bocadito/bastion/internal/engine"
+	"github.com/Ruby570bocadito/bastion/pkg/rule"
 )
 
 // SeverityLabel traduce la severidad para mostrarla.

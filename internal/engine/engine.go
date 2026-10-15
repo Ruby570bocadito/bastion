@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tu-usuario/bastion/internal/probes"
-	"github.com/tu-usuario/bastion/pkg/rule"
+	"github.com/Ruby570bocadito/bastion/internal/probes"
+	"github.com/Ruby570bocadito/bastion/pkg/rule"
 )
 
 // Status es el resultado de una comprobación.

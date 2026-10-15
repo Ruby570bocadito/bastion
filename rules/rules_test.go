@@ -3,9 +3,9 @@ package rules_test
 import (
 	"testing"
 
-	"github.com/tu-usuario/bastion/internal/probes"
-	"github.com/tu-usuario/bastion/pkg/rule"
-	"github.com/tu-usuario/bastion/rules"
+	"github.com/Ruby570bocadito/bastion/internal/probes"
+	"github.com/Ruby570bocadito/bastion/pkg/rule"
+	"github.com/Ruby570bocadito/bastion/rules"
 )
 
 // TestOfficialPack valida todas las reglas y perfiles incrustados. Es la red

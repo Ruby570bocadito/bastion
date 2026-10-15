@@ -5,12 +5,12 @@
  Instala o actualiza Bastion, lo prepara y lanza un primer escaneo.
  Abre PowerShell como administrador y pega:
 
-   irm https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.ps1 | iex
+   irm https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.ps1 | iex
 
  Con opciones:
 
-   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.ps1))) -NoScan
-   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.ps1))) -Uninstall
+   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.ps1))) -NoScan
+   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.ps1))) -Uninstall
 
  Parámetros:
    -Version <tag>       versión concreta (por defecto: la última)
@@ -31,7 +31,7 @@
 #>
 param(
     [string]$Version = $(if ($env:BASTION_VERSION) { $env:BASTION_VERSION } else { 'latest' }),
-    [string]$Repo = $(if ($env:BASTION_REPO) { $env:BASTION_REPO } else { 'tu-usuario/bastion' }),
+    [string]$Repo = $(if ($env:BASTION_REPO) { $env:BASTION_REPO } else { 'Ruby570bocadito/bastion' }),
     [string]$ReleasesUrl = $env:BASTION_RELEASES_URL,
     [string]$Local,
     [switch]$NoScan,

@@ -10,7 +10,7 @@ var (
 	Date    = "unknown"
 	// Repo es el repositorio de GitHub (owner/nombre) del que se descargan
 	// las actualizaciones. Se puede sobrescribir con BASTION_REPO.
-	Repo = "tu-usuario/bastion"
+	Repo = "Ruby570bocadito/bastion"
 )
 
 // String devuelve la versión completa en una línea.

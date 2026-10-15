@@ -7,7 +7,7 @@
 - Para probar en Windows desde Linux: `GOOS=windows go build ./cmd/bastion` y copiar el `.exe` a una VM.
 
 ```bash
-git clone https://github.com/tu-usuario/bastion && cd bastion
+git clone https://github.com/Ruby570bocadito/bastion && cd bastion
 make help
 make build && sudo ./bin/bastion scan
 ```

@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/tu-usuario/bastion/internal/engine"
+	"github.com/Ruby570bocadito/bastion/internal/engine"
 )
 
 //go:embed assets/report.html

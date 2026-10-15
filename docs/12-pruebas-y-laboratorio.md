@@ -31,7 +31,7 @@ go test -race ./...            # detector de carreras (el motor es concurrente)
 # 1. Construir dos "releases"
 for v in 0.1.0 0.2.0; do
   mkdir -p /tmp/m/download/v$v /tmp/b$v
-  go build -ldflags "-X github.com/tu-usuario/bastion/internal/version.Version=$v" -o /tmp/b$v/bastion ./cmd/bastion
+  go build -ldflags "-X github.com/Ruby570bocadito/bastion/internal/version.Version=$v" -o /tmp/b$v/bastion ./cmd/bastion
   tar -C /tmp/b$v -czf /tmp/m/download/v$v/bastion_linux_amd64.tar.gz bastion
   (cd /tmp/m/download/v$v && sha256sum bastion_* > checksums.txt)
 done

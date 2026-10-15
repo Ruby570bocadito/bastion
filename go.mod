@@ -1,4 +1,4 @@
-module github.com/tu-usuario/bastion
+module github.com/Ruby570bocadito/bastion
 
 go 1.26.0
 

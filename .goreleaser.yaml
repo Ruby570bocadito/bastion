@@ -18,10 +18,10 @@ builds:
     flags: [-trimpath]
     ldflags:
       - -s -w
-      - -X github.com/tu-usuario/bastion/internal/version.Version={{ .Version }}
-      - -X github.com/tu-usuario/bastion/internal/version.Commit={{ .ShortCommit }}
-      - -X github.com/tu-usuario/bastion/internal/version.Date={{ .Date }}
-      - -X github.com/tu-usuario/bastion/internal/version.Repo={{ envOrDefault "GITHUB_REPOSITORY" "tu-usuario/bastion" }}
+      - -X github.com/Ruby570bocadito/bastion/internal/version.Version={{ .Version }}
+      - -X github.com/Ruby570bocadito/bastion/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/Ruby570bocadito/bastion/internal/version.Date={{ .Date }}
+      - -X github.com/Ruby570bocadito/bastion/internal/version.Repo={{ envOrDefault "GITHUB_REPOSITORY" "Ruby570bocadito/bastion" }}
 
 archives:
   - id: default

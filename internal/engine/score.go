@@ -4,8 +4,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/tu-usuario/bastion/internal/platform"
-	"github.com/tu-usuario/bastion/pkg/rule"
+	"github.com/Ruby570bocadito/bastion/internal/platform"
+	"github.com/Ruby570bocadito/bastion/pkg/rule"
 )
 
 // Counts agrupa resultados por estado.

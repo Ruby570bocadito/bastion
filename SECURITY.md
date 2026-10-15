@@ -6,7 +6,7 @@ Solo la última versión publicada recibe correcciones de seguridad. Actualiza c
 
 ## Reportar una vulnerabilidad
 
-**No abras un issue público.** Usa el [aviso privado de seguridad de GitHub](https://github.com/tu-usuario/bastion/security/advisories/new) e incluye:
+**No abras un issue público.** Usa el [aviso privado de seguridad de GitHub](https://github.com/Ruby570bocadito/bastion/security/advisories/new) e incluye:
 
 - versión de Bastion (`bastion version`) y sistema operativo;
 - descripción, impacto y pasos para reproducirlo;

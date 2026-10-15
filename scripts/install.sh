@@ -4,7 +4,7 @@
 #
 #  Instala o actualiza Bastion, lo prepara y lanza un primer escaneo:
 #
-#    curl -fsSL https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.sh | sudo bash
+#    curl -fsSL https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.sh | sudo bash
 #
 #  Con opciones:
 #
@@ -35,7 +35,7 @@
 main() {
   set -euo pipefail
 
-  REPO="${BASTION_REPO:-tu-usuario/bastion}"
+  REPO="${BASTION_REPO:-Ruby570bocadito/bastion}"
   VERSION="${BASTION_VERSION:-latest}"
   RELEASES_URL="${BASTION_RELEASES_URL:-}"
   PREFIX="${BASTION_PREFIX:-/usr/local/bin}"

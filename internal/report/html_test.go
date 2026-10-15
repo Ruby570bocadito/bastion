@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tu-usuario/bastion/internal/engine"
-	"github.com/tu-usuario/bastion/pkg/rule"
+	"github.com/Ruby570bocadito/bastion/internal/engine"
+	"github.com/Ruby570bocadito/bastion/pkg/rule"
 )
 
 // Un valor leído del sistema auditado (p. ej. una línea de sudoers) no debe

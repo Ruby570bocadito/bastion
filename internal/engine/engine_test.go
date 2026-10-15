@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/tu-usuario/bastion/internal/probes"
-	"github.com/tu-usuario/bastion/pkg/rule"
+	"github.com/Ruby570bocadito/bastion/internal/probes"
+	"github.com/Ruby570bocadito/bastion/pkg/rule"
 )
 
 func TestCompare(t *testing.T) {

@@ -22,4 +22,4 @@
 
 - ✅ implementado · 🚧 en curso · 🔜 planificado.
 - Los ejemplos de comandos usan `bastion` instalado en el PATH. En Linux, anteponer `sudo` para leer todos los controles.
-- El repositorio de ejemplo es `tu-usuario/bastion`. Cámbialo una sola vez con `make set-repo REPO=usuario/bastion`.
+- El repositorio oficial es `Ruby570bocadito/bastion`. En un fork, cambia todas las referencias de una vez con `make set-repo REPO=usuario/bastion`.

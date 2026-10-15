@@ -7,6 +7,10 @@
 Evalúa la configuración de seguridad de tus equipos frente a perfiles de hardening,
 calcula una puntuación de postura, la mapea a MITRE ATT&CK y te dice qué corregir primero.
 
+[![CI](https://github.com/Ruby570bocadito/bastion/actions/workflows/ci.yml/badge.svg)](https://github.com/Ruby570bocadito/bastion/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Ruby570bocadito/bastion?sort=semver)](https://github.com/Ruby570bocadito/bastion/releases/latest)
+![Plataformas](https://img.shields.io/badge/plataformas-Windows%20%7C%20Windows%20Server%20%7C%20Linux-2a78d6)
+
 [Instalación](#-instalación-en-una-línea) · [Uso](docs/10-guia-de-uso.md) · [Documentación](docs/README.md) · [Hoja de ruta](docs/13-hoja-de-ruta.md)
 
 </div>
@@ -36,13 +40,13 @@ El mismo comando **instala, actualiza, prepara y lanza un primer escaneo**. Vuel
 **Linux** (como root):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.sh | sudo bash
 ```
 
 **Windows** (PowerShell como administrador):
 
 ```powershell
-irm https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.ps1 | iex
 ```
 
 Opciones, instalación sin conexión, espejos internos y desinstalación: [docs/09-instalacion.md](docs/09-instalacion.md).

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/tu-usuario/bastion/rules/schema/rule.schema.json",
+  "$id": "https://github.com/Ruby570bocadito/bastion/rules/schema/rule.schema.json",
   "title": "Regla de Bastion",
   "description": "Control de seguridad declarativo. Ver docs/04-motor-de-reglas.md. Para validación en el editor añade al inicio del YAML: # yaml-language-server: $schema=../schema/rule.schema.json",
   "type": "object",

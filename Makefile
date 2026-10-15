@@ -1,7 +1,7 @@
 # Bastion · tareas de desarrollo
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
-PKG     := github.com/tu-usuario/bastion/internal/version
+PKG     := github.com/Ruby570bocadito/bastion/internal/version
 LDFLAGS := -s -w -X $(PKG).Version=$(VERSION) -X $(PKG).Commit=$(COMMIT) -X $(PKG).Date=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 .PHONY: build test lint rules-lint fmt cross scan report clean set-repo help

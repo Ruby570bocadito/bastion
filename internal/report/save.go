@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/tu-usuario/bastion/internal/engine"
+	"github.com/Ruby570bocadito/bastion/internal/engine"
 )
 
 // JSON escribe el informe en el formato estable bastion.report/v1.

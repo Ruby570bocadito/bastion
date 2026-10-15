@@ -27,7 +27,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tu-usuario/bastion/internal/version"
+	"github.com/Ruby570bocadito/bastion/internal/version"
 )
 
 const maxDownload = 200 << 20 // 200 MiB

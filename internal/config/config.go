@@ -101,7 +101,7 @@ func Load() (Config, error) {
 	return c, nil
 }
 
-const defaultFile = `# Configuración de Bastion · https://github.com/tu-usuario/bastion
+const defaultFile = `# Configuración de Bastion · https://github.com/Ruby570bocadito/bastion
 # Este fichero solo debe poder modificarlo un administrador.
 
 # Perfil por defecto para "bastion scan". "auto" lo elige según la plataforma
@@ -121,7 +121,7 @@ rules:
 
 update:
   # Repositorio de GitHub del que se descargan las actualizaciones.
-  # repo: tu-usuario/bastion
+  # repo: Ruby570bocadito/bastion
   # Espejo interno de releases (redes corporativas o aisladas).
   # Debe servir <url>/latest/download/version.txt y <url>/download/<tag>/<fichero>.
   # releases_url: https://mirror.interno/bastion/releases
