@@ -98,7 +98,7 @@ func runScan(f scanFlags) error {
 	started := time.Now()
 	eng := engine.New()
 	eng.HostTags = info.Tags
-	results := eng.Run(ctx, selected, progress.update)
+	results := evaluate(ctx, eng, selected, info, progress.update)
 	progress.done()
 	finished := time.Now()
 

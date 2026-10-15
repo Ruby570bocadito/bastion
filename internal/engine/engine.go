@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Ruby570bocadito/bastion/internal/exceptions"
 	"github.com/Ruby570bocadito/bastion/internal/probes"
 	"github.com/Ruby570bocadito/bastion/pkg/rule"
 )
@@ -26,6 +27,9 @@ const (
 	// Skipped: no se pudo evaluar por falta de privilegios. Como los
 	// errores, no cuenta en la puntuación, que se marca como parcial.
 	Skipped Status = "skipped"
+	// Exception: el control falla, pero hay una excepción vigente que lo
+	// acepta. No cuenta en la puntuación ni entra en "harden".
+	Exception Status = "exception"
 )
 
 // Eval es la evaluación de una comprobación (hoja o compuesta).
@@ -46,6 +50,15 @@ type Result struct {
 	Rule *rule.Rule `json:"rule"`
 	Eval
 	DurationMs int64 `json:"duration_ms"`
+	// Exception es la excepción que cubre el control: vigente (el estado es
+	// "exception") o caducada (el control vuelve a contar como fallido).
+	Exception *ExceptionRef `json:"exception,omitempty"`
+}
+
+// ExceptionRef es la excepción aplicada a un resultado.
+type ExceptionRef struct {
+	exceptions.Entry
+	Expired bool `json:"expired"`
 }
 
 // Engine evalúa reglas en paralelo.
@@ -103,6 +116,12 @@ func (e *Engine) Run(ctx context.Context, rules []*rule.Rule, progress func(done
 	}
 	close(jobs)
 	wg.Wait()
+	SortResults(results)
+	return results
+}
+
+// SortResults ordena por estado, severidad e ID.
+func SortResults(results []Result) {
 	sort.SliceStable(results, func(i, j int) bool {
 		a, b := results[i], results[j]
 		if statusRank(a.Status) != statusRank(b.Status) {
@@ -113,7 +132,35 @@ func (e *Engine) Run(ctx context.Context, rules []*rule.Rule, progress func(done
 		}
 		return a.Rule.ID < b.Rule.ID
 	})
-	return results
+}
+
+// ApplyExceptions marca como "exception" los controles fallidos con una
+// excepción vigente para host y anota las caducadas (que siguen fallando).
+// Los controles que pasan, no aplican o no se pudieron leer no cambian.
+// Devuelve las excepciones caducadas encontradas.
+func ApplyExceptions(results []Result, f *exceptions.File, host string, now time.Time) []Result {
+	if f == nil || len(f.Exceptions) == 0 {
+		return nil
+	}
+	var expired []Result
+	for i := range results {
+		r := &results[i]
+		if r.Status != Fail {
+			continue
+		}
+		e, isExpired := f.Find(r.Rule.ID, host, now)
+		if e == nil {
+			continue
+		}
+		r.Exception = &ExceptionRef{Entry: *e, Expired: isExpired}
+		if isExpired {
+			expired = append(expired, *r)
+			continue
+		}
+		r.Status = Exception
+	}
+	SortResults(results)
+	return expired
 }
 
 func statusRank(s Status) int {
@@ -124,10 +171,12 @@ func statusRank(s Status) int {
 		return 1
 	case Skipped:
 		return 2
-	case Pass:
+	case Exception:
 		return 3
+	case Pass:
+		return 4
 	}
-	return 4
+	return 5
 }
 
 func (e *Engine) evalCheck(ctx context.Context, c rule.Check) (ev Eval) {

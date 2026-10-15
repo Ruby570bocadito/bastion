@@ -1,0 +1,264 @@
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"os/user"
+	"strings"
+	"text/tabwriter"
+	"time"
+
+	"github.com/spf13/cobra"
+
+	"github.com/Ruby570bocadito/bastion/internal/config"
+	"github.com/Ruby570bocadito/bastion/internal/engine"
+	"github.com/Ruby570bocadito/bastion/internal/exceptions"
+	"github.com/Ruby570bocadito/bastion/internal/platform"
+	"github.com/Ruby570bocadito/bastion/internal/probes"
+	"github.com/Ruby570bocadito/bastion/internal/report"
+	"github.com/Ruby570bocadito/bastion/pkg/rule"
+)
+
+func exceptionsPath() string { return exceptions.Path(config.ConfigDir()) }
+
+// loadExceptions lee exceptions.yaml. Como config.yaml, sin privilegios no
+// se puede leer en Windows: entonces no se aplica ninguna sin avisar.
+func loadExceptions() *exceptions.File {
+	f, err := exceptions.Load(exceptionsPath())
+	if err != nil && !(errors.Is(err, fs.ErrPermission) && !probes.Privileged()) {
+		fmt.Fprintln(os.Stderr, "aviso:", err)
+	}
+	return f
+}
+
+// evaluate ejecuta las reglas y aplica las excepciones (las caducadas
+// quedan anotadas en Result.Exception y el control sigue fallando).
+func evaluate(ctx context.Context, eng *engine.Engine, rules []*rule.Rule, info platform.Info, progress func(int, int)) []engine.Result {
+	results := eng.Run(ctx, rules, progress)
+	engine.ApplyExceptions(results, loadExceptions(), info.Hostname, time.Now())
+	return results
+}
+
+func newExceptionsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "exceptions",
+		Aliases: []string{"exception", "excepciones"},
+		Short:   "Gestionar excepciones: controles fallidos aceptados con motivo y caducidad",
+		Long: `Una excepción acepta de forma documentada un control que falla: riesgo
+asumido, control compensatorio o incompatibilidad conocida. El control
+aparece como "excepción", no cuenta en la puntuación y "harden" no lo toca.
+
+Cada excepción lleva un motivo, un responsable y una caducidad de como
+mucho un año. Al caducar, el control vuelve a contar como fallido y Bastion
+avisa en cada escaneo.
+
+Se guardan en exceptions.yaml, junto a config.yaml; solo un administrador
+puede modificarlas.`,
+		RunE: func(cmd *cobra.Command, _ []string) error { return listExceptions(false) },
+	}
+
+	var asJSON bool
+	list := &cobra.Command{
+		Use:   "list",
+		Short: "Listar las excepciones y su vigencia",
+		RunE:  func(cmd *cobra.Command, _ []string) error { return listExceptions(asJSON) },
+	}
+	list.Flags().BoolVar(&asJSON, "json", false, "salida JSON")
+
+	var reason, expires, owner string
+	var hosts []string
+	add := &cobra.Command{
+		Use:   "add <ID>",
+		Short: "Añadir o renovar la excepción de un control",
+		Example: `  bastion exceptions add WIN-SYS-003 --reason "Equipo sin UEFI; se sustituye en enero" --expires 2027-01-31
+  bastion exceptions add LNX-FW-001 --reason "Filtrado en el cortafuegos perimetral (FW-02)" --expires 90d
+  bastion exceptions add WIN-RDP-001 --reason "Cliente RDP heredado del proveedor" --expires 6m --host SRV-ERP01`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return addException(strings.ToUpper(args[0]), reason, expires, owner, hosts)
+		},
+	}
+	add.Flags().StringVarP(&reason, "reason", "r", "", "motivo de la excepción (obligatorio)")
+	add.Flags().StringVarP(&expires, "expires", "e", "", "caducidad: fecha AAAA-MM-DD o plazo 90d, 12w, 6m (obligatorio, máximo 1 año)")
+	add.Flags().StringVar(&owner, "owner", "", "responsable (por defecto, el usuario actual)")
+	add.Flags().StringSliceVar(&hosts, "host", nil, "limitar a estos equipos (por defecto, cualquiera que use este fichero)")
+	_ = add.MarkFlagRequired("reason")
+	_ = add.MarkFlagRequired("expires")
+
+	var rmHost string
+	remove := &cobra.Command{
+		Use:     "remove <ID>",
+		Aliases: []string{"rm", "delete"},
+		Short:   "Eliminar la excepción de un control",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return removeException(strings.ToUpper(args[0]), rmHost)
+		},
+	}
+	remove.Flags().StringVar(&rmHost, "host", "", "eliminar solo la excepción de este equipo")
+
+	cmd.AddCommand(list, add, remove)
+	return cmd
+}
+
+func requireConfigWrite() error {
+	if probes.Privileged() || os.Getenv("BASTION_HOME") != "" {
+		return ensureDataDirs()
+	}
+	return fmt.Errorf("modificar excepciones requiere privilegios. %s", report.AdminHint(platform.Detect().Family))
+}
+
+func addException(id, reason, expires, owner string, hosts []string) error {
+	if err := requireConfigWrite(); err != nil {
+		return err
+	}
+	cat, err := loadCatalog(loadConfig())
+	if err != nil {
+		return err
+	}
+	r := cat.Rule(id)
+	if r == nil {
+		return fmt.Errorf("no existe la regla %s", id)
+	}
+	now := time.Now()
+	exp, err := exceptions.ParseExpiry(expires, now)
+	if err != nil {
+		return err
+	}
+	if owner == "" {
+		if u, err := user.Current(); err == nil {
+			owner = u.Username
+		}
+	}
+	e := exceptions.Entry{
+		Rule: r.ID, Reason: strings.TrimSpace(reason), Owner: owner, Hosts: hosts,
+		Created: now.Format(exceptions.DateLayout), Expires: exp.Format(exceptions.DateLayout),
+	}
+	if err := e.Validate(); err != nil {
+		return err
+	}
+	if !exp.After(now) {
+		return fmt.Errorf("la caducidad %s ya ha pasado", e.Expires)
+	}
+	path := exceptionsPath()
+	f, err := exceptions.Load(path)
+	if err != nil {
+		return err
+	}
+	replaced := f.Upsert(e)
+	if err := f.Save(path); err != nil {
+		return fmt.Errorf("no se pudo guardar %s: %w", path, err)
+	}
+	s := stdoutStyle()
+	verb := "añadida"
+	if replaced {
+		verb = "renovada"
+	}
+	fmt.Printf("\n  %s Excepción %s: %s %s\n", s.Green(report.Sym("✓")), verb, s.Cyan(r.ID), r.Title)
+	fmt.Printf("    %s %s\n", s.Dim("Motivo      "), e.Reason)
+	fmt.Printf("    %s %s\n", s.Dim("Responsable "), e.Owner)
+	fmt.Printf("    %s %s (%d días)\n", s.Dim("Caduca      "), e.Expires, e.DaysLeft(now))
+	if len(hosts) > 0 {
+		fmt.Printf("    %s %s\n", s.Dim("Equipos     "), strings.Join(hosts, ", "))
+	}
+	fmt.Printf("    %s\n\n", s.Dim(path))
+	return nil
+}
+
+func removeException(id, host string) error {
+	if err := requireConfigWrite(); err != nil {
+		return err
+	}
+	path := exceptionsPath()
+	f, err := exceptions.Load(path)
+	if err != nil {
+		return err
+	}
+	n := f.Remove(id, host)
+	if n == 0 {
+		return fmt.Errorf("no hay ninguna excepción para %s", id)
+	}
+	if err := f.Save(path); err != nil {
+		return err
+	}
+	s := stdoutStyle()
+	what := "Excepción eliminada"
+	if n > 1 {
+		what = fmt.Sprintf("%d excepciones eliminadas", n)
+	}
+	fmt.Printf("\n  %s %s para %s: el control vuelve a contar en la puntuación.\n\n", s.Green(report.Sym("✓")), what, s.Cyan(id))
+	return nil
+}
+
+func listExceptions(asJSON bool) error {
+	f, err := exceptions.Load(exceptionsPath())
+	if err != nil {
+		if errors.Is(err, fs.ErrPermission) && !probes.Privileged() {
+			return fmt.Errorf("sin privilegios no se pueden leer las excepciones: %s", report.AdminHint(platform.Detect().Family))
+		}
+		fmt.Fprintln(os.Stderr, "aviso:", err)
+	}
+	now := time.Now()
+	if asJSON {
+		type item struct {
+			exceptions.Entry
+			Expired  bool `json:"expired"`
+			DaysLeft int  `json:"days_left"`
+		}
+		out := []item{}
+		for _, e := range f.Exceptions {
+			out = append(out, item{e, e.Expired(now), e.DaysLeft(now)})
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	}
+	s := stdoutStyle()
+	if len(f.Exceptions) == 0 {
+		fmt.Printf("\n  No hay excepciones. Para aceptar un control fallido:\n    %s\n\n",
+			s.Bold(`bastion exceptions add <ID> --reason "motivo" --expires 90d`))
+		return nil
+	}
+	cat, _ := loadCatalog(loadConfig())
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Println()
+	fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n", s.Bold("CONTROL"), s.Bold("CADUCA"), s.Bold("RESPONSABLE"), s.Bold("EQUIPOS"), s.Bold("MOTIVO"))
+	expired := 0
+	for _, e := range f.Exceptions {
+		when := e.Expires + s.Dim(fmt.Sprintf(" (%dd)", e.DaysLeft(now)))
+		switch {
+		case e.Expired(now):
+			when = s.Red(e.Expires + " caducada")
+			expired++
+		case e.DaysLeft(now) <= 30:
+			when = s.Yellow(e.Expires + fmt.Sprintf(" (%dd)", e.DaysLeft(now)))
+		}
+		hosts := "todos"
+		if len(e.Hosts) > 0 {
+			hosts = strings.Join(e.Hosts, ",")
+		}
+		id := e.Rule
+		if cat != nil && cat.Rule(e.Rule) == nil {
+			id += s.Yellow(" (regla desconocida)")
+		}
+		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n", s.Cyan(id), when, e.Owner, hosts, e.Reason)
+	}
+	w.Flush()
+	if len(f.Exceptions) == 1 {
+		fmt.Print("\n  1 excepción")
+	} else {
+		fmt.Printf("\n  %d excepciones", len(f.Exceptions))
+	}
+	switch {
+	case expired == 1:
+		fmt.Printf(" · %s", s.Red("1 caducada (vuelve a contar como fallida)"))
+	case expired > 1:
+		fmt.Printf(" · %s", s.Red(fmt.Sprintf("%d caducadas (vuelven a contar como fallidas)", expired)))
+	}
+	fmt.Printf("\n  %s\n\n", s.Dim(exceptionsPath()))
+	return nil
+}

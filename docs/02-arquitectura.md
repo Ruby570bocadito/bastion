@@ -80,7 +80,7 @@ ComputeScore() ──► Report ──► consola · JSON · HTML
 - **Probes de solo lectura con comandos fijos.** Un probe solo ejecuta comandos definidos en el código (`secedit`, `auditpol`, `sshd -T`, `systemctl show`...) con ruta absoluta en Windows. El probe `ps` solo admite consultas PowerShell de una **lista blanca**; la regla elige una por nombre.
 - **Valor efectivo, no solo el fichero.** `sshd -T` en vez de leer `sshd_config`, `sysctl` en ejecución, firewall con `-PolicyStore ActiveStore`, auditoría con `auditpol /backup` (valores numéricos independientes del idioma).
 - **Caché por escaneo (`probes.Session`).** Las operaciones caras se ejecutan una sola vez aunque las pidan 20 reglas en paralelo.
-- **Estados honestos.** `pass`, `fail`, `error` (no se pudo leer), `skipped` (sin evaluar por falta de privilegios), `na` (no aplica). Un error o un control sin evaluar nunca se convierte en "superado".
+- **Estados honestos.** `pass`, `fail`, `error` (no se pudo leer), `skipped` (sin evaluar por falta de privilegios), `exception` (falla, pero con una excepción vigente), `na` (no aplica). Un error o un control sin evaluar nunca se convierte en "superado".
 - **Tolerancia a fallos.** Un pánico dentro de un probe se convierte en `error` de esa regla; el escaneo continúa.
 
 ### Puntuación
@@ -90,7 +90,7 @@ puntuación = Σ peso(superados) / Σ peso(superados + fallidos) × 100
 peso: crítico 10 · alto 5 · medio 3 · bajo 1 · info 0
 ```
 
-Los `error`, `skipped` y `na` no cuentan. Si hay errores o controles sin evaluar, la puntuación se marca como **parcial**. Calificación: A ≥ 90 · B ≥ 80 · C ≥ 70 · D ≥ 60 · F < 60.
+Los `error`, `skipped`, `exception` y `na` no cuentan. Si hay errores o controles sin evaluar, la puntuación se marca como **parcial**. Calificación: A ≥ 90 · B ≥ 80 · C ≥ 70 · D ≥ 60 · F < 60.
 
 ## Estructura del repositorio
 

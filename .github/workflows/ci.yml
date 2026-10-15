@@ -43,6 +43,18 @@ jobs:
       - name: Escaneo real (Windows)
         if: runner.os == 'Windows'
         run: .\bin\bastion.exe scan --all -o report.html -o report.json
+      # Una excepción saca el control de la puntuación y al quitarla vuelve.
+      - name: Excepciones (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          b=./bin/bastion
+          id=$(sudo $b scan --format json | jq -r '[.results[] | select(.status=="fail")][0].rule.id')
+          sudo $b exceptions add "$id" --reason "Prueba de CI: riesgo aceptado temporalmente" --expires 7d --no-color
+          sudo $b exceptions list --no-color
+          test "$(sudo $b scan --format json | jq '.score.exceptions')" -eq 1
+          sudo $b exceptions remove "$id" --no-color
+          test "$(sudo $b scan --format json | jq '.score.exceptions')" -eq 0
       # Ciclo completo de hardening en la máquina desechable del runner:
       # aplicar la ola 1 debe mejorar la postura y el rollback debe dejarla
       # exactamente como estaba.

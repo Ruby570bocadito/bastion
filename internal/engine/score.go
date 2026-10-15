@@ -10,12 +10,13 @@ import (
 
 // Counts agrupa resultados por estado.
 type Counts struct {
-	Total   int `json:"total"`
-	Passed  int `json:"passed"`
-	Failed  int `json:"failed"`
-	Errors  int `json:"errors"`
-	Skipped int `json:"skipped"`
-	NA      int `json:"na"`
+	Total      int `json:"total"`
+	Passed     int `json:"passed"`
+	Failed     int `json:"failed"`
+	Errors     int `json:"errors"`
+	Skipped    int `json:"skipped"`
+	Exceptions int `json:"exceptions"`
+	NA         int `json:"na"`
 }
 
 func (c *Counts) add(s Status) {
@@ -29,6 +30,8 @@ func (c *Counts) add(s Status) {
 		c.Errors++
 	case Skipped:
 		c.Skipped++
+	case Exception:
+		c.Exceptions++
 	default:
 		c.NA++
 	}
@@ -45,8 +48,8 @@ type CategoryScore struct {
 //
 // Valor = Σ peso(superados) / Σ peso(superados + fallidos) × 100, con pesos
 // crítico 10, alto 5, medio 3, bajo 1. Los errores, los no evaluados por
-// falta de privilegios y los "no aplica" no cuentan; si hay errores o no
-// evaluados la puntuación se marca como parcial.
+// falta de privilegios, las excepciones vigentes y los "no aplica" no
+// cuentan; si hay errores o no evaluados la puntuación se marca como parcial.
 type Score struct {
 	Value      int               `json:"value"`
 	Grade      string            `json:"grade"`

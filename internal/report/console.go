@@ -72,6 +72,21 @@ func Console(w io.Writer, rep *engine.Report, o ConsoleOptions) {
 			who, plural(sc.Skipped, "control", "controles"), map[bool]string{true: "ha", false: "han"}[sc.Skipped == 1])))
 		fmt.Fprintf(w, "    %s\n", s.Dim(AdminHint(host.Family)))
 	}
+	var expired []string
+	for _, r := range rep.Results {
+		if r.Exception != nil && r.Exception.Expired {
+			expired = append(expired, r.Rule.ID)
+		}
+	}
+	if len(expired) > 0 {
+		fmt.Fprintln(w)
+		msg := fmt.Sprintf("1 excepción ha caducado: %s vuelve a contar como fallido.", expired[0])
+		if len(expired) > 1 {
+			msg = fmt.Sprintf("%d excepciones han caducado: %s vuelven a contar como fallidos.", len(expired), strings.Join(expired, ", "))
+		}
+		fmt.Fprintf(w, "  %s %s\n", s.Yellow(Sym("⚠")), s.Yellow(msg))
+		fmt.Fprintf(w, "    %s\n", s.Dim("Corrige el control o renueva la excepción: bastion exceptions add <ID> --reason … --expires …"))
+	}
 
 	// Puntuación
 	fmt.Fprintln(w)
@@ -96,6 +111,9 @@ func Console(w io.Writer, rep *engine.Report, o ConsoleOptions) {
 	}
 	if sc.Skipped > 0 {
 		counts = append(counts, s.Yellow(fmt.Sprintf(Sym("⊘")+" %d sin evaluar", sc.Skipped)))
+	}
+	if sc.Exceptions > 0 {
+		counts = append(counts, s.Blue(Sym("◇")+" "+plural(sc.Exceptions, "excepción", "excepciones")))
 	}
 	counts = append(counts, s.Dim(fmt.Sprintf(Sym("○")+" %d no aplican", sc.NA)))
 	fmt.Fprintf(w, "           %s\n", strings.Join(counts, "   "))
@@ -142,6 +160,7 @@ func Console(w io.Writer, rep *engine.Report, o ConsoleOptions) {
 	if o.ShowAll {
 		groups = append(groups,
 			group{engine.Skipped, "SIN EVALUAR · REQUIEREN PRIVILEGIOS", s.Yellow, Sym("⊘")},
+			group{engine.Exception, "EXCEPCIONES", s.Blue, Sym("◇")},
 			group{engine.Pass, "SUPERADOS", s.Green, Sym("✓")},
 			group{engine.NA, "NO APLICAN", s.Dim, Sym("○")})
 	}
@@ -165,14 +184,30 @@ func Console(w io.Writer, rep *engine.Report, o ConsoleOptions) {
 			if detail != "" && g.status != engine.Pass && g.status != engine.Skipped {
 				fmt.Fprintf(w, "  %s %s\n", strings.Repeat(" ", 24), s.Dim(detail))
 			}
+			if x := r.Exception; x != nil {
+				if x.Expired {
+					fmt.Fprintf(w, "  %s %s\n", strings.Repeat(" ", 24), s.Yellow("excepción caducada el "+x.Expires+": "+truncate(x.Reason, 60)))
+				} else {
+					fmt.Fprintf(w, "  %s %s\n", strings.Repeat(" ", 24), s.Dim(fmt.Sprintf("excepción hasta el %s · %s · %s", x.Expires, x.Owner, truncate(x.Reason, 60))))
+				}
+			}
 		}
 	}
 	// Sin --all, los no evaluados se resumen en una línea: el motivo es el
 	// mismo para todos y ya se ha avisado arriba.
-	if sc.Skipped > 0 && !o.ShowAll {
+	if !o.ShowAll && (sc.Skipped > 0 || sc.Exceptions > 0) {
 		fmt.Fprintln(w)
-		fmt.Fprintf(w, "  %s %s %s\n", s.Yellow(Sym("⊘")), fmt.Sprintf("%s sin evaluar por falta de privilegios.", plural(sc.Skipped, "control", "controles")),
-			s.Dim("Lista: bastion scan --all"))
+		if sc.Skipped > 0 {
+			fmt.Fprintf(w, "  %s %s %s\n", s.Yellow(Sym("⊘")), fmt.Sprintf("%s sin evaluar por falta de privilegios.", plural(sc.Skipped, "control", "controles")),
+				s.Dim("Lista: bastion scan --all"))
+		}
+		if sc.Exceptions > 0 {
+			msg := "1 control fallido aceptado por excepción."
+			if sc.Exceptions > 1 {
+				msg = fmt.Sprintf("%d controles fallidos aceptados por excepción.", sc.Exceptions)
+			}
+			fmt.Fprintf(w, "  %s %s %s\n", s.Blue(Sym("◇")), msg, s.Dim("Lista: bastion exceptions list"))
+		}
 	}
 	fmt.Fprintln(w)
 }

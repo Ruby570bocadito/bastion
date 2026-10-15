@@ -73,7 +73,7 @@ Primeros pasos:
 	root.SetVersionTemplate(version.String() + "\n")
 	root.PersistentFlags().BoolVar(&gf.noColor, "no-color", false, "desactivar colores")
 	root.PersistentFlags().StringSliceVar(&gf.rulesDir, "rules-dir", nil, "directorios adicionales de reglas (*.yaml)")
-	root.AddCommand(newScanCmd(), newHardenCmd(), newRollbackCmd(), newHistoryCmd(), newDeadmanCmd(), newInfoCmd(), newRulesCmd(), newProfilesCmd(), newUpdateCmd(), newInitCmd(), newVersionCmd())
+	root.AddCommand(newScanCmd(), newHardenCmd(), newRollbackCmd(), newHistoryCmd(), newDeadmanCmd(), newExceptionsCmd(), newInfoCmd(), newRulesCmd(), newProfilesCmd(), newUpdateCmd(), newInitCmd(), newVersionCmd())
 	root.CompletionOptions.HiddenDefaultCmd = true
 	return root
 }
@@ -100,6 +100,22 @@ func reportsDir(cfg config.Config) (dir string, user bool) {
 		return d, true
 	}
 	return cfg.Reports.Dir, false
+}
+
+// ensureDataDirs prepara las carpetas de Bastion con sus permisos
+// restringidos si todavía no existen (nadie ejecutó "bastion init"). Así
+// ningún comando con privilegios las crea con los permisos heredados de
+// %ProgramData%, donde cualquier usuario puede crear ficheros.
+func ensureDataDirs() error {
+	for _, d := range []string{config.ConfigDir(), config.DataDir()} {
+		if _, err := os.Stat(d); errors.Is(err, fs.ErrNotExist) {
+			if _, err := config.Init(); err != nil {
+				return fmt.Errorf("no se pudieron preparar las carpetas de Bastion: %w", err)
+			}
+			return nil
+		}
+	}
+	return nil
 }
 
 // loadCatalog carga el paquete oficial y las reglas adicionales.

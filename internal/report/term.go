@@ -57,7 +57,7 @@ func pad(s string, n int) string {
 var legacyConsole = runtime.GOOS == "windows" && os.Getenv("WT_SESSION") == "" && os.Getenv("TERM_PROGRAM") == ""
 
 var fallbackSymbols = map[string]string{
-	"✓": "√", "✗": "×", "▲": "■", "⚠": "!", "○": "o", "→": "->", "↑": "^", "⊘": "-",
+	"✓": "√", "✗": "×", "▲": "■", "⚠": "!", "○": "o", "→": "->", "↑": "^", "⊘": "-", "◇": "*",
 }
 
 // Sym devuelve el símbolo o su alternativa para la consola clásica de Windows.

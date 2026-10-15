@@ -5,7 +5,9 @@ import (
 	"io/fs"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Ruby570bocadito/bastion/internal/exceptions"
 	"github.com/Ruby570bocadito/bastion/internal/probes"
 	"github.com/Ruby570bocadito/bastion/pkg/rule"
 )
@@ -247,5 +249,53 @@ func TestRequires(t *testing.T) {
 	e.HostTags = append(e.HostTags, "windows-joined")
 	if res := e.Run(context.Background(), []*rule.Rule{r}, nil); res[0].Status != Pass {
 		t.Errorf("equipo unido: %s", res[0].Status)
+	}
+}
+
+func TestApplyExceptions(t *testing.T) {
+	r1 := &rule.Rule{ID: "WIN-SYS-003", Severity: rule.SevHigh, Category: "A"}
+	r2 := &rule.Rule{ID: "WIN-NET-006", Severity: rule.SevHigh, Category: "A"}
+	r3 := &rule.Rule{ID: "LNX-FW-001", Severity: rule.SevHigh, Category: "A"}
+	r4 := &rule.Rule{ID: "WIN-SYS-004", Severity: rule.SevHigh, Category: "A"}
+	results := []Result{
+		{Rule: r1, Eval: Eval{Status: Fail}},
+		{Rule: r2, Eval: Eval{Status: Fail}},
+		{Rule: r3, Eval: Eval{Status: Fail}},
+		{Rule: r4, Eval: Eval{Status: Pass}},
+	}
+	reason := "riesgo aceptado por el comité de seguridad"
+	f := &exceptions.File{Exceptions: []exceptions.Entry{
+		{Rule: "WIN-SYS-003", Reason: reason, Created: "2026-10-01", Expires: "2027-01-31"},
+		{Rule: "LNX-FW-001", Reason: reason, Created: "2026-01-01", Expires: "2026-06-30"},
+		{Rule: "WIN-SYS-004", Reason: reason, Created: "2026-10-01", Expires: "2027-01-31"},
+	}}
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.Local)
+	expired := ApplyExceptions(results, f, "PC-01", now)
+	byID := map[string]Result{}
+	for _, r := range results {
+		byID[r.Rule.ID] = r
+	}
+	if r := byID["WIN-SYS-003"]; r.Status != Exception || r.Exception == nil || r.Exception.Expired {
+		t.Errorf("vigente → %s %+v", r.Status, r.Exception)
+	}
+	if r := byID["LNX-FW-001"]; r.Status != Fail || r.Exception == nil || !r.Exception.Expired {
+		t.Errorf("caducada → %s %+v", r.Status, r.Exception)
+	}
+	if len(expired) != 1 || expired[0].Rule.ID != "LNX-FW-001" {
+		t.Errorf("caducadas devueltas: %v", expired)
+	}
+	if r := byID["WIN-SYS-004"]; r.Status != Pass || r.Exception != nil {
+		t.Errorf("un control que pasa no cambia: %s %+v", r.Status, r.Exception)
+	}
+	if r := byID["WIN-NET-006"]; r.Status != Fail {
+		t.Errorf("sin excepción → %s", r.Status)
+	}
+	// Orden: fallidos primero, luego la excepción, luego los superados.
+	if results[0].Status != Fail || results[2].Status != Exception || results[3].Status != Pass {
+		t.Errorf("orden tras aplicar: %s %s %s %s", results[0].Status, results[1].Status, results[2].Status, results[3].Status)
+	}
+	s := ComputeScore(results)
+	if s.Exceptions != 1 || s.Failed != 2 || s.Value != 33 { // 5 / (5+5+5)
+		t.Errorf("puntuación con excepciones: %+v", s)
 	}
 }

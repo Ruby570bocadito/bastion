@@ -16,6 +16,7 @@
 | `bastion harden [--apply] [--wave N]` | Corregir controles fallidos (simulación salvo `--apply`). Ver [05](05-remediacion-segura.md) |
 | `bastion rollback [ID] [--yes]` | Deshacer un cambio de hardening (por defecto, el último) |
 | `bastion history` | Cambios de hardening aplicados |
+| `bastion exceptions [list\|add\|remove]` | Aceptar controles fallidos con motivo, responsable y caducidad (ver abajo) |
 | `bastion update [--check] [--force]` | Actualizar Bastion y sus reglas (verificado con SHA-256) |
 | `bastion init` | Crear directorios y configuración (lo hace el instalador) |
 | `bastion version [--short]` | Versión |
@@ -79,6 +80,41 @@ sudo bastion rollback                # si algo no te convence, se deshace todo
 
 Cada control se aplica con instantánea previa, se verifica y, si no se cumple o falla, se revierte solo. Olas, acceso remoto, GPO e instantáneas se explican en [05-remediacion-segura.md](05-remediacion-segura.md).
 
+## Aceptar un riesgo: `bastion exceptions`
+
+Cuando un control falla y hay un buen motivo para no corregirlo (un control compensatorio, hardware antiguo, un proveedor que lo exige), regístralo como excepción en lugar de ignorarlo:
+
+```bash
+sudo bastion exceptions add WIN-SYS-003 --reason "Equipo sin UEFI; se sustituye en enero" --expires 2027-01-31
+sudo bastion exceptions add LNX-FW-001 --reason "Filtrado en el cortafuegos perimetral FW-02" --expires 90d
+sudo bastion exceptions add WIN-RDP-001 --reason "Cliente RDP heredado del proveedor" --expires 6m --host SRV-ERP01
+bastion exceptions list           # vigencia de cada una (en amarillo si caduca en menos de 30 días)
+sudo bastion exceptions remove LNX-FW-001
+```
+
+| Opción | Descripción |
+|---|---|
+| `-r, --reason` | Motivo (obligatorio, una línea de al menos 10 caracteres) |
+| `-e, --expires` | Caducidad obligatoria: fecha `AAAA-MM-DD` o plazo `90d`, `12w`, `6m`, `1y`. Como mucho un año |
+| `--owner` | Responsable (por defecto, el usuario actual) |
+| `--host` | Limitar a estos equipos (repetible) |
+
+`add` sobre una regla que ya tiene excepción la **renueva**. El control con excepción vigente sale como ◇ **excepción**: no cuenta en la puntuación y `harden` no lo modifica. Al caducar vuelve a fallar y Bastion lo avisa en cada escaneo.
+
+Se guardan en `exceptions.yaml`, junto a `config.yaml` (`/etc/bastion` o `%ProgramData%\Bastion`):
+
+```yaml
+schema: bastion.exceptions/v1
+exceptions:
+  - rule: LNX-FW-001
+    reason: Filtrado en el cortafuegos perimetral FW-02
+    owner: seguridad
+    created: "2026-10-15"
+    expires: "2027-01-13"
+```
+
+Si editas el fichero a mano, Bastion ignora las excepciones inválidas (sin motivo, sin caducidad o con más de un año de vigencia) y lo avisa.
+
 ## Interpretar los resultados
 
 | Estado | Significado | ¿Cuenta en la puntuación? |
@@ -86,6 +122,7 @@ Cada control se aplica con instantánea previa, se verifica y, si no se cumple o
 | ✓ **Superado** | El valor real cumple lo esperado | Sí |
 | ✗ **Fallido** | El valor real no cumple (o no está configurado y el valor por defecto del sistema no cumple) | Sí |
 | ! **Error** | No se pudo leer por un problema inesperado (comando que falla, formato desconocido…) | No; la puntuación se marca como **parcial** |
+| ◇ **Excepción** | Falla, pero hay una excepción vigente que lo acepta | No; se muestra aparte y con su caducidad |
 | ⊘ **Sin evaluar** | El dato solo se puede leer como administrador o root y el escaneo se ejecutó sin privilegios. En consola se resumen en una línea; `--all` los lista | No; la puntuación se marca como **parcial** |
 | – **No aplica** | El elemento no existe en este equipo (sin OpenSSH, sin systemd, Defender sustituido por otro antivirus…) | No |
 
@@ -102,7 +139,7 @@ Cuando el informe dice `actual 1 (por defecto)`, el valor no estaba configurado 
   "profile": { "id": "linux-server-l1", "name": "Linux Servidor · Nivel 1" },
   "started_at": "2026-10-15T14:35:00Z", "finished_at": "…", "duration_ms": 39,
   "score": { "value": 65, "grade": "D", "partial": false, "total": 57, "passed": 22, "failed": 15,
-             "errors": 0, "skipped": 0, "na": 20, "by_severity": { "high": { "failed": 2 } }, "by_category": [ … ] },
+             "errors": 0, "skipped": 0, "exceptions": 0, "na": 20, "by_severity": { "high": { "failed": 2 } }, "by_category": [ … ] },
   "results": [
     { "rule": { "id": "LNX-FW-001", "title": "…", "severity": "high", "category": "Firewall",
                 "references": { … }, "remediation": { … } },

@@ -287,6 +287,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
     fail: { label: "Fallido", icon: "✕", color: "var(--critical)" },
     error: { label: "Error", icon: "!", color: "var(--warning)" },
     skipped: { label: "Sin evaluar", icon: "⊘", color: "var(--muted)" },
+    exception: { label: "Excepción", icon: "◇", color: "var(--info)" },
     pass: { label: "Superado", icon: "✓", color: "var(--good)" },
     na: { label: "No aplica", icon: "–", color: "var(--info)" }
   };
@@ -362,6 +363,14 @@ footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
         " y no cuentan en la puntuación. Repite el escaneo como " + (h.family === "windows" ? "administrador." : "root (sudo).") })
     ]));
   }
+  var expiredEx = results.filter(function (r) { return r.exception && r.exception.expired; });
+  if (expiredEx.length) {
+    hostSec.appendChild(el("div", { class: "warn-banner", role: "note" }, [
+      el("span", { class: "ico", text: "⚠" }),
+      el("span", { text: (expiredEx.length === 1 ? "1 excepción ha caducado" : expiredEx.length + " excepciones han caducado") + " y el control vuelve a contar como fallido: " +
+        expiredEx.map(function (r) { return r.rule.id; }).join(", ") + ". Corrígelo o renueva la excepción (bastion exceptions add)." })
+    ]));
+  }
   app.appendChild(hostSec);
 
   // ---- Héroe y KPIs ----
@@ -376,15 +385,19 @@ footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
       ]),
       el("div", { class: "meter", role: "img", "aria-label": "Puntuación " + sc.value + " de 100" }, [el("i", { style: "width:" + sc.value + "%;background:" + color })]),
       el("p", { text: "Postura " + scoreWord(sc.value).toLowerCase() + " según el perfil " + (data.profile ? data.profile.id : "") +
-        ". Puntuación ponderada por severidad (crítico 10, alto 5, medio 3, bajo 1)." + (sc.partial ? " Es parcial: hay controles " + (sc.skipped ? "sin evaluar." : "con error.") : "") })
+        ". Puntuación ponderada por severidad (crítico 10, alto 5, medio 3, bajo 1)." + (sc.partial ? " Es parcial: hay controles " + (sc.skipped ? "sin evaluar." : "con error.") : "") +
+        (sc.exceptions ? " " + (sc.exceptions === 1 ? "1 control fallido está aceptado" : sc.exceptions + " controles fallidos están aceptados") + " por excepción y no cuenta" + (sc.exceptions === 1 ? "." : "n.") : "") })
     ])
   ]);
   var kpis = el("div", { class: "kpis" });
   var unk = (sc.errors || 0) + (sc.skipped || 0);
   var unkSub = sc.skipped && sc.errors ? sc.skipped + " sin privilegios · " + sc.errors + " con error" :
     sc.skipped ? "requieren privilegios" : "no se pudieron leer";
+  // Tercera tarjeta: lo que no se pudo evaluar o, si todo se evaluó, las excepciones.
+  var third = !unk && sc.exceptions ? ["exception", sc.exceptions, "Excepciones", "riesgo aceptado con caducidad"] :
+    [sc.skipped ? "skipped" : "error", unk, "Sin evaluar", unkSub];
   [["fail", sc.failed, "Fallidos", "requieren acción"], ["pass", sc.passed, "Superados", "conformes"],
-   [sc.skipped ? "skipped" : "error", unk, "Sin evaluar", unkSub], ["na", sc.na, "No aplican", "fuera del alcance de este equipo"]]
+   third, ["na", sc.na, "No aplican", "fuera del alcance de este equipo"]]
     .forEach(function (k) {
       var st = STATUS[k[0]];
       kpis.appendChild(el("div", { class: "card kpi" }, [
@@ -461,13 +474,13 @@ footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
   app.appendChild(el("section", { class: "two" }, [catCard, attCard]));
 
   // ---- Controles ----
-  var counts = { all: results.length, fail: 0, error: 0, skipped: 0, pass: 0, na: 0 };
+  var counts = { all: results.length, fail: 0, error: 0, skipped: 0, exception: 0, pass: 0, na: 0 };
   results.forEach(function (r) { counts[r.status]++; });
   var state = { status: counts.fail ? "fail" : "all", sev: "", cat: "", q: "" };
 
   var chips = el("div", { class: "chips", role: "group", "aria-label": "Filtrar por estado" });
-  [["all", "Todos"], ["fail", "Fallidos"], ["error", "Errores"], ["skipped", "Sin evaluar"], ["pass", "Superados"], ["na", "No aplican"]].forEach(function (c) {
-    if ((c[0] === "error" || c[0] === "skipped") && !counts[c[0]]) return;
+  [["all", "Todos"], ["fail", "Fallidos"], ["error", "Errores"], ["skipped", "Sin evaluar"], ["exception", "Excepciones"], ["pass", "Superados"], ["na", "No aplican"]].forEach(function (c) {
+    if ((c[0] === "error" || c[0] === "skipped" || c[0] === "exception") && !counts[c[0]]) return;
     var b = el("button", { class: "chip", type: "button", "data-s": c[0], "aria-pressed": String(state.status === c[0]) },
       [c[1], el("span", { class: "c", text: String(counts[c[0]]) })]);
     b.addEventListener("click", function () { state.status = c[0]; render(); });
@@ -532,6 +545,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
     var d = el("details", { class: "res" });
     var sub = r.status === "pass" ? (l.actual ? "Actual: " + l.actual : "") :
       r.status === "fail" ? [l.label, l.actual ? "actual " + l.actual : "", l.expected ? "esperado " + l.expected : ""].filter(Boolean).join(" · ") :
+      r.status === "exception" ? "Excepción hasta el " + r.exception.expires + " · " + r.exception.reason :
       (l.message || "");
     d.appendChild(el("summary", null, [
       statusBadge(r.status),
@@ -546,7 +560,18 @@ footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
       el("h3", { text: "Evidencia" }), evidence(r)
     ]);
     var rem = rule.remediation || {};
-    var right = el("div", null, [el("h3", { text: "Remediación" }), el("p", { text: rem.summary })]);
+    var right = el("div");
+    if (r.exception) {
+      var x = r.exception;
+      right.appendChild(el("h3", { text: x.expired ? "Excepción caducada" : "Excepción" }));
+      right.appendChild(el("div", { class: "impact" }, [
+        el("div", { text: x.reason }),
+        el("div", { style: "margin-top:6px;color:var(--muted);font-size:13px", text: [x.owner ? "Responsable: " + x.owner : "", "Creada el " + x.created,
+          (x.expired ? "caducó el " : "vigente hasta el ") + x.expires, x.hosts && x.hosts.length ? "Equipos: " + x.hosts.join(", ") : ""].filter(Boolean).join(" · ") })
+      ]));
+    }
+    right.appendChild(el("h3", { text: "Remediación" }));
+    right.appendChild(el("p", { text: rem.summary }));
     if (rem.actions && rem.actions.length && r.status === "fail") {
       var wave = { medium: 2, high: 3 }[rem.breaking_risk] || 1;
       var cmdline = "bastion harden --rule " + rule.id + " --apply" + (wave > 1 ? " --wave " + wave : "") + (rem.safety === "remote-access" ? " --include-remote" : "");

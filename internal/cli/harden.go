@@ -104,7 +104,7 @@ func runHarden(f hardenFlags) error {
 	defer stop()
 	eng := engine.New()
 	eng.HostTags = info.Tags
-	before := eng.Run(ctx, rules, nil)
+	before := evaluate(ctx, eng, rules, info, nil)
 	items := remediate.BuildPlan(ctx, before, remediate.Options{
 		Wave: f.wave, IncludeRemote: f.includeRemote, ForceLocal: f.forceLocal, DomainJoined: info.DomainJoined,
 	})
@@ -146,6 +146,9 @@ func runHarden(f hardenFlags) error {
 		return &ExitError{Code: 1, Msg: "cancelado: no se ha cambiado nada"}
 	}
 
+	if err := ensureDataDirs(); err != nil {
+		return err
+	}
 	store := snapshotStore()
 	unlock, err := store.Lock()
 	if err != nil {
@@ -173,7 +176,7 @@ func runHarden(f hardenFlags) error {
 		return err
 	}
 
-	after := engine.ComputeScore(eng.Run(ctx, rules, nil))
+	after := engine.ComputeScore(evaluate(ctx, eng, rules, info, nil))
 	printHardenSummary(s, m, items, engine.ComputeScore(before), after)
 	if m.Status == remediate.StatusFailed {
 		return &ExitError{Code: 1}
@@ -215,6 +218,9 @@ func printPlan(s report.Style, info platform.Info, prof *rule.Profile, f hardenF
 	fmt.Printf("  %s %s %s\n", s.Dim(fmt.Sprintf("%-9s", "Perfil")), prof.Name, s.Dim("("+prof.ID+")"))
 	fmt.Printf("  %s %d · %s\n", s.Dim(fmt.Sprintf("%-9s", "Ola")), f.wave, waveNames[f.wave])
 	fmt.Printf("  %s %d/100 %s · %d controles fallidos\n", s.Dim(fmt.Sprintf("%-9s", "Postura")), sc.Value, sc.Grade, sc.Failed)
+	if sc.Exceptions > 0 {
+		fmt.Printf("  %s %s\n", s.Dim(fmt.Sprintf("%-9s", "")), s.Dim(fmt.Sprintf("%d con excepción vigente: no se modifican (bastion exceptions list)", sc.Exceptions)))
+	}
 
 	groups := []struct {
 		status remediate.ItemStatus

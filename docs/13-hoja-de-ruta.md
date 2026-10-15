@@ -29,7 +29,9 @@
 - [ ] Ampliar el catálogo: unas 350 reglas Windows y 300 Linux ([catálogo objetivo](06-catalogo-de-controles.md#2-catálogo-objetivo-)).
 - [ ] Mapeo verificado a CIS, STIG y ENS por versión de benchmark ([14](14-marcos-y-licencias.md)).
 - [ ] Probes nuevos: `userrights` (SIDs legibles), `rsop`/`gpo` (quién gestiona cada valor), `listening` (puertos), `auditd_rules`, `pam`.
-- [ ] Estados `exception` y `manual`.
+- [x] Estado `skipped`: controles sin evaluar por falta de privilegios, fuera de la puntuación.
+- [x] Excepciones con motivo, responsable y caducidad (`bastion exceptions`, estado `exception`).
+- [ ] Estado `manual` (controles que requieren revisión humana).
 - [ ] `bastion surface` (superficie de ataque).
 - [ ] Firma de releases (cosign) y Authenticode.
 - [ ] Prueba de los instaladores de punta a punta en CI (espejo local).

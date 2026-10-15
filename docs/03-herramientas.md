@@ -28,7 +28,7 @@ Bastion es una **suite de 16 herramientas sobre el mismo motor y el mismo agente
 | `studio` | Endurecer | 🔜 | 2 |
 | `observe` | Endurecer | 🔜 | 3 |
 | `guard` | Defender | 🔜 | 3 |
-| excepciones | Gobernar | 🔜 | 3 |
+| `exceptions` | Gobernar | ✅ locales con motivo, responsable y caducidad · 🔜 flujo de aprobación en la consola | 1 / 3 |
 | API e integraciones | Gobernar | 🔜 | 3 |
 | `telemetry` | Defender | 🔜 | 4 |
 | `hunt` | Defender | 🔜 | 4 |
@@ -47,7 +47,7 @@ Bastion es una **suite de 16 herramientas sobre el mismo motor y el mismo agente
 - **Detección automática** de edición, build, rol (estación, servidor miembro, DC), unión a dominio y distro, para elegir solo las reglas aplicables.
 - **Valor efectivo**: `sshd -T`, sysctl en ejecución, firewall en *ActiveStore*, `auditpol /backup`.
 - **Evidencia por control**: valor actual, valor esperado, origen del dato y subcomprobaciones.
-- **Estados**: `pass` · `fail` · `error` · `skipped` (requiere privilegios) · `na` (🔜 `exception`, `manual`).
+- **Estados**: `pass` · `fail` · `error` · `skipped` (requiere privilegios) · `exception` (riesgo aceptado) · `na` (🔜 `manual`).
 - **Rápido**: probes en paralelo con caché por escaneo (57 controles en unos 40 ms en Linux).
 - **Portable**: un único binario sin instalación; ideal en un USB para consultores.
 - 🔜 Detectar **quién gestiona el valor** (GPO de dominio, Intune/MDM o local).
@@ -188,9 +188,21 @@ Recoge evidencias antes de aislar, tiene caducidad (TTL) con reversión automát
 - 🔜 Informes ejecutivo, técnico, por marco (CIS, STIG, NIST, ISO 27001, ENS, PCI-DSS 4.0, NIS2), diferencial (antes/después) y paquete de auditoría firmado.
 - 🔜 Formatos PDF, CSV, XCCDF/ARF y OSCAL; marca blanca y envío programado.
 
-## Excepciones y riesgo aceptado 🔜
+## `bastion exceptions`: riesgo aceptado ✅ / 🔜
 
-Flujo: solicitud → aprobación → **caducidad** → reevaluación, con controles compensatorios y responsable del riesgo.
+**Qué resuelve:** responde a "este control falla, lo sabemos y lo hemos aceptado" sin esconder el fallo para siempre.
+
+```bash
+sudo bastion exceptions add LNX-FW-001 --reason "Filtrado en el cortafuegos perimetral FW-02" --expires 90d
+bastion exceptions list
+sudo bastion exceptions remove LNX-FW-001
+```
+
+- ✅ Cada excepción lleva **motivo** (obligatorio), **responsable** y **caducidad** obligatoria de como mucho un año. Puede limitarse a equipos concretos (`--host`), útil si se distribuye el mismo fichero a varios.
+- ✅ Un control fallido con excepción vigente aparece como **excepción**: no cuenta en la puntuación y `harden` no lo toca. Un control que pasa no cambia.
+- ✅ Al **caducar**, el control vuelve a contar como fallido y cada escaneo lo avisa (consola e informe).
+- ✅ Se guardan en `exceptions.yaml` (`bastion.exceptions/v1`) junto a `config.yaml`: solo un administrador puede modificarlas.
+- 🔜 Flujo completo en la consola de flota: solicitud → aprobación a cuatro ojos → caducidad → reevaluación, con controles compensatorios.
 
 ## `bastion rules`: SDK de reglas ✅ / 🔜
 

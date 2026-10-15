@@ -27,6 +27,7 @@ calcula una puntuación de postura, la mapea a MITRE ATT&CK y te dice qué corre
 | 🛡️ **Hardening seguro** | `bastion harden` corrige 100 controles con simulación, instantánea previa, verificación y **rollback automático**; olas por riesgo de rotura y dead-man switch para SSH/RDP. |
 | 🎯 **Perfiles por rol** | Estación de trabajo, servidor miembro, controlador de dominio y servidor Linux, con niveles L1/L2. Bastion detecta el rol y elige el perfil. |
 | 📊 **Puntuación de postura** | Puntuación ponderada por severidad (0-100, A-F), por categoría y por severidad. |
+| 📝 **Excepciones con caducidad** | Acepta un control fallido con motivo, responsable y fecha de caducidad (máximo un año): sale aparte, no cuenta y vuelve a fallar al caducar. |
 | 🧭 **MITRE ATT&CK** | Cada control enlaza técnicas y mitigaciones. El informe muestra qué técnicas quedan expuestas. |
 | 🧾 **Evidencias** | Para cada control: valor real, valor esperado y de dónde sale el dato (clave de registro, `sshd -T`, `secedit`...). |
 | 🛠️ **Remediación guiada** | Para lo que no es automático: resumen, ruta de GPO, comandos listos para copiar, riesgo de rotura e impacto. |
@@ -65,6 +66,7 @@ bastion rules show WIN-NET-001      # detalle y remediación de un control
 bastion harden                      # simulación: qué cambiaría (no toca nada)
 bastion harden --apply              # corregir la ola 1 (riesgo nulo o bajo)
 bastion rollback                    # deshacer el último cambio
+bastion exceptions add LNX-FW-001 --reason "Filtrado en el perímetro" --expires 90d
 bastion update                      # actualizar Bastion y sus reglas
 ```
 

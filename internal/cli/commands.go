@@ -148,6 +148,14 @@ func newRulesCmd() *cobra.Command {
 				return fmt.Errorf("no existe la regla %s", args[0])
 			}
 			printRule(r)
+			if e, expired := loadExceptions().Find(r.ID, platform.Detect().Hostname, time.Now()); e != nil {
+				s := stdoutStyle()
+				state := s.Blue(fmt.Sprintf("vigente hasta el %s", e.Expires))
+				if expired {
+					state = s.Yellow("caducada el " + e.Expires)
+				}
+				fmt.Printf("  %s %s · %s · %s\n\n", s.Bold("EXCEPCIÓN"), state, e.Owner, e.Reason)
+			}
 			return nil
 		},
 	}
