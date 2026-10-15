@@ -1,0 +1,351 @@
+// Package surface analiza la superficie de ataque del equipo: qué servicios
+// escuchan en la red (con su proceso), qué recursos se comparten y quién es
+// administrador. Responde a "¿qué puede tocar un atacante desde la red?".
+//
+// Como los probes, es de SOLO LECTURA y solo ejecuta comandos fijos.
+package surface
+
+import (
+	"fmt"
+	"net"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Ruby570bocadito/bastion/internal/platform"
+	"github.com/Ruby570bocadito/bastion/pkg/rule"
+)
+
+// Schema es la versión del formato JSON del análisis.
+const Schema = "bastion.surface/v1"
+
+// Alcance de un servicio a la escucha.
+const (
+	ScopeNetwork  = "network"  // todas las interfaces o una IP de red
+	ScopeLoopback = "loopback" // solo el propio equipo
+)
+
+// Listener es un socket a la escucha.
+type Listener struct {
+	Proto    string   `json:"proto"` // tcp | udp
+	Address  string   `json:"address"`
+	Port     int      `json:"port"`
+	Scope    string   `json:"scope"`
+	PID      int      `json:"pid,omitempty"`
+	Process  string   `json:"process,omitempty"`
+	Services []string `json:"services,omitempty"` // servicios de Windows en ese proceso
+	// Known es el servicio conocido en ese puerto (vacío si no está catalogado).
+	Known string `json:"known,omitempty"`
+}
+
+// ShareAccess es un permiso de un recurso compartido.
+type ShareAccess struct {
+	Account string `json:"account"`
+	SID     string `json:"sid,omitempty"`
+	Right   string `json:"right"` // Full | Change | Read
+	Deny    bool   `json:"deny,omitempty"`
+}
+
+// Share es un recurso compartido (SMB en Windows; NFS o Samba en Linux).
+type Share struct {
+	Kind   string        `json:"kind"` // smb | nfs | samba
+	Name   string        `json:"name"`
+	Path   string        `json:"path,omitempty"`
+	Access []ShareAccess `json:"access,omitempty"`
+	// Options resume opciones relevantes (no_root_squash, guest ok…).
+	Options []string `json:"options,omitempty"`
+}
+
+// Account es un miembro con privilegios de administración.
+type Account struct {
+	Name   string `json:"name"`
+	Kind   string `json:"kind,omitempty"`   // usuario, grupo…
+	Source string `json:"source,omitempty"` // local, dominio, uid 0, grupo sudo…
+}
+
+// Inventory es lo que recogen los colectores de cada sistema.
+type Inventory struct {
+	Listeners []Listener `json:"listeners"`
+	Shares    []Share    `json:"shares"`
+	Admins    []Account  `json:"admins"`
+	// Notes explica límites de la recogida (p. ej. sin root no se ven los
+	// procesos de otros usuarios).
+	Notes []string `json:"notes,omitempty"`
+}
+
+// Finding es un hallazgo de exposición.
+type Finding struct {
+	ID       string        `json:"id"`
+	Severity rule.Severity `json:"severity"`
+	Title    string        `json:"title"`
+	Detail   string        `json:"detail"`
+	Fix      string        `json:"fix"`
+	Subject  string        `json:"subject"` // 445/tcp, \\SHARE, /etc/exports…
+}
+
+// Report es el resultado completo de "bastion surface".
+type Report struct {
+	Schema     string        `json:"schema"`
+	Host       platform.Info `json:"host"`
+	Version    string        `json:"version"`
+	FinishedAt time.Time     `json:"finished_at"`
+	Score      int           `json:"score"`
+	Grade      string        `json:"grade"`
+	Exposed    int           `json:"exposed"` // puertos a la escucha en la red
+	Inventory
+	Findings []Finding `json:"findings"`
+}
+
+// Penalización por hallazgo en la puntuación de exposición.
+var penalty = map[rule.Severity]int{rule.SevCritical: 30, rule.SevHigh: 15, rule.SevMedium: 7, rule.SevLow: 3}
+
+// knownPort describe un servicio conocido y su riesgo si se expone.
+type knownPort struct {
+	service string
+	proto   string // tcp | udp | "" (ambos)
+	sev     rule.Severity
+	why     string
+	fix     string
+}
+
+// ports es el catálogo de servicios cuyo riesgo depende de estar expuestos.
+// La severidad es la de tenerlos accesibles desde la red.
+var ports = map[int]knownPort{
+	21:    {"FTP", "tcp", rule.SevHigh, "FTP transmite usuarios, contraseñas y ficheros en claro.", "Sustitúyelo por SFTP/FTPS o desinstálalo si no se usa."},
+	22:    {"SSH", "tcp", rule.SevInfo, "Administración remota cifrada. Es normal en servidores; asegúrate de que el hardening de SSH pasa.", "Limítalo a la red de gestión con el firewall y usa autenticación por clave."},
+	23:    {"Telnet", "tcp", rule.SevCritical, "Telnet transmite la sesión y la contraseña en claro.", "Desinstala el servidor Telnet y usa SSH."},
+	25:    {"SMTP", "tcp", rule.SevLow, "Un servidor de correo expuesto puede usarse como relay si está mal configurado.", "Si no es un servidor de correo, desactívalo o restríngelo a localhost."},
+	53:    {"DNS", "", rule.SevLow, "Un DNS abierto a Internet puede usarse en ataques de amplificación.", "Si no es un servidor DNS, desactívalo; si lo es, desactiva la recursión para clientes externos."},
+	69:    {"TFTP", "udp", rule.SevHigh, "TFTP no tiene autenticación: cualquiera puede leer (o escribir) ficheros.", "Desinstálalo si no arrancas equipos por red."},
+	80:    {"HTTP", "tcp", rule.SevInfo, "Servicio web sin cifrar.", "Redirige a HTTPS y revisa qué aplicación responde."},
+	111:   {"rpcbind", "", rule.SevMedium, "rpcbind expone los servicios RPC del equipo y se usa en amplificación.", "Desactívalo si no usas NFS: systemctl disable --now rpcbind rpcbind.socket."},
+	135:   {"RPC (Windows)", "tcp", rule.SevMedium, "El mapeador RPC es base de mucho movimiento lateral en Windows.", "Bloquéalo en el firewall para redes que no sean de administración."},
+	137:   {"NetBIOS", "udp", rule.SevMedium, "NetBIOS permite enumerar el equipo y envenenar resoluciones de nombres.", "Deshabilita NetBIOS sobre TCP/IP en los adaptadores (control WIN-NET-007)."},
+	138:   {"NetBIOS", "udp", rule.SevMedium, "NetBIOS permite enumerar el equipo y envenenar resoluciones de nombres.", "Deshabilita NetBIOS sobre TCP/IP en los adaptadores (control WIN-NET-007)."},
+	139:   {"NetBIOS/SMB", "tcp", rule.SevMedium, "SMB sobre NetBIOS: enumeración y ataques de retransmisión.", "Deshabilita NetBIOS sobre TCP/IP en los adaptadores."},
+	161:   {"SNMP", "udp", rule.SevHigh, "SNMP v1/v2c usa comunidades en claro (a menudo \"public\") y revela mucha información.", "Desactívalo o usa SNMPv3 con autenticación y cifrado, limitado a la red de gestión."},
+	389:   {"LDAP", "", rule.SevInfo, "Directorio. Normal en controladores de dominio.", "Exige firma LDAP y channel binding (controles del perfil de DC)."},
+	445:   {"SMB", "tcp", rule.SevHigh, "SMB es vector clásico de ransomware y movimiento lateral (EternalBlue, retransmisión NTLM).", "Si no compartes recursos, bloquéalo en el firewall; si los compartes, limítalo a las redes necesarias y exige firma SMB."},
+	512:   {"rexec", "tcp", rule.SevCritical, "Servicio r* heredado sin cifrado.", "Desinstala rsh-server y usa SSH."},
+	513:   {"rlogin", "tcp", rule.SevCritical, "Servicio r* heredado sin cifrado y con confianza por host.", "Desinstala rsh-server y usa SSH."},
+	514:   {"rsh", "tcp", rule.SevCritical, "Servicio r* heredado sin cifrado y con confianza por host.", "Desinstala rsh-server y usa SSH."},
+	631:   {"IPP/CUPS", "", rule.SevMedium, "El servicio de impresión ha tenido fallos explotables remotamente (2024).", "Desactiva cups-browsed y deja CUPS solo en localhost si no compartes impresoras."},
+	873:   {"rsync", "tcp", rule.SevHigh, "Un demonio rsync expuesto suele permitir leer módulos sin autenticación.", "Desactívalo o exige autenticación y limita las IP de origen."},
+	1433:  {"SQL Server", "tcp", rule.SevMedium, "Base de datos accesible desde la red.", "Limítala a los servidores de aplicación con el firewall."},
+	1900:  {"SSDP/UPnP", "udp", rule.SevMedium, "UPnP anuncia el equipo y se usa en amplificación.", "Desactiva el servicio de detección SSDP si no se necesita."},
+	2049:  {"NFS", "", rule.SevMedium, "NFS comparte ficheros con control por IP.", "Limita los clientes en /etc/exports y no uses no_root_squash."},
+	2375:  {"Docker API (sin TLS)", "tcp", rule.SevCritical, "La API de Docker sin TLS da control total del equipo (root) a quien llegue al puerto.", "Desactiva el socket TCP de Docker o protégelo con TLS mutuo."},
+	2376:  {"Docker API (TLS)", "tcp", rule.SevMedium, "API de Docker con TLS: su compromiso equivale a root.", "Limítala a la red de gestión y verifica que exige certificado de cliente."},
+	2379:  {"etcd", "tcp", rule.SevHigh, "etcd guarda los secretos de Kubernetes.", "Exige TLS mutuo y limita el acceso a los nodos del plano de control."},
+	3306:  {"MySQL/MariaDB", "tcp", rule.SevMedium, "Base de datos accesible desde la red.", "Usa bind-address = 127.0.0.1 o limita el acceso con el firewall."},
+	3389:  {"RDP", "tcp", rule.SevHigh, "RDP expuesto es una de las vías de entrada más usadas por el ransomware.", "Limítalo a la red de gestión o a una VPN, exige NLA (WIN-RDP-001) y MFA."},
+	5353:  {"mDNS", "udp", rule.SevLow, "mDNS anuncia el equipo en la red local.", "Desactiva avahi (Linux) o mDNS si no se usa."},
+	5355:  {"LLMNR", "udp", rule.SevMedium, "LLMNR permite envenenar resoluciones y capturar hashes NTLM (Responder).", "Deshabilita LLMNR por directiva (control WIN-NET-006)."},
+	5432:  {"PostgreSQL", "tcp", rule.SevMedium, "Base de datos accesible desde la red.", "Usa listen_addresses = 'localhost' o limita el acceso en pg_hba.conf y el firewall."},
+	5900:  {"VNC", "tcp", rule.SevHigh, "VNC suele tener autenticación débil y tráfico sin cifrar.", "Ciérralo o tunelízalo por SSH/VPN."},
+	5985:  {"WinRM (HTTP)", "tcp", rule.SevMedium, "Administración remota de Windows (PowerShell Remoting).", "Limítalo a la red de gestión; prefiere WinRM sobre HTTPS (5986)."},
+	5986:  {"WinRM (HTTPS)", "tcp", rule.SevLow, "Administración remota de Windows cifrada.", "Limítalo a la red de gestión."},
+	6379:  {"Redis", "tcp", rule.SevCritical, "Redis no exige autenticación por defecto y permite escribir ficheros en el equipo.", "Usa bind 127.0.0.1, protected-mode yes y requirepass/ACL."},
+	9200:  {"Elasticsearch", "tcp", rule.SevHigh, "Elasticsearch expuesto ha causado muchas fugas de datos.", "Actívale la seguridad (usuarios y TLS) y limítalo a la red interna."},
+	10250: {"kubelet", "tcp", rule.SevHigh, "La API del kubelet permite ejecutar comandos en los contenedores si no exige autenticación.", "Verifica --anonymous-auth=false y authorization-mode=Webhook."},
+	11211: {"memcached", "", rule.SevHigh, "memcached no tiene autenticación y se usa en amplificación masiva (UDP).", "Escucha solo en 127.0.0.1 y desactiva UDP (-U 0)."},
+	27017: {"MongoDB", "tcp", rule.SevHigh, "MongoDB expuesto sin autenticación ha causado muchas fugas de datos.", "Usa bindIp 127.0.0.1 y activa la autorización."},
+}
+
+// Lookup devuelve el servicio conocido de un puerto y protocolo.
+func lookup(proto string, port int) (knownPort, bool) {
+	k, ok := ports[port]
+	if !ok || (k.proto != "" && k.proto != proto) {
+		return knownPort{}, false
+	}
+	return k, true
+}
+
+// ScopeOf clasifica una dirección de escucha.
+func ScopeOf(addr string) string {
+	a := strings.Trim(addr, "[]")
+	if i := strings.IndexByte(a, '%'); i >= 0 {
+		a = a[:i]
+	}
+	if a == "*" || a == "" {
+		return ScopeNetwork
+	}
+	ip := net.ParseIP(a)
+	if ip != nil && ip.IsLoopback() {
+		return ScopeLoopback
+	}
+	return ScopeNetwork
+}
+
+// Analyze genera los hallazgos y la puntuación a partir del inventario.
+func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *Report {
+	rep := &Report{Schema: Schema, Host: host, Version: version, FinishedAt: now.UTC(), Inventory: inv}
+	inv.Listeners = dedupe(inv.Listeners)
+	rep.Listeners = inv.Listeners
+	seen := map[string]bool{}
+	for i := range rep.Listeners {
+		l := &rep.Listeners[i]
+		k, ok := lookup(l.Proto, l.Port)
+		if ok {
+			l.Known = k.service
+		}
+		if l.Scope != ScopeNetwork {
+			continue
+		}
+		rep.Exposed++
+		if !ok || k.sev == rule.SevInfo {
+			continue
+		}
+		key := fmt.Sprintf("%d/%s", l.Port, l.Proto)
+		if seen[key] {
+			continue // mismo puerto en IPv4 e IPv6
+		}
+		seen[key] = true
+		who := l.Process
+		if who == "" {
+			who = "proceso desconocido"
+		}
+		if len(l.Services) > 0 {
+			who += " · " + strings.Join(l.Services, ", ")
+		}
+		rep.Findings = append(rep.Findings, Finding{
+			ID: "SURF-PORT-" + strconv.Itoa(l.Port), Severity: k.sev, Subject: key,
+			Title:  fmt.Sprintf("%s expuesto en la red (%s)", k.service, who),
+			Detail: k.why, Fix: k.fix,
+		})
+	}
+	rep.Findings = append(rep.Findings, shareFindings(inv.Shares)...)
+	sort.SliceStable(rep.Findings, func(i, j int) bool {
+		if rep.Findings[i].Severity.Rank() != rep.Findings[j].Severity.Rank() {
+			return rep.Findings[i].Severity.Rank() < rep.Findings[j].Severity.Rank()
+		}
+		return rep.Findings[i].Subject < rep.Findings[j].Subject
+	})
+	if rep.Findings == nil {
+		rep.Findings = []Finding{}
+	}
+	if rep.Listeners == nil {
+		rep.Listeners = []Listener{}
+	}
+	if rep.Shares == nil {
+		rep.Shares = []Share{}
+	}
+	if rep.Admins == nil {
+		rep.Admins = []Account{}
+	}
+	score := 100
+	for _, f := range rep.Findings {
+		score -= penalty[f.Severity]
+	}
+	if score < 0 {
+		score = 0
+	}
+	rep.Score = score
+	rep.Grade = grade(score)
+	return rep
+}
+
+// SIDs de grupos amplios: compartir con ellos es compartir con casi todos.
+var broadSIDs = map[string]string{
+	"S-1-1-0":      "Todos (Everyone)",
+	"S-1-5-7":      "Anónimo",
+	"S-1-5-11":     "Usuarios autenticados",
+	"S-1-5-32-545": "Usuarios",
+	"S-1-5-32-546": "Invitados",
+}
+
+func shareFindings(shares []Share) []Finding {
+	var out []Finding
+	for _, s := range shares {
+		switch s.Kind {
+		case "smb":
+			for _, a := range s.Access {
+				who, broad := broadSIDs[a.SID]
+				if !broad || a.Deny {
+					continue
+				}
+				sev, what := rule.SevMedium, "lectura"
+				if a.Right == "Full" || a.Right == "Change" {
+					sev, what = rule.SevHigh, "escritura"
+				}
+				out = append(out, Finding{
+					ID: "SURF-SHARE-SMB", Severity: sev, Subject: `\\` + s.Name,
+					Title:  fmt.Sprintf("Recurso compartido %s con %s para %s", s.Name, what, who),
+					Detail: fmt.Sprintf("%s (%s) permite %s a %s: cualquier cuenta (o sesión anónima) puede acceder, y el ransomware cifra lo que puede escribir.", s.Name, s.Path, what, who),
+					Fix:    "Concede el permiso solo a los grupos que lo necesitan (Grant-SmbShareAccess / Revoke-SmbShareAccess) y revisa también los permisos NTFS.",
+				})
+			}
+		case "nfs":
+			for _, o := range s.Options {
+				switch o {
+				case "no_root_squash":
+					out = append(out, Finding{ID: "SURF-SHARE-NFS-ROOT", Severity: rule.SevHigh, Subject: s.Path,
+						Title:  "Exportación NFS con no_root_squash: " + s.Path,
+						Detail: "Un root remoto actúa como root en " + s.Path + ": puede dejar binarios setuid y escalar privilegios en este equipo.",
+						Fix:    "Quita no_root_squash de /etc/exports y aplica con exportfs -ra."})
+				case "*":
+					out = append(out, Finding{ID: "SURF-SHARE-NFS-ALL", Severity: rule.SevMedium, Subject: s.Path,
+						Title:  "Exportación NFS para cualquier cliente: " + s.Path,
+						Detail: s.Path + " se exporta a cualquier dirección (*).",
+						Fix:    "Limita los clientes a las redes o equipos que lo necesitan en /etc/exports."})
+				}
+			}
+		case "samba":
+			guest, writable := false, false
+			for _, o := range s.Options {
+				guest = guest || o == "guest ok"
+				writable = writable || o == "writable"
+			}
+			if guest {
+				sev, what := rule.SevMedium, "lectura"
+				if writable {
+					sev, what = rule.SevHigh, "escritura"
+				}
+				out = append(out, Finding{ID: "SURF-SHARE-SAMBA-GUEST", Severity: sev, Subject: "[" + s.Name + "]",
+					Title:  fmt.Sprintf("Recurso Samba [%s] con acceso de invitado (%s)", s.Name, what),
+					Detail: "guest ok = yes permite acceder sin contraseña a " + s.Path + ".",
+					Fix:    "Pon guest ok = no y concede acceso con valid users."})
+			}
+		}
+	}
+	return out
+}
+
+// dedupe elimina sockets repetidos (mismo proto, dirección y puerto).
+func dedupe(ls []Listener) []Listener {
+	seen := map[string]bool{}
+	out := ls[:0]
+	for _, l := range ls {
+		k := l.Proto + "|" + l.Address + "|" + strconv.Itoa(l.Port)
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, l)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Scope != out[j].Scope {
+			return out[i].Scope == ScopeNetwork
+		}
+		if out[i].Port != out[j].Port {
+			return out[i].Port < out[j].Port
+		}
+		return out[i].Proto < out[j].Proto
+	})
+	return out
+}
+
+func grade(v int) string {
+	switch {
+	case v >= 90:
+		return "A"
+	case v >= 80:
+		return "B"
+	case v >= 70:
+		return "C"
+	case v >= 60:
+		return "D"
+	}
+	return "F"
+}

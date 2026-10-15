@@ -73,7 +73,7 @@ Primeros pasos:
 	root.SetVersionTemplate(version.String() + "\n")
 	root.PersistentFlags().BoolVar(&gf.noColor, "no-color", false, "desactivar colores")
 	root.PersistentFlags().StringSliceVar(&gf.rulesDir, "rules-dir", nil, "directorios adicionales de reglas (*.yaml)")
-	root.AddCommand(newScanCmd(), newHardenCmd(), newRollbackCmd(), newHistoryCmd(), newDeadmanCmd(), newExceptionsCmd(), newUICmd(), newInfoCmd(), newRulesCmd(), newProfilesCmd(), newUpdateCmd(), newInitCmd(), newVersionCmd())
+	root.AddCommand(newScanCmd(), newHardenCmd(), newRollbackCmd(), newHistoryCmd(), newDeadmanCmd(), newExceptionsCmd(), newSurfaceCmd(), newUICmd(), newInfoCmd(), newRulesCmd(), newProfilesCmd(), newUpdateCmd(), newInitCmd(), newVersionCmd())
 	root.CompletionOptions.HiddenDefaultCmd = true
 	return root
 }

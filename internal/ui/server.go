@@ -36,6 +36,7 @@ import (
 
 	"github.com/Ruby570bocadito/bastion/internal/engine"
 	"github.com/Ruby570bocadito/bastion/internal/report"
+	"github.com/Ruby570bocadito/bastion/internal/surface"
 )
 
 //go:embed assets/ui.html
@@ -103,6 +104,8 @@ type Backend interface {
 	Plan(ctx context.Context, wave int) ([]PlanItem, error)
 	Changes() ([]Change, error)
 	Exceptions() ([]Exception, error)
+	// Surface analiza la superficie de ataque (puertos, recursos, administradores).
+	Surface(ctx context.Context) (*surface.Report, error)
 }
 
 // Server es la consola local.
@@ -212,6 +215,13 @@ func (s *Server) Handler() http.Handler {
 			list = []Exception{}
 		}
 		return list, err
+	}))
+	mux.Handle("GET /api/surface", s.api(func(w http.ResponseWriter, r *http.Request) (any, error) {
+		if !s.busy.TryLock() {
+			return nil, httpError{http.StatusConflict, "hay un escaneo en curso"}
+		}
+		defer s.busy.Unlock()
+		return s.backend.Surface(r.Context())
 	}))
 	// El informe HTML completo de un escaneo (para la pestaña Controles).
 	mux.HandleFunc("GET /r/{file}", s.handleReportHTML)

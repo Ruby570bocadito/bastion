@@ -43,6 +43,24 @@ jobs:
       - name: Escaneo real (Windows)
         if: runner.os == 'Windows'
         run: .\bin\bastion.exe scan --all -o report.html -o report.json
+      # Superficie de ataque en un sistema real (en Windows ejercita netstat,
+      # tasklist y las consultas PowerShell de recursos y administradores).
+      - name: Superficie de ataque (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo ./bin/bastion surface --all --no-color
+          sudo ./bin/bastion surface --format json | jq -e '.schema == "bastion.surface/v1" and (.listeners | length) > 0 and (.admins | length) > 0'
+      - name: Superficie de ataque (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\bin\bastion.exe surface --all --no-color
+          if ($LASTEXITCODE -ne 0) { throw 'surface falló' }
+          $r = .\bin\bastion.exe surface --format json | ConvertFrom-Json
+          if ($r.listeners.Count -eq 0) { throw 'no se detectó ningún puerto a la escucha' }
+          if ($r.admins.Count -eq 0) { throw 'no se leyeron los administradores' }
+          if (-not ($r.listeners | Where-Object { $_.process })) { throw 'ningún puerto asociado a su proceso' }
       # Una excepción saca el control de la puntuación y al quitarla vuelve.
       - name: Excepciones (Linux)
         if: runner.os == 'Linux'

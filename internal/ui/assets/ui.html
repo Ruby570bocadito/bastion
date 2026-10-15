@@ -317,10 +317,10 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
     ["unsupported", "No disponibles en esta plataforma", ""],
     ["nothing", "Sin nada que cambiar", ""]
   ];
-  var TABS = [["panel", "Panel"], ["controles", "Controles"], ["plan", "Plan de hardening"], ["historial", "Historial"], ["excepciones", "Excepciones"]];
+  var TABS = [["panel", "Panel"], ["controles", "Controles"], ["plan", "Plan de hardening"], ["superficie", "Superficie"], ["historial", "Historial"], ["excepciones", "Excepciones"]];
 
   var S = { info: null, reports: [], report: null, reportId: "", latestId: "", plan: { wave: 1, items: null, loading: false },
-    changes: null, exceptions: null, scanning: false, tab: "panel", error: "" };
+    changes: null, exceptions: null, surface: null, surfaceLoading: false, showLocal: false, scanning: false, tab: "panel", error: "" };
 
   // ---- Utilidades ----
   function el(tag, attrs, children) {
@@ -420,6 +420,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
     });
     if (S.tab === "plan" && S.plan.items === null && !S.plan.loading && S.info) loadPlan(S.plan.wave);
     if (S.tab === "historial" && S.changes === null) loadChanges();
+    if (S.tab === "superficie" && S.surface === null && !S.surfaceLoading && S.info) loadSurface();
     if (S.tab === "excepciones" && S.exceptions === null) loadExceptions();
     render();
   }
@@ -457,6 +458,12 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
       .catch(function (e) { S.plan.items = []; S.plan.error = e.message; toast("No se pudo calcular el plan: " + e.message); })
       .then(function () { S.plan.loading = false; busy(false); render(); });
   }
+  function loadSurface() {
+    S.surfaceLoading = true; busy(true); render();
+    api("/api/surface").then(function (r) { S.surface = r; })
+      .catch(function (e) { toast("No se pudo analizar la superficie: " + e.message); })
+      .then(function () { S.surfaceLoading = false; busy(false); render(); });
+  }
   function loadChanges() {
     api("/api/changes").then(function (c) { S.changes = c; render(); }).catch(function (e) { S.changes = []; toast(e.message); });
   }
@@ -478,7 +485,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
       return;
     }
     banners().forEach(function (b) { app.appendChild(b); });
-    ({ panel: renderPanel, controles: renderControls, plan: renderPlan, historial: renderHistory, excepciones: renderExceptions })[S.tab]();
+    ({ panel: renderPanel, controles: renderControls, plan: renderPlan, superficie: renderSurface, historial: renderHistory, excepciones: renderExceptions })[S.tab]();
     app.appendChild(el("footer", null, ["Bastion " + S.info.version + " · consola local en 127.0.0.1. Solo lee y escanea: los cambios se aplican desde la terminal con bastion harden, que guarda una instantánea y permite deshacerlos."]));
   }
 
@@ -702,6 +709,65 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
     }
     app.appendChild(el("section", null, [card("Plan de hardening", body,
       S.plan.items ? el("span", { text: plural(S.plan.items.filter(function (i) { return i.status === "planned"; }).length, "cambio", "cambios") + " en la ola " + S.plan.wave }) : null)]));
+  }
+
+  // ---- Superficie de ataque ----
+  function renderSurface() {
+    var sf = S.surface;
+    var again = el("button", { class: "btn copy", type: "button", text: "Volver a analizar", disabled: S.surfaceLoading ? "disabled" : null, onclick: function () { loadSurface(); } });
+    if (!sf) {
+      app.appendChild(el("section", null, [card("Superficie de ataque", [S.surfaceLoading ? loadingBox("Analizando puertos, recursos compartidos y administradores…") :
+        el("p", { class: "empty", text: "No se pudo analizar la superficie." })], again)]));
+      return;
+    }
+    var color = scoreColor(sf.score), sev = { critical: 0, high: 0, medium: 0, low: 0 };
+    sf.findings.forEach(function (f) { if (f.severity in sev) sev[f.severity]++; });
+    var hero = el("div", { class: "card hero" }, [el("h2", { text: "Exposición en la red" }), el("div", null, [
+      el("div", { class: "hero-figure" }, [el("span", { class: "num", text: String(sf.score) }), el("span", { class: "of", text: "/ 100" }),
+        el("span", { class: "grade", text: sf.grade, style: "color:" + color })]),
+      el("div", { class: "meter" }, [el("i", { style: "width:" + sf.score + "%;background:" + color })]),
+      el("p", { text: sf.exposed + " servicios escuchan en la red y " + (sf.listeners.length - sf.exposed) + " solo en el propio equipo. Cada hallazgo resta según su severidad (crítico 30, alto 15, medio 7, bajo 3)." })])]);
+    var kpis = el("div", { class: "kpis" });
+    [["critical", "Críticos"], ["high", "Altos"], ["medium", "Medios"], ["low", "Bajos"]].forEach(function (k) {
+      kpis.appendChild(el("div", { class: "card kpi" }, [el("div", { class: "label" }, [dot(SEV[k[0]].color), k[1]]),
+        el("div", { class: "value", text: String(sev[k[0]]) }), el("div", { class: "sub", text: "hallazgos" })]));
+    });
+    app.appendChild(el("div", { class: "hero-row" }, [hero, kpis]));
+
+    var finds = sf.findings.length ? el("div", null, sf.findings.map(function (f) {
+      return el("div", { class: "item" }, [
+        el("div", { class: "h" }, [sevBadge(f.severity), el("span", { class: "t", text: f.title }), el("span", { class: "rid", text: f.subject })]),
+        el("p", { text: f.detail }), el("p", { style: "color:var(--good-text)", text: "→ " + f.fix })]);
+    })) : el("p", { class: "empty", text: "Ningún servicio de riesgo expuesto ni recurso compartido abierto a todos." });
+    app.appendChild(el("section", null, [card("Hallazgos", [finds], again)]));
+
+    var rows = sf.listeners.filter(function (l) { return S.showLocal || l.scope === "network"; });
+    var tbl = el("table", null, [el("thead", null, [el("tr", null, ["Puerto", "Dirección", "Alcance", "Proceso", "Servicio"].map(function (h) { return el("th", { text: h }); }))])]);
+    var tb = el("tbody");
+    rows.forEach(function (l) {
+      var proc = (l.process || "?") + (l.pid ? " (" + l.pid + ")" : "");
+      tb.appendChild(el("tr", null, [el("td", { class: "mono", text: l.port + "/" + l.proto }), el("td", { class: "mono", text: l.address }),
+        el("td", null, [l.scope === "network" ? el("span", { style: "color:var(--serious);font-weight:600", text: "red" }) : el("span", { class: "sub", text: "local" })]),
+        el("td", null, [el("div", { text: proc }), l.services && l.services.length ? el("div", { class: "sub", text: l.services.join(", ") }) : null]),
+        el("td", { text: l.known || "" })]));
+    });
+    tbl.appendChild(tb);
+    var toggle = el("button", { class: "btn copy", type: "button", text: S.showLocal ? "Ocultar los locales" : "Mostrar también los locales (" + (sf.listeners.length - sf.exposed) + ")",
+      onclick: function () { S.showLocal = !S.showLocal; render(); } });
+    app.appendChild(el("section", null, [card(S.showLocal ? "Puertos a la escucha" : "Puertos expuestos en la red",
+      [rows.length ? el("div", { class: "table-wrap" }, [tbl]) : el("p", { class: "empty", text: "Ningún servicio escucha en la red." }),
+        el("p", { class: "note", text: "Bastion todavía no evalúa las reglas del firewall: un puerto en la red puede estar filtrado." })], toggle)]));
+
+    var shares = sf.shares.length ? el("ul", { class: "prio" }, sf.shares.map(function (sh) {
+      var acc = (sh.access || []).map(function (a) { return a.account + ": " + a.right + (a.deny ? " (denegado)" : ""); }).concat(sh.options || []);
+      return el("li", null, [el("span", { class: "tag", text: sh.kind }), el("div", null, [el("span", { class: "t", text: sh.name }), sh.path && sh.path !== sh.name ? el("span", { class: "id", text: sh.path }) : null]),
+        el("div", { class: "d", text: acc.join(" · ") })]);
+    })) : el("p", { class: "empty", text: "Sin recursos compartidos." });
+    var admins = sf.admins.length ? el("ul", { class: "prio" }, sf.admins.map(function (a) {
+      return el("li", null, [el("span", { class: "tag", text: a.source || a.kind || "admin" }), el("span", { class: "t", text: a.name })]);
+    })) : el("p", { class: "empty", text: "No se pudieron leer los administradores." });
+    app.appendChild(el("section", { class: "two" }, [card("Recursos compartidos", [shares]), card("Administradores", [admins])]));
+    (sf.notes || []).forEach(function (n) { app.appendChild(el("div", { class: "banner" }, [el("span", { class: "ico", text: "!" }), el("span", { text: n })])); });
   }
 
   // ---- Historial ----

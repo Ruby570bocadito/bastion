@@ -208,6 +208,10 @@ Consultas PowerShell permitidas (`ps`). La regla elige el nombre; el código es 
 | `bitlocker_os` | `Get-BitLockerVolume` (unidad del sistema) | `ProtectionStatus`, `EncryptionMethod`, `KeyProtectors` |
 | `device_guard` | `Win32_DeviceGuard` | `SecurityServicesRunning` (1 Credential Guard, 2 HVCI) |
 | `optional_features` | `Get-WindowsOptionalFeature` | `SMB1Protocol`, `MicrosoftWindowsPowerShellV2Root` |
+| `smb_shares` | `Get-SmbShare` + `Get-SmbShareAccess` (sin los administrativos) | `shares[].Name`, `Path`, `Access[].SID`, `Right` (la usa `bastion surface`) |
+| `local_admins` | Miembros de S-1-5-32-544 (`Get-LocalGroupMember` o ADSI) | `members[].Name`, `Type`, `Source` (la usa `bastion surface`) |
+
+Las consultas que Windows solo responde con un token elevado (`bitlocker_os`, `optional_features`, `smb_shares`) no se lanzan sin privilegios: el control queda **sin evaluar**.
 
 Si Defender o BitLocker no están disponibles, la consulta devuelve `na` con el motivo y no un fallo.
 

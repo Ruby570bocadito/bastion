@@ -8,6 +8,7 @@
 |---|---|
 | `bastion info [--json]` | Plataforma, rol, etiquetas, perfil por defecto, probes disponibles y rutas |
 | `bastion scan` | Auditar el equipo (solo lectura) |
+| `bastion surface [--all] [--format json] [--fail-on SEV]` | Superficie de ataque: puertos expuestos con su proceso, servicios de riesgo, recursos compartidos y administradores (ver abajo) |
 | `bastion ui [--port N] [--no-open]` | Consola local en el navegador: postura, tendencia, plan, historial y excepciones (ver abajo) |
 | `bastion profiles [--all]` | Perfiles disponibles y número de reglas |
 | `bastion rules list [--all] [-p perfil]` | Reglas aplicables (o todas) |
@@ -80,6 +81,26 @@ sudo bastion rollback                # si algo no te convence, se deshace todo
 ```
 
 Cada control se aplica con instantánea previa, se verifica y, si no se cumple o falla, se revierte solo. Olas, acceso remoto, GPO e instantáneas se explican en [05-remediacion-segura.md](05-remediacion-segura.md).
+
+## Superficie de ataque: `bastion surface`
+
+```bash
+sudo bastion surface                  # hallazgos y puertos expuestos en la red
+sudo bastion surface --all            # también lo que solo escucha en el propio equipo
+bastion surface --format json > superficie.json
+bastion surface --fail-on high        # código 2 si hay hallazgos altos o críticos
+```
+
+Lista los servicios a la escucha con su dirección, alcance (**red** o **local**), proceso y servicio conocido, y genera hallazgos para los servicios de riesgo expuestos en la red (Telnet, SMB, RDP, Redis, Docker API…), los recursos compartidos abiertos a todos y las exportaciones NFS peligrosas. Cada hallazgo dice por qué importa y cómo cerrarlo. La puntuación de exposición empieza en 100 y resta 30, 15, 7 o 3 por cada hallazgo crítico, alto, medio o bajo.
+
+Ejecútalo como administrador o root: sin privilegios no se ve el proceso de otros usuarios y, en Windows, no se leen los recursos compartidos. Bastion todavía no evalúa las reglas del firewall, así que un puerto "en la red" puede estar filtrado.
+
+| Opción | Descripción |
+|---|---|
+| `-a, --all` | Incluir los servicios que solo escuchan en `127.0.0.1`/`::1` |
+| `-f, --format console\|json` | Formato de la salida (`bastion.surface/v1`) |
+| `-o fichero.json` | Guardar el análisis |
+| `--fail-on critical\|high\|medium\|low` | Código de salida 2 si hay hallazgos de esa severidad o mayor |
 
 ## Consola local: `bastion ui`
 

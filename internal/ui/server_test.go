@@ -13,6 +13,7 @@ import (
 
 	"github.com/Ruby570bocadito/bastion/internal/engine"
 	"github.com/Ruby570bocadito/bastion/internal/report"
+	"github.com/Ruby570bocadito/bastion/internal/surface"
 )
 
 const goodID = "bastion-pc-01-20261015-100000"
@@ -46,6 +47,9 @@ func (f *fakeBackend) Plan(ctx context.Context, wave int) ([]PlanItem, error) {
 }
 func (f *fakeBackend) Changes() ([]Change, error)       { return nil, nil }
 func (f *fakeBackend) Exceptions() ([]Exception, error) { return nil, nil }
+func (f *fakeBackend) Surface(ctx context.Context) (*surface.Report, error) {
+	return &surface.Report{Schema: surface.Schema, Score: 85}, nil
+}
 
 func newTest(t *testing.T) (*Server, http.Handler, *fakeBackend) {
 	t.Helper()
@@ -188,6 +192,12 @@ func TestPlanAndBusy(t *testing.T) {
 	}
 	if rec := do(h, "GET", "/api/plan?wave=2", tok); rec.Code != 200 || !strings.Contains(rec.Body.String(), "WIN-NET-006") {
 		t.Errorf("plan: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "GET", "/api/surface", tok); rec.Code != 200 || !strings.Contains(rec.Body.String(), surface.Schema) {
+		t.Errorf("superficie: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "GET", "/api/surface", nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("superficie sin token: %d", rec.Code)
 	}
 
 	// Mientras un escaneo está en curso, otro escaneo o plan responde 409.

@@ -227,6 +227,13 @@ func QueryPS(ctx context.Context, name string) (map[string]any, error) {
 	if code, ok := data["__na"].(string); ok {
 		return nil, NotApplicable("%s", psNotApplicable[code])
 	}
+	if msg, ok := data["__err"].(string); ok {
+		msg = strings.Join(strings.Fields(msg), " ")
+		if !Privileged() {
+			return nil, NeedsPrivilege("%s: %s", q.desc, msg)
+		}
+		return nil, fmt.Errorf("%s: %s", q.desc, msg)
+	}
 	return data, nil
 }
 
@@ -345,7 +352,7 @@ func (serviceProbe) Collect(_ context.Context, p Params) (Observation, error) {
 // usan comillas dobles para que el paso de argumentos sea seguro.
 // psAdminQueries son las consultas que Windows solo responde con un token
 // elevado: sin él no se ejecutan (y no se confunden con "no disponible").
-var psAdminQueries = map[string]bool{"bitlocker_os": true, "optional_features": true}
+var psAdminQueries = map[string]bool{"bitlocker_os": true, "optional_features": true, "smb_shares": true}
 
 var psQueries = map[string]struct{ desc, script string }{
 	"smb_server": {"Get-SmbServerConfiguration",
@@ -364,6 +371,14 @@ var psQueries = map[string]struct{ desc, script string }{
 		`try { $v=Get-BitLockerVolume -MountPoint $env:SystemDrive; @{ProtectionStatus=[string]$v.ProtectionStatus;VolumeStatus=[string]$v.VolumeStatus;EncryptionMethod=[string]$v.EncryptionMethod;KeyProtectors=@($v.KeyProtector | ForEach-Object {[string]$_.KeyProtectorType})} | ConvertTo-Json -Compress } catch { @{__na='bitlocker'} | ConvertTo-Json -Compress }`},
 	"device_guard": {"Win32_DeviceGuard",
 		`try { $d=Get-CimInstance -ClassName Win32_DeviceGuard -Namespace root/Microsoft/Windows/DeviceGuard; @{VirtualizationBasedSecurityStatus=[int]$d.VirtualizationBasedSecurityStatus;SecurityServicesConfigured=@($d.SecurityServicesConfigured | ForEach-Object {[int]$_});SecurityServicesRunning=@($d.SecurityServicesRunning | ForEach-Object {[int]$_})} | ConvertTo-Json -Compress } catch { @{__na='deviceguard'} | ConvertTo-Json -Compress }`},
+	// Para "bastion surface": recursos compartidos (sin los administrativos)
+	// con el SID de cada cuenta, para no depender del idioma de los nombres.
+	"smb_shares": {"Get-SmbShare / Get-SmbShareAccess",
+		`try { $o=@(); Get-SmbShare | Where-Object { -not $_.Special } | ForEach-Object { $n=[string]$_.Name; $acc=@(Get-SmbShareAccess -Name $n -ErrorAction SilentlyContinue | ForEach-Object { $sid=''; try { $sid=(New-Object System.Security.Principal.NTAccount($_.AccountName)).Translate([System.Security.Principal.SecurityIdentifier]).Value } catch {}; @{Account=[string]$_.AccountName;SID=$sid;Right=[string]$_.AccessRight;Type=[string]$_.AccessControlType} }); $o+=@{Name=$n;Path=[string]$_.Path;Access=$acc} }; @{shares=$o} | ConvertTo-Json -Compress -Depth 5 } catch { @{__err=$_.Exception.Message} | ConvertTo-Json -Compress }`},
+	// Miembros del grupo Administradores por SID (S-1-5-32-544). Si
+	// Get-LocalGroupMember falla (SIDs huérfanos), se usa ADSI.
+	"local_admins": {"miembros de Administradores (S-1-5-32-544)",
+		`$m=@(); try { Get-LocalGroupMember -SID S-1-5-32-544 -ErrorAction Stop | ForEach-Object { $m+=@{Name=[string]$_.Name;Type=[string]$_.ObjectClass;Source=[string]$_.PrincipalSource} } } catch { try { $g=(New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')).Translate([System.Security.Principal.NTAccount]).Value.Split('\')[-1]; ([ADSI]"WinNT://$env:COMPUTERNAME/$g,group").psbase.Invoke('Members') | ForEach-Object { $m+=[string]$_.GetType().InvokeMember('Name','GetProperty',$null,$_,$null) } } catch { $m=@{__err=$_.Exception.Message} } }; if ($m -is [hashtable]) { $m | ConvertTo-Json -Compress } else { @{members=$m} | ConvertTo-Json -Compress -Depth 4 }`},
 	"optional_features": {"Get-WindowsOptionalFeature",
 		`$want=@('SMB1Protocol','MicrosoftWindowsPowerShellV2Root','MicrosoftWindowsPowerShellV2','TelnetClient','TFTP'); $o=@{}; try { Get-WindowsOptionalFeature -Online | Where-Object { $want -contains $_.FeatureName } | ForEach-Object { $o[[string]$_.FeatureName]=[string]$_.State } } catch { $o=@{__err=$_.Exception.Message} }; $o | ConvertTo-Json -Compress`},
 }
