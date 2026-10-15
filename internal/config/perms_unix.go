@@ -11,3 +11,6 @@ func restrictPermissions(dir string) error {
 	}
 	return os.Chmod(dir, 0o750)
 }
+
+// GrantUserRead no es necesario en Linux: los informes se leen como root.
+func GrantUserRead(string) error { return nil }

@@ -22,6 +22,7 @@ type Info struct {
 	Role         string `json:"role"`
 	DomainJoined bool   `json:"domain_joined"`
 	Domain       string `json:"domain,omitempty"`
+	EntraJoined  bool   `json:"entra_joined,omitempty"`
 	Container    bool   `json:"container,omitempty"`
 	IsAdmin      bool   `json:"is_admin"`
 	// Tags va de la etiqueta más específica a la más general.

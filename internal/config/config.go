@@ -163,5 +163,8 @@ func Init() (InitResult, error) {
 			return res, err
 		}
 	}
+	if err := GrantUserRead(d.Reports.Dir); err != nil {
+		return res, err
+	}
 	return res, nil
 }

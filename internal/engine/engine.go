@@ -47,6 +47,8 @@ type Result struct {
 // Engine evalúa reglas en paralelo.
 type Engine struct {
 	Concurrency int
+	// HostTags son las etiquetas del equipo; se usan para el campo requires.
+	HostTags []string
 }
 
 // New crea un motor con la concurrencia por defecto.
@@ -74,7 +76,16 @@ func (e *Engine) Run(ctx context.Context, rules []*rule.Rule, progress func(done
 			defer wg.Done()
 			for i := range jobs {
 				start := time.Now()
-				ev := e.evalCheck(ctx, rules[i].Check)
+				var ev Eval
+				if req := rules[i].MissingRequirement(e.HostTags); req != "" {
+					msg := rule.RequirementMessages[req]
+					if msg == "" {
+						msg = "requiere la plataforma " + req
+					}
+					ev = Eval{Status: NA, Message: msg}
+				} else {
+					ev = e.evalCheck(ctx, rules[i].Check)
+				}
 				results[i] = Result{Rule: rules[i], Eval: ev, DurationMs: time.Since(start).Milliseconds()}
 				n := atomic.AddInt64(&done, 1)
 				if progress != nil {

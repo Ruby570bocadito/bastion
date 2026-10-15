@@ -82,6 +82,7 @@ type Rule struct {
 	Category    string      `yaml:"category" json:"category"`
 	Severity    Severity    `yaml:"severity" json:"severity"`
 	Platforms   []string    `yaml:"platforms" json:"platforms"`
+	Requires    []string    `yaml:"requires,omitempty" json:"requires,omitempty"`
 	Profiles    []string    `yaml:"profiles" json:"profiles"`
 	References  References  `yaml:"references" json:"references"`
 	Check       Check       `yaml:"check" json:"-"`
@@ -166,7 +167,7 @@ var Ops = map[string]bool{
 // Platforms reconocidas en el campo platforms de las reglas.
 var Platforms = map[string]bool{
 	"windows": true, "windows-client": true, "windows-server": true,
-	"windows-member": true, "windows-dc": true,
+	"windows-member": true, "windows-dc": true, "windows-joined": true,
 	"linux": true, "linux-debian": true, "linux-ubuntu": true,
 	"linux-rhel": true, "linux-fedora": true, "linux-suse": true,
 }
@@ -200,6 +201,11 @@ func (r *Rule) Validate(knownProbes map[string]bool, profiles map[string]*Profil
 	for _, p := range r.Platforms {
 		if !Platforms[p] {
 			add("platform %q desconocida", p)
+		}
+	}
+	for _, p := range r.Requires {
+		if !Platforms[p] {
+			add("requires %q desconocido", p)
 		}
 	}
 	if len(r.Profiles) == 0 {
@@ -287,6 +293,29 @@ func validID(id string) bool {
 		}
 	}
 	return true
+}
+
+// RequirementMessages explica por qué una regla con requires no aplica.
+var RequirementMessages = map[string]string{
+	"windows-joined": "solo aplica a equipos unidos a un dominio de Active Directory o a Entra ID",
+}
+
+// MissingRequirement devuelve el primer requisito de la regla que el equipo
+// no cumple, o "" si los cumple todos.
+func (r *Rule) MissingRequirement(hostTags []string) string {
+	for _, req := range r.Requires {
+		found := false
+		for _, t := range hostTags {
+			if t == req {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return req
+		}
+	}
+	return ""
 }
 
 // Profile agrupa reglas para un rol (estación de trabajo, servidor, DC...).

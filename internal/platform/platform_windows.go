@@ -60,4 +60,14 @@ func detect(info *Info) {
 		}
 		windows.NetApiBufferFree((*byte)(unsafe.Pointer(buf)))
 	}
+	// Unión a Entra ID (Azure AD): JoinInfo tiene una subclave por unión.
+	if k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Control\CloudDomainJoin\JoinInfo`, registry.ENUMERATE_SUB_KEYS|registry.WOW64_64KEY); err == nil {
+		if names, err := k.ReadSubKeyNames(1); err == nil && len(names) > 0 {
+			info.EntraJoined = true
+		}
+		k.Close()
+	}
+	if info.DomainJoined || info.EntraJoined {
+		info.Tags = append(info.Tags, "windows-joined")
+	}
 }

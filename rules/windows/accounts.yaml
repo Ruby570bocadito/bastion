@@ -124,6 +124,7 @@ rationale: Una misma contraseña de administrador local en todos los equipos per
 category: Cuentas
 severity: high
 platforms: [windows-client, windows-member]
+requires: [windows-joined]
 profiles: [win-workstation-l1, win-server-l1]
 references:
   nist: [IA-5, AC-2]
@@ -138,4 +139,4 @@ remediation:
   summary: Configurar Windows LAPS con copia de la contraseña en Active Directory o Entra ID.
   gpo: Computer Configuration > Administrative Templates > System > LAPS > Configure password backup directory
   breaking_risk: none
-impact: Solo tiene sentido en equipos gestionados (dominio o Entra ID); en equipos aislados documenta una excepción.
+impact: Solo se evalúa en equipos unidos a un dominio o a Entra ID; en equipos aislados aparece como "no aplica".

@@ -89,6 +89,11 @@ function Install-Bastion {
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ("bastion-" + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $tmp | Out-Null
 
+    # bastion.exe escribe UTF-8; sin esto PowerShell lee su salida con la
+    # página de códigos OEM y los acentos salen corruptos.
+    $prevEncoding = [Console]::OutputEncoding
+    try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+
     try {
         # --- 1. Versión objetivo y versión instalada ------------------------
         $current = $null
@@ -156,6 +161,7 @@ function Install-Bastion {
         Write-Summary
     } finally {
         Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+        try { [Console]::OutputEncoding = $prevEncoding } catch { }
     }
 }
 

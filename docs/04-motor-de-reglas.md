@@ -17,6 +17,7 @@ rationale: Herramientas como Responder envenenan LLMNR para capturar hashes NTLM
 category: Red                      # agrupación en informes y puntuación por categoría
 severity: high                     # critical | high | medium | low | info
 platforms: [windows]               # ver "Plataformas"
+requires: []                       # opcional: etiquetas que el equipo debe tener TODAS
 profiles: [win-workstation-l1, win-server-l1]
 references:
   nist: [CM-7, SC-20]
@@ -55,6 +56,21 @@ Las etiquetas del equipo van de la más específica a la más general. Una regla
 | Ubuntu | `linux-ubuntu`, `linux-debian`, `linux` |
 | Debian | `linux-debian`, `linux` |
 | RHEL / Rocky / Alma / CentOS | `linux-rhel`, `linux-fedora`, `linux` (según `ID_LIKE`) |
+
+Etiquetas adicionales de estado:
+
+| Etiqueta | Cuándo |
+|---|---|
+| `windows-joined` | El equipo está unido a un dominio de Active Directory o a Entra ID |
+
+### `requires`: condiciones que deben cumplirse todas
+
+`platforms` se cumple si el equipo tiene **alguna** de las etiquetas. `requires` exige **todas**; si falta una, la regla no se evalúa y aparece como **no aplica**, con el motivo. Ejemplo: LAPS solo tiene sentido en equipos gestionados:
+
+```yaml
+platforms: [windows-client, windows-member]
+requires: [windows-joined]
+```
 
 ## Perfiles
 

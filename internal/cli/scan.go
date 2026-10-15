@@ -99,7 +99,9 @@ func runScan(f scanFlags) error {
 
 	progress := newProgress(f.format == "console" && !f.quiet)
 	started := time.Now()
-	results := engine.New().Run(ctx, selected, progress.update)
+	eng := engine.New()
+	eng.HostTags = info.Tags
+	results := eng.Run(ctx, selected, progress.update)
 	progress.done()
 	finished := time.Now()
 
@@ -147,6 +149,7 @@ func runScan(f scanFlags) error {
 		if err != nil {
 			return fmt.Errorf("no se pudo guardar el informe en %s: %w", cfg.Reports.Dir, err)
 		}
+		_ = config.GrantUserRead(cfg.Reports.Dir) // que el navegador sin elevar pueda abrirlo
 		htmlOut = h
 		fmt.Fprintf(msgs, "  %s Informe HTML: %s\n", s.Cyan(report.Sym("→")), h)
 		fmt.Fprintf(msgs, "  %s Informe JSON: %s\n", s.Cyan(report.Sym("→")), j)

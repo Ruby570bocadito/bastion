@@ -176,3 +176,17 @@ func TestScore(t *testing.T) {
 		t.Error("sin controles evaluables la puntuación debe ser 100")
 	}
 }
+
+func TestRequires(t *testing.T) {
+	r := &rule.Rule{ID: "T-X-9", Severity: rule.SevHigh, Category: "x", Requires: []string{"windows-joined"},
+		Check: leaf("a", "eq", "a")}
+	e := New()
+	e.HostTags = []string{"windows-client", "windows"}
+	if res := e.Run(context.Background(), []*rule.Rule{r}, nil); res[0].Status != NA || res[0].Message == "" {
+		t.Errorf("equipo no unido: %s %q", res[0].Status, res[0].Message)
+	}
+	e.HostTags = append(e.HostTags, "windows-joined")
+	if res := e.Run(context.Background(), []*rule.Rule{r}, nil); res[0].Status != Pass {
+		t.Errorf("equipo unido: %s", res[0].Status)
+	}
+}

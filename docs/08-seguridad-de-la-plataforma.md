@@ -37,7 +37,7 @@ Bastion se ejecuta como **SYSTEM/root** en equipos críticos. Para un atacante e
 
 ### Permisos
 - Linux: `/etc/bastion` y `/var/lib/bastion` con `0750` (root). Informes con `0640`.
-- Windows: `%ProgramData%\Bastion` sin herencia, acceso total solo para Administradores (`S-1-5-32-544`) y SYSTEM (`S-1-5-18`), por SID para que funcione en cualquier idioma.
+- Windows: `%ProgramData%\Bastion` sin herencia, acceso total solo para Administradores (`S-1-5-32-544`) y SYSTEM (`S-1-5-18`), por SID para que funcione en cualquier idioma. El directorio `reports` concede además **lectura** al usuario que ejecutó el escaneo: con UAC, su navegador corre sin elevar y no podría abrir el informe.
 - Las reglas propias (`rules.d`) solo las puede escribir un administrador.
 
 ### Desarrollo seguro
