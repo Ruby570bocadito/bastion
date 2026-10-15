@@ -497,7 +497,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
   search.addEventListener("input", function () { state.q = search.value.trim().toLowerCase(); render(); });
 
   var list = el("div", { class: "results" });
-  app.appendChild(el("section", { class: "card" }, [el("h2", { text: "Controles evaluados" }),
+  app.appendChild(el("section", { class: "card", id: "controles" }, [el("h2", { text: "Controles evaluados" }),
     el("div", { class: "filters" }, [chips, sevSel, catSel, search]), list]));
 
   function evidence(ev) {
@@ -619,6 +619,10 @@ footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
     shown.forEach(function (r) { list.appendChild(row(r)); });
   }
   render();
+  // La consola local (bastion ui) abre el informe directamente en la lista.
+  // Se usa ?view= y no un #fragmento: navegar a un fragmento dentro de un
+  // iframe desplazaría también la consola.
+  if (/[?&]view=controles(&|$)/.test(location.search)) window.scrollTo(0, document.getElementById("controles").getBoundingClientRect().top + window.scrollY - 72);
 
   app.appendChild(el("footer", null, [
     "Generado por Bastion " + ((data.tool && data.tool.version) || "") + " · formato " + data.schema +

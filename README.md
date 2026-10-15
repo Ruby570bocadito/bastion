@@ -19,6 +19,13 @@ calcula una puntuación de postura, la mapea a MITRE ATT&CK y te dice qué corre
 
 ![Informe HTML de Bastion](docs/assets/informe-claro.png)
 
+<details>
+<summary>Consola local (<code>bastion ui</code>)</summary>
+
+![Consola local de Bastion](docs/assets/consola.png)
+
+</details>
+
 ## ✨ Qué hace hoy
 
 | | |
@@ -32,6 +39,7 @@ calcula una puntuación de postura, la mapea a MITRE ATT&CK y te dice qué corre
 | 🧾 **Evidencias** | Para cada control: valor real, valor esperado y de dónde sale el dato (clave de registro, `sshd -T`, `secedit`...). |
 | 🛠️ **Remediación guiada** | Para lo que no es automático: resumen, ruta de GPO, comandos listos para copiar, riesgo de rotura e impacto. |
 | 🌐 **Informe HTML autocontenido** | Un solo fichero, modo claro y oscuro, filtros, sin conexión, imprimible a PDF. |
+| 🖥️ **Consola local** | `bastion ui` abre un panel en el navegador con la tendencia de la puntuación, el plan de hardening por olas, el historial y las excepciones. Solo en 127.0.0.1 y con token. |
 | ⚙️ **Listo para CI/CD** | Salida JSON estable y `--min-score` para fallar un pipeline de imágenes doradas. |
 | 🔄 **Auto-actualización verificada** | `bastion update` descarga, verifica la suma SHA-256 y se reemplaza. Las reglas viajan dentro del binario. |
 
@@ -59,6 +67,7 @@ Opciones, instalación sin conexión, espejos internos y desinstalación: [docs/
 bastion info                        # plataforma, rol y perfil detectados
 bastion scan                        # auditar con el perfil por defecto
 bastion scan --save --open          # guardar y abrir el informe HTML
+bastion ui                          # consola en el navegador: tendencia, plan e historial
 bastion scan -p win-workstation-l2  # otro perfil
 bastion scan --format json          # salida JSON (integraciones)
 bastion scan --min-score 80         # código de salida 2 si no llega (CI/CD)

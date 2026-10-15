@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="Bastion">
+<title>Bastion · consola</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f6f6f3;
+  --surface: #fcfcfb;
+  --surface-2: #f0efec;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #6e6c66;
+  --hair: #e1e0d9;
+  --axis: #c3c2b7;
+  --ring: rgba(11,11,11,.10);
+  --accent: #2a78d6;
+  --accent-soft: #cde2fb;
+  --good: #0ca30c;
+  --good-text: #006300;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --info: #898781;
+  --track: #e8e7e1;
+  --code-bg: #f0efec;
+  --shadow: 0 1px 2px rgba(11,11,11,.04), 0 8px 24px rgba(11,11,11,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-2: #232321;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #9a988f;
+    --hair: #2c2c2a;
+    --axis: #383835;
+    --ring: rgba(255,255,255,.10);
+    --accent: #3987e5;
+    --accent-soft: #184f95;
+    --good-text: #0ca30c;
+    --track: #2c2c2a;
+    --code-bg: #232321;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-2: #232321;
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --muted: #9a988f;
+  --hair: #2c2c2a;
+  --axis: #383835;
+  --ring: rgba(255,255,255,.10);
+  --accent: #3987e5;
+  --accent-soft: #184f95;
+  --good-text: #0ca30c;
+  --track: #2c2c2a;
+  --code-bg: #232321;
+  --shadow: none;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre, .mono { font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace; font-size: 13px; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px; }
+
+/* Cabecera y navegación */
+.top { background: var(--surface); border-bottom: 1px solid var(--hair); position: sticky; top: 0; z-index: 5; }
+.top .wrap { display: flex; align-items: center; gap: 14px; height: 58px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: .2px; white-space: nowrap; }
+.brand svg { width: 26px; height: 26px; color: var(--accent); }
+.brand small { color: var(--muted); font-weight: 450; }
+nav.tabs { display: flex; gap: 2px; margin-left: 10px; overflow-x: auto; scrollbar-width: none; }
+nav.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  appearance: none; border: 0; background: none; color: var(--ink-2); font: inherit; font-size: 14px;
+  padding: 8px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap;
+}
+.tab:hover { background: var(--surface-2); color: var(--ink); }
+.tab[aria-current="page"] { background: var(--surface-2); color: var(--ink); font-weight: 600; }
+.spacer { flex: 1; }
+.btn {
+  appearance: none; border: 1px solid var(--hair); background: var(--surface); color: var(--ink-2);
+  border-radius: 8px; padding: 7px 12px; font: inherit; font-size: 13.5px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+}
+.btn:hover { background: var(--surface-2); color: var(--ink); }
+.btn.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); font-weight: 600; }
+.btn.primary:hover { opacity: .9; }
+.btn[disabled] { opacity: .55; cursor: progress; }
+.btn:focus-visible, .tab:focus-visible, .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn.copy { padding: 3px 8px; font-size: 12px; }
+
+/* Estructura */
+main { padding-bottom: 40px; }
+.page-head { padding: 26px 0 6px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 20px; }
+.page-head h1 { margin: 0; font-size: 26px; font-weight: 650; letter-spacing: -.2px; overflow-wrap: anywhere; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--ink-2); font-size: 14px; }
+.meta span { display: inline-flex; gap: 6px; }
+.meta b { color: var(--muted); font-weight: 500; }
+.banner {
+  margin-top: 14px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--hair);
+  background: var(--surface); display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--ink-2);
+}
+.banner .ico { color: var(--warning); flex: none; }
+.banner.info .ico { color: var(--accent); }
+.banner .grow { flex: 1; }
+section { margin-top: 16px; }
+.card {
+  background: var(--surface); border: 1px solid var(--ring); border-radius: 14px;
+  box-shadow: var(--shadow); padding: 20px; min-width: 0;
+}
+.card h2 { margin: 0 0 14px; font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.card h2 .right { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.hero-row { display: grid; grid-template-columns: minmax(280px, 1.1fr) 2fr; gap: 16px; margin-top: 18px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.wide-left { display: grid; grid-template-columns: 1.7fr 1fr; gap: 16px; }
+
+/* Héroe y KPIs */
+.hero { display: flex; flex-direction: column; justify-content: space-between; }
+.hero-figure { display: flex; align-items: baseline; gap: 10px; }
+.hero-figure .num { font-size: 64px; line-height: 1; font-weight: 650; letter-spacing: -1.5px; }
+.hero-figure .of { color: var(--muted); font-size: 18px; }
+.grade {
+  margin-left: auto; align-self: center; min-width: 52px; height: 52px; border-radius: 12px;
+  display: grid; place-items: center; font-size: 26px; font-weight: 700; border: 2px solid currentColor;
+}
+.hero p { margin: 10px 0 0; color: var(--ink-2); font-size: 14px; }
+.delta { font-weight: 600; font-size: 14px; }
+.delta.up { color: var(--good-text); }
+.delta.down { color: var(--critical); }
+.meter { height: 10px; border-radius: 99px; background: var(--track); overflow: hidden; margin-top: 16px; }
+.meter > i { display: block; height: 100%; border-radius: 99px; }
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.kpi { padding: 18px; }
+.kpi .label { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 14px; }
+.kpi .value { font-size: 34px; font-weight: 650; margin-top: 6px; letter-spacing: -.5px; }
+.kpi .sub { color: var(--muted); font-size: 13px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; display: inline-block; }
+.badge {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+  padding: 2px 8px 2px 6px; border-radius: 99px; background: var(--surface-2); color: var(--ink); white-space: nowrap;
+}
+.badge .dot { width: 8px; height: 8px; }
+.tag { font-size: 11.5px; font-weight: 600; padding: 1px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--ink); white-space: nowrap; }
+
+/* Tendencia */
+.trend svg { width: 100%; height: auto; display: block; overflow: visible; }
+.trend .pt { cursor: pointer; }
+.trend .pt:hover { r: 6; }
+.trend-foot { display: flex; justify-content: space-between; color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+
+/* Barras */
+.sev-row { display: grid; grid-template-columns: 110px 1fr 70px; align-items: center; gap: 12px; padding: 7px 0; }
+.sev-row + .sev-row { border-top: 1px solid var(--hair); }
+.sev-bar { height: 14px; display: flex; align-items: center; }
+.sev-bar > i { display: block; height: 14px; border-radius: 0 4px 4px 0; }
+.sev-row .count { text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; font-size: 14px; }
+.ok-mark { color: var(--good-text); font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
+.cat-row { display: grid; grid-template-columns: minmax(120px, 1fr) 2fr 44px; gap: 12px; align-items: center; padding: 6px 0; }
+.cat-row .meter { margin: 0; height: 8px; }
+.cat-row .v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.cat-row .n { color: var(--muted); font-size: 12px; }
+
+/* Corrección automática */
+.fix-big { font-size: 34px; font-weight: 650; letter-spacing: -.5px; }
+.fix-big small { font-size: 15px; color: var(--muted); font-weight: 500; letter-spacing: 0; }
+.waves { margin: 14px 0; display: grid; gap: 8px; }
+.wave-row { display: grid; grid-template-columns: 64px 1fr 32px; gap: 10px; align-items: center; font-size: 13.5px; color: var(--ink-2); }
+.wave-row .meter { margin: 0; height: 8px; }
+.wave-row .n { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 600; }
+.cmd { display: flex; align-items: center; gap: 8px; background: var(--code-bg); border-radius: 10px; padding: 8px 8px 8px 12px; margin-top: 10px; }
+.cmd code { flex: 1; overflow-wrap: anywhere; }
+.note { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+
+/* Listas */
+.prio { list-style: none; margin: 0; padding: 0; }
+.prio li { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; padding: 10px 0; border-top: 1px solid var(--hair); }
+.prio li:first-child { border-top: 0; padding-top: 0; }
+.prio .t { font-weight: 550; }
+.prio li > .badge { align-self: start; margin-top: 1px; }
+.prio .d { grid-column: 2; color: var(--ink-2); font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.prio .id { color: var(--muted); font-size: 12px; margin-left: 6px; font-family: ui-monospace, Consolas, monospace; }
+.empty { padding: 28px; text-align: center; color: var(--muted); }
+
+/* Tablas */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--hair); white-space: nowrap; }
+td { padding: 10px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+tr.current td { background: var(--surface-2); }
+td.num { font-variant-numeric: tabular-nums; text-align: right; }
+td .sub { color: var(--muted); font-size: 12.5px; }
+
+/* Plan */
+.seg { display: inline-flex; border: 1px solid var(--hair); border-radius: 10px; overflow: hidden; }
+.seg button { appearance: none; border: 0; background: var(--surface); color: var(--ink-2); font: inherit; font-size: 13.5px; padding: 7px 14px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--hair); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); font-weight: 600; }
+.plan-group { margin-top: 18px; }
+.plan-group h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin: 0 0 8px; font-weight: 600; display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.plan-group h3 .hint { text-transform: none; letter-spacing: 0; font-weight: 450; }
+.item { border: 1px solid var(--hair); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: var(--surface); }
+.item .h { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.item .h .t { font-weight: 550; }
+.item .h .rid { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; color: var(--muted); }
+.item .h .risk { margin-left: auto; color: var(--muted); font-size: 12.5px; }
+.item ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); font-size: 13.5px; }
+.item ul li { overflow-wrap: anywhere; }
+.item p { margin: 6px 0 0; color: var(--ink-2); font-size: 13.5px; }
+
+/* Informe incrustado */
+.frame { width: 100%; height: calc(100vh - 150px); min-height: 520px; border: 1px solid var(--ring); border-radius: 14px; background: var(--page); }
+
+/* Progreso y avisos */
+.progress { height: 3px; background: var(--track); overflow: hidden; position: fixed; left: 0; right: 0; top: 58px; z-index: 6; display: none; }
+.progress.on { display: block; }
+.progress > i { display: block; width: 30%; height: 100%; background: var(--accent); animation: slide 1.2s ease-in-out infinite; }
+@keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(340%); } }
+.loading { padding: 60px 20px; text-align: center; color: var(--muted); }
+.loading .spin { width: 28px; height: 28px; border: 3px solid var(--track); border-top-color: var(--accent); border-radius: 50%; margin: 0 auto 14px; animation: rot .9s linear infinite; }
+@keyframes rot { to { transform: rotate(360deg); } }
+.toast { position: fixed; right: 16px; bottom: 16px; max-width: min(420px, calc(100vw - 32px)); background: var(--ink); color: var(--surface); padding: 10px 14px; border-radius: 10px; font-size: 14px; box-shadow: var(--shadow); z-index: 10; }
+footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
+
+@media (max-width: 980px) {
+  .hero-row, .two, .wide-left { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  .brand small { display: none; }
+}
+@media (max-width: 620px) {
+  .top .wrap { flex-wrap: wrap; height: auto; padding-top: 8px; padding-bottom: 8px; }
+  nav.tabs { order: 3; width: 100%; margin-left: 0; }
+  .progress { top: 0; }
+  .hero-figure .num { font-size: 52px; }
+  .kpi .value { font-size: 28px; }
+  .cat-row { grid-template-columns: 1fr 44px; }
+  .cat-row .meter { grid-column: 1 / -1; grid-row: 2; }
+  #scanBtn .long { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .progress > i, .loading .spin { animation: none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z"/><path d="m9 12 2 2 4-4"/></svg>
+      Bastion <small>· consola local</small>
+    </div>
+    <nav class="tabs" id="tabs" aria-label="Secciones"></nav>
+    <div class="spacer"></div>
+    <button class="btn primary" id="scanBtn" type="button">Escanear<span class="long"> ahora</span></button>
+    <button class="btn" id="theme" type="button" title="Cambiar tema">Tema</button>
+  </div>
+</header>
+<div class="progress" id="progress" aria-hidden="true"><i></i></div>
+<main class="wrap" id="app" aria-live="polite"></main>
+
+<script nonce="__NONCE__">
+(function () {
+  "use strict";
+  // Todo el contenido procedente del sistema auditado se inserta con
+  // textContent: nunca se interpreta como HTML.
+
+  // ---- Token de la sesión ----
+  var token = "";
+  try {
+    var q = new URLSearchParams(location.search);
+    token = q.get("t") || sessionStorage.getItem("bastion-token") || "";
+    if (q.get("t")) {
+      sessionStorage.setItem("bastion-token", token);
+      history.replaceState(null, "", location.pathname + location.hash);
+    }
+  } catch (e) {}
+
+  var SEV = {
+    critical: { label: "Crítico", color: "var(--critical)", rank: 0 },
+    high: { label: "Alto", color: "var(--serious)", rank: 1 },
+    medium: { label: "Medio", color: "var(--warning)", rank: 2 },
+    low: { label: "Bajo", color: "var(--info)", rank: 3 },
+    info: { label: "Info", color: "var(--info)", rank: 4 }
+  };
+  var STATUS = {
+    fail: { label: "Fallido", icon: "✕", color: "var(--critical)" },
+    error: { label: "Error", icon: "!", color: "var(--warning)" },
+    skipped: { label: "Sin evaluar", icon: "⊘", color: "var(--muted)" },
+    exception: { label: "Excepción", icon: "◇", color: "var(--info)" },
+    pass: { label: "Superado", icon: "✓", color: "var(--good)" },
+    na: { label: "No aplica", icon: "–", color: "var(--info)" }
+  };
+  var RISK = { none: "ninguno", low: "bajo", medium: "medio", high: "alto" };
+  var WAVE_OF = { none: 1, low: 1, medium: 2, high: 3 };
+  var ROLE = { workstation: "Estación de trabajo", server: "Servidor", dc: "Controlador de dominio" };
+  var CHANGE = { applied: "Aplicado", partial: "Parcial", failed: "Fallido", "rolled-back": "Deshecho", "in-progress": "En curso", nothing: "Sin cambios" };
+  var GROUPS = [
+    ["planned", "Cambios que se aplicarán", ""],
+    ["wave", "Requieren una ola superior", "sube la ola para incluirlos"],
+    ["remote", "Afectan al acceso remoto", "bastion harden --include-remote (con dead-man switch)"],
+    ["gpo", "Gestionados por una GPO de dominio", "corrígelos en la GPO o usa --force-local"],
+    ["manual", "Remediación manual", "bastion rules show <ID>"],
+    ["capture-error", "No se pudo leer el estado", ""],
+    ["unsupported", "No disponibles en esta plataforma", ""],
+    ["nothing", "Sin nada que cambiar", ""]
+  ];
+  var TABS = [["panel", "Panel"], ["controles", "Controles"], ["plan", "Plan de hardening"], ["historial", "Historial"], ["excepciones", "Excepciones"]];
+
+  var S = { info: null, reports: [], report: null, reportId: "", latestId: "", plan: { wave: 1, items: null, loading: false },
+    changes: null, exceptions: null, scanning: false, tab: "panel", error: "" };
+
+  // ---- Utilidades ----
+  function el(tag, attrs, children) {
+    var n = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (attrs[k] === null || attrs[k] === undefined || attrs[k] === false) continue;
+      if (k === "text") n.textContent = attrs[k];
+      else if (k === "class") n.className = attrs[k];
+      else if (k === "style") n.setAttribute("style", attrs[k]);
+      else if (k === "onclick") n.addEventListener("click", attrs[k]);
+      else n.setAttribute(k, attrs[k]);
+    }
+    (children || []).forEach(function (c) { if (c !== null && c !== undefined && c !== false) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return n;
+  }
+  var SVGNS = "http://www.w3.org/2000/svg";
+  function svg(tag, attrs, children) {
+    var n = document.createElementNS(SVGNS, tag);
+    for (var k in attrs || {}) n.setAttribute(k, attrs[k]);
+    (children || []).forEach(function (c) { if (c) n.appendChild(c); });
+    return n;
+  }
+  function scoreColor(v) { return v >= 80 ? "var(--good)" : v >= 60 ? "var(--warning)" : "var(--critical)"; }
+  function scoreWord(v) { return v >= 90 ? "excelente" : v >= 80 ? "buena" : v >= 70 ? "mejorable" : v >= 60 ? "débil" : "crítica"; }
+  function dot(color) { return el("span", { class: "dot", style: "background:" + color }); }
+  function badge(color, text, icon) {
+    return el("span", { class: "badge" }, [icon ? el("span", { text: icon, style: "color:" + color + ";font-weight:700" }) : dot(color), text]);
+  }
+  function sevBadge(s) { var x = SEV[s] || SEV.info; return badge(x.color, x.label); }
+  function statusBadge(s) { var x = STATUS[s] || STATUS.na; return badge(x.color, x.label, x.icon); }
+  function fmtDate(iso, short) {
+    try {
+      var d = new Date(iso);
+      return short ? d.toLocaleDateString("es-ES", { day: "numeric", month: "short" }) + " " + d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
+        : d.toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" });
+    } catch (e) { return iso; }
+  }
+  function ago(iso) {
+    var m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (m < 1) return "ahora mismo";
+    if (m < 60) return "hace " + m + " min";
+    var h = Math.round(m / 60);
+    if (h < 48) return "hace " + h + " h";
+    return "hace " + Math.round(h / 24) + " días";
+  }
+  function plural(n, one, many) { return n === 1 ? "1 " + one : n + " " + many; }
+  function cmdBox(text) {
+    var b = el("button", { class: "btn copy", type: "button", text: "Copiar" });
+    b.addEventListener("click", function () {
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () { b.textContent = "Copiado"; setTimeout(function () { b.textContent = "Copiar"; }, 1500); });
+    });
+    return el("div", { class: "cmd" }, [el("code", { text: text }), b]);
+  }
+  function card(title, children, right) {
+    return el("div", { class: "card" }, [el("h2", null, [title, right ? el("span", { class: "right" }, [right]) : null])].concat(children));
+  }
+  function toast(msg) {
+    var t = el("div", { class: "toast", role: "status", text: msg });
+    document.body.appendChild(t);
+    setTimeout(function () { t.remove(); }, 5000);
+  }
+  function busy(on) { document.getElementById("progress").classList.toggle("on", !!on); }
+
+  function api(path, opts) {
+    opts = opts || {};
+    return fetch(path, { method: opts.method || "GET", headers: { "X-Bastion-Token": token }, cache: "no-store" }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        if (!r.ok) throw new Error(body.error || ("HTTP " + r.status));
+        return body;
+      });
+    });
+  }
+
+  // ---- Tema ----
+  var root = document.documentElement;
+  try { var saved = localStorage.getItem("bastion-theme"); if (saved) root.setAttribute("data-theme", saved); } catch (e) {}
+  document.getElementById("theme").addEventListener("click", function () {
+    var dark = root.getAttribute("data-theme") === "dark" ||
+      (!root.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    var next = dark ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem("bastion-theme", next); } catch (e) {}
+    if (S.tab === "controles") render(); // el informe incrustado lee el tema al cargar
+  });
+
+  // ---- Navegación ----
+  var tabsEl = document.getElementById("tabs");
+  TABS.forEach(function (t) {
+    tabsEl.appendChild(el("button", { class: "tab", type: "button", "data-tab": t[0], text: t[1], onclick: function () { go(t[0]); } }));
+  });
+  function go(tab) { if (location.hash !== "#" + tab) location.hash = tab; else route(); }
+  function route() {
+    var t = (location.hash || "#panel").slice(1);
+    S.tab = TABS.some(function (x) { return x[0] === t; }) ? t : "panel";
+    Array.prototype.forEach.call(tabsEl.children, function (b) {
+      if (b.getAttribute("data-tab") === S.tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+    });
+    if (S.tab === "plan" && S.plan.items === null && !S.plan.loading && S.info) loadPlan(S.plan.wave);
+    if (S.tab === "historial" && S.changes === null) loadChanges();
+    if (S.tab === "excepciones" && S.exceptions === null) loadExceptions();
+    render();
+  }
+  window.addEventListener("hashchange", route);
+
+  // ---- Datos ----
+  var scanBtn = document.getElementById("scanBtn");
+  scanBtn.addEventListener("click", function () { scan(); });
+
+  function scan() {
+    if (S.scanning) return;
+    S.scanning = true; scanBtn.disabled = true; busy(true);
+    if (!S.report) render();
+    api("/api/scan", { method: "POST" }).then(function (res) {
+      S.report = res.report; S.reportId = res.id; S.latestId = res.id;
+      S.plan.items = null;
+      return api("/api/reports").then(function (list) { S.reports = list; });
+    }).then(function () {
+      toast("Escaneo completado: " + S.report.score.value + "/100");
+      if (S.tab === "plan") loadPlan(S.plan.wave);
+    }).catch(function (e) { toast("No se pudo escanear: " + e.message); })
+      .then(function () { S.scanning = false; scanBtn.disabled = false; busy(false); render(); });
+  }
+
+  function openReport(id) {
+    busy(true);
+    return api("/api/reports/" + encodeURIComponent(id)).then(function (rep) {
+      S.report = rep; S.reportId = id; render();
+    }).catch(function (e) { toast("No se pudo abrir el informe: " + e.message); }).then(function () { busy(false); });
+  }
+
+  function loadPlan(wave) {
+    S.plan.wave = wave; S.plan.loading = true; S.plan.items = null; busy(true); render();
+    api("/api/plan?wave=" + wave).then(function (items) { S.plan.items = items; })
+      .catch(function (e) { S.plan.items = []; S.plan.error = e.message; toast("No se pudo calcular el plan: " + e.message); })
+      .then(function () { S.plan.loading = false; busy(false); render(); });
+  }
+  function loadChanges() {
+    api("/api/changes").then(function (c) { S.changes = c; render(); }).catch(function (e) { S.changes = []; toast(e.message); });
+  }
+  function loadExceptions() {
+    api("/api/exceptions").then(function (x) { S.exceptions = x; render(); }).catch(function (e) { S.exceptions = []; toast(e.message); });
+  }
+
+  // ---- Render ----
+  var app = document.getElementById("app");
+  function render() {
+    app.textContent = "";
+    if (S.error) { app.appendChild(el("div", { class: "loading" }, [el("p", { text: S.error })])); return; }
+    if (!S.info) { app.appendChild(loadingBox("Cargando…")); return; }
+    app.appendChild(pageHead());
+    if (!S.report) {
+      app.appendChild(S.scanning ? loadingBox("Escaneando el equipo… (solo lectura, tarda unos segundos)") :
+        el("div", { class: "card empty", style: "margin-top:18px" }, [el("p", { text: "Todavía no hay escaneos guardados." }),
+          el("button", { class: "btn primary", type: "button", text: "Escanear ahora", onclick: function () { scan(); } })]));
+      return;
+    }
+    banners().forEach(function (b) { app.appendChild(b); });
+    ({ panel: renderPanel, controles: renderControls, plan: renderPlan, historial: renderHistory, excepciones: renderExceptions })[S.tab]();
+    app.appendChild(el("footer", null, ["Bastion " + S.info.version + " · consola local en 127.0.0.1. Solo lee y escanea: los cambios se aplican desde la terminal con bastion harden, que guarda una instantánea y permite deshacerlos."]));
+  }
+
+  function loadingBox(text) { return el("div", { class: "loading" }, [el("div", { class: "spin" }), el("div", { text: text })]); }
+
+  function pageHead() {
+    var i = S.info, r = S.report;
+    var meta = el("div", { class: "meta" });
+    [["Sistema", i.system], ["Rol", ROLE[i.role] || i.role], ["Perfil", r && r.profile ? r.profile.name : i.profile],
+     ["Escaneo", r ? fmtDate(r.finished_at) + " (" + ago(r.finished_at) + ")" : "—"]].forEach(function (p) {
+      if (p[1]) meta.appendChild(el("span", null, [el("b", { text: p[0] }), p[1]]));
+    });
+    return el("div", { class: "page-head" }, [el("h1", { text: i.hostname }), meta]);
+  }
+
+  function banners() {
+    var out = [], r = S.report, sc = r.score;
+    if (S.reportId && S.latestId && S.reportId !== S.latestId) {
+      out.push(el("div", { class: "banner info" }, [el("span", { class: "ico", text: "ⓘ" }),
+        el("span", { class: "grow", text: "Estás viendo un escaneo anterior (" + fmtDate(r.finished_at) + ")." }),
+        el("button", { class: "btn copy", type: "button", text: "Volver al último", onclick: function () { openReport(S.latestId); } })]));
+    }
+    if (!S.info.is_admin) {
+      out.push(el("div", { class: "banner" }, [el("span", { class: "ico", text: "⚠" }),
+        el("span", { text: "La consola se ejecuta sin privilegios" + (sc.skipped ? ": " + plural(sc.skipped, "control queda", "controles quedan") + " sin evaluar y no cuentan en la puntuación" : "") +
+          ". Ciérrala y lanza bastion ui desde " + (S.info.family === "windows" ? "un PowerShell abierto como administrador." : "sudo.") })]));
+    }
+    var expired = (r.results || []).filter(function (x) { return x.exception && x.exception.expired; });
+    if (expired.length) {
+      out.push(el("div", { class: "banner" }, [el("span", { class: "ico", text: "⚠" }),
+        el("span", { text: (expired.length === 1 ? "1 excepción ha caducado" : expired.length + " excepciones han caducado") + ": " +
+          expired.map(function (x) { return x.rule.id; }).join(", ") + ". Corrige el control o renueva la excepción." })]));
+    }
+    return out;
+  }
+
+  // ---- Panel ----
+  function previousMeta() {
+    var idx = -1;
+    for (var i = 0; i < S.reports.length; i++) if (S.reports[i].id === S.reportId) idx = i;
+    return idx > 0 ? S.reports[idx - 1] : null;
+  }
+
+  function renderPanel() {
+    var r = S.report, sc = r.score, results = r.results || [];
+    var color = scoreColor(sc.value), prev = previousMeta();
+    var deltaEl = null;
+    if (prev) {
+      var d = sc.value - prev.score.value;
+      deltaEl = el("span", { class: "delta " + (d > 0 ? "up" : d < 0 ? "down" : ""), text: (d > 0 ? "▲ +" + d : d < 0 ? "▼ " + d : "= sin cambios") + " desde el escaneo anterior" });
+    }
+    var hero = el("div", { class: "card hero" }, [
+      el("h2", { text: "Postura de seguridad" }),
+      el("div", null, [
+        el("div", { class: "hero-figure" }, [
+          el("span", { class: "num", text: String(sc.value) }), el("span", { class: "of", text: "/ 100" }),
+          el("span", { class: "grade", text: sc.grade, style: "color:" + color, title: "Calificación " + sc.grade })
+        ]),
+        el("div", { class: "meter", role: "img", "aria-label": "Puntuación " + sc.value + " de 100" }, [el("i", { style: "width:" + sc.value + "%;background:" + color })]),
+        el("p", null, ["Postura " + scoreWord(sc.value) + " según el perfil " + (r.profile ? r.profile.id : "") + "." + (sc.partial ? " Parcial: hay controles sin evaluar o con error. " : " "), deltaEl])
+      ])
+    ]);
+    var unk = (sc.errors || 0) + (sc.skipped || 0);
+    var third = !unk && sc.exceptions ? ["exception", sc.exceptions, "Excepciones", "riesgo aceptado"] :
+      [sc.skipped ? "skipped" : "error", unk, "Sin evaluar", sc.skipped ? "requieren privilegios" : "no se pudieron leer"];
+    var kpis = el("div", { class: "kpis" });
+    [["fail", sc.failed, "Fallidos", "requieren acción"], ["pass", sc.passed, "Superados", "conformes"], third, ["na", sc.na, "No aplican", "fuera de alcance"]].forEach(function (k) {
+      var st = STATUS[k[0]];
+      kpis.appendChild(el("div", { class: "card kpi" }, [
+        el("div", { class: "label" }, [el("span", { text: st.icon, style: "color:" + st.color + ";font-weight:700" }), k[2]]),
+        el("div", { class: "value", text: String(k[1]) }), el("div", { class: "sub", text: k[3] })
+      ]));
+    });
+    app.appendChild(el("div", { class: "hero-row" }, [hero, kpis]));
+
+    // Tendencia + corrección automática
+    app.appendChild(el("section", { class: "wide-left" }, [trendCard(), autofixCard(results)]));
+
+    // Prioridades + severidad/categorías
+    var failed = results.filter(function (x) { return x.status === "fail"; });
+    var prio = el("ol", { class: "prio" });
+    failed.slice().sort(function (a, b) {
+      return (SEV[a.rule.severity].rank - SEV[b.rule.severity].rank) ||
+        ((WAVE_OF[a.rule.remediation.breaking_risk] || 1) - (WAVE_OF[b.rule.remediation.breaking_risk] || 1));
+    }).slice(0, 7).forEach(function (x) {
+      var rem = x.rule.remediation || {};
+      prio.appendChild(el("li", null, [sevBadge(x.rule.severity),
+        el("div", null, [el("span", { class: "t", text: x.rule.title }), el("span", { class: "id", text: x.rule.id })]),
+        el("div", { class: "d" }, [rem.summary || "", rem.actions && rem.actions.length ? el("span", { class: "tag", text: "auto · ola " + (WAVE_OF[rem.breaking_risk] || 1) }) : null])
+      ]));
+    });
+    var prioCard = card("Empieza por aquí", [failed.length ? prio : el("p", { class: "empty", text: "No hay controles fallidos. ¡Buen trabajo!" })],
+      failed.length > 7 ? el("a", { href: "#controles", text: "ver los " + failed.length + " →" }) : null);
+
+    var sevWrap = el("div");
+    var maxF = 1;
+    ["critical", "high", "medium", "low"].forEach(function (s) { var c = sc.by_severity[s]; if (c) maxF = Math.max(maxF, c.failed); });
+    ["critical", "high", "medium", "low"].forEach(function (s) {
+      var c = sc.by_severity[s]; if (!c || !(c.passed + c.failed)) return;
+      sevWrap.appendChild(el("div", { class: "sev-row" }, [sevBadge(s),
+        c.failed ? el("div", { class: "sev-bar" }, [el("i", { style: "width:" + Math.max(4, c.failed / maxF * 100) + "%;background:" + SEV[s].color })]) :
+          el("span", { class: "ok-mark" }, [el("span", { text: "✓" }), "Todos conformes"]),
+        el("span", { class: "count", text: c.failed + " / " + (c.passed + c.failed) })]));
+    });
+    var cats = el("div");
+    (sc.by_category || []).filter(function (c) { return c.passed + c.failed > 0; }).slice(0, 8).forEach(function (c) {
+      cats.appendChild(el("div", { class: "cat-row" }, [
+        el("div", null, [el("div", { text: c.name }), el("div", { class: "n", text: c.passed + " de " + (c.passed + c.failed) + " conformes" })]),
+        el("div", { class: "meter" }, [el("i", { style: "width:" + c.value + "%;background:" + scoreColor(c.value) })]),
+        el("span", { class: "v", text: String(c.value) })]));
+    });
+    app.appendChild(el("section", { class: "two" }, [prioCard,
+      el("div", { class: "card" }, [el("h2", { text: "Fallidos por severidad" }), sevWrap,
+        el("h2", { text: "Categorías más débiles", style: "margin-top:22px" }), cats])]));
+  }
+
+  function trendCard() {
+    var pts = S.reports.slice(-30);
+    var body;
+    if (pts.length < 2) {
+      body = el("p", { class: "empty", text: "La tendencia aparece a partir del segundo escaneo. Vuelve a escanear después de aplicar cambios para ver cómo mejora la postura." });
+    } else {
+      var W = 640, H = 210, L = 34, R = 14, T = 12, B = 26;
+      var x = function (i) { return L + (pts.length === 1 ? 0 : i * (W - L - R) / (pts.length - 1)); };
+      var y = function (v) { return T + (100 - v) * (H - T - B) / 100; };
+      var g = svg("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "Evolución de la puntuación en los últimos " + pts.length + " escaneos" });
+      [0, 50, 80, 100].forEach(function (v) {
+        g.appendChild(svg("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), style: "stroke:var(--hair);stroke-width:1" + (v === 80 ? ";stroke-dasharray:4 4;stroke:var(--axis)" : "") }));
+        var t = svg("text", { x: L - 8, y: y(v) + 4, "text-anchor": "end", style: "fill:var(--muted);font-size:11px" }); t.textContent = String(v); g.appendChild(t);
+      });
+      var line = pts.map(function (p, i) { return x(i).toFixed(1) + "," + y(p.score.value).toFixed(1); }).join(" ");
+      g.appendChild(svg("polygon", { points: x(0).toFixed(1) + "," + y(0) + " " + line + " " + x(pts.length - 1).toFixed(1) + "," + y(0), style: "fill:var(--accent);opacity:.10" }));
+      g.appendChild(svg("polyline", { points: line, style: "fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round" }));
+      pts.forEach(function (p, i) {
+        var cur = p.id === S.reportId;
+        var c = svg("circle", { class: "pt", cx: x(i), cy: y(p.score.value), r: cur ? 6 : 4,
+          style: "fill:" + scoreColor(p.score.value) + ";stroke:var(--surface);stroke-width:2", tabindex: "0" });
+        var tt = svg("title"); tt.textContent = fmtDate(p.finished_at) + " · " + p.score.value + "/100 " + p.score.grade + (cur ? " (en pantalla)" : "");
+        c.appendChild(tt);
+        c.addEventListener("click", function () { openReport(p.id); });
+        c.addEventListener("keydown", function (e) { if (e.key === "Enter") openReport(p.id); });
+        g.appendChild(c);
+      });
+      var first = pts[0], last = pts[pts.length - 1], diff = last.score.value - first.score.value;
+      body = el("div", { class: "trend" }, [g, el("div", { class: "trend-foot" }, [el("span", { text: fmtDate(first.finished_at, true) }),
+        el("span", { text: (diff >= 0 ? "+" : "") + diff + " puntos en " + pts.length + " escaneos" }), el("span", { text: fmtDate(last.finished_at, true) })])]);
+    }
+    return card("Tendencia", [body], el("a", { href: "#historial", text: "historial →" }));
+  }
+
+  function autofixCard(results) {
+    var failed = results.filter(function (x) { return x.status === "fail"; });
+    var auto = failed.filter(function (x) { return x.rule.remediation && x.rule.remediation.actions && x.rule.remediation.actions.length; });
+    var byWave = { 1: 0, 2: 0, 3: 0 }, remote = 0;
+    auto.forEach(function (x) {
+      if (x.rule.remediation.safety === "remote-access") remote++;
+      else byWave[WAVE_OF[x.rule.remediation.breaking_risk] || 1]++;
+    });
+    var max = Math.max(1, byWave[1], byWave[2], byWave[3], remote);
+    var rows = el("div", { class: "waves" });
+    [["Ola 1", byWave[1], "var(--good)"], ["Ola 2", byWave[2], "var(--warning)"], ["Ola 3", byWave[3], "var(--critical)"], ["Remoto", remote, "var(--accent)"]].forEach(function (w) {
+      rows.appendChild(el("div", { class: "wave-row" }, [el("span", { text: w[0] }),
+        el("div", { class: "meter" }, [el("i", { style: "width:" + (w[1] / max * 100) + "%;background:" + w[2] })]), el("span", { class: "n", text: String(w[1]) })]));
+    });
+    var children = [
+      el("div", { class: "fix-big" }, [String(auto.length), el("small", { text: " de " + failed.length + " fallidos se corrigen solos" })]), rows,
+      el("p", { class: "note", text: "Ola 1: riesgo de rotura nulo o bajo. Ola 2: medio. Ola 3: alto. Remoto: SSH/RDP, con dead-man switch." })
+    ];
+    if (byWave[1]) {
+      children.push(cmdBox("bastion harden --apply"));
+      children.push(el("p", { class: "note", text: "En una terminal " + (S.info.family === "windows" ? "de administrador" : "con sudo") + ". Simula primero sin --apply; bastion rollback lo deshace." }));
+    }
+    return card("Corrección automática", children, el("a", { href: "#plan", text: "ver el plan →" }));
+  }
+
+  // ---- Controles (informe completo incrustado) ----
+  function renderControls() {
+    var src = "/r/" + encodeURIComponent(S.reportId) + ".html?t=" + encodeURIComponent(token);
+    app.appendChild(el("section", null, [
+      el("div", { class: "meta", style: "margin-bottom:10px" }, [el("span", { text: "Controles del escaneo del " + fmtDate(S.report.finished_at) + ", con evidencias y remediación." }),
+        el("a", { href: src, target: "_blank", rel: "noopener noreferrer", text: "Informe completo en una pestaña nueva ↗" })]),
+      el("iframe", { class: "frame", src: src + "&view=controles", title: "Controles evaluados" })
+    ]));
+  }
+
+  // ---- Plan ----
+  function renderPlan() {
+    var seg = el("div", { class: "seg", role: "group", "aria-label": "Ola" });
+    [[1, "Ola 1 · bajo"], [2, "Ola 2 · medio"], [3, "Ola 3 · alto"]].forEach(function (w) {
+      seg.appendChild(el("button", { type: "button", "aria-pressed": String(S.plan.wave === w[0]), text: w[1], disabled: S.plan.loading ? "disabled" : null,
+        onclick: function () { if (!S.plan.loading) loadPlan(w[0]); } }));
+    });
+    var head = el("div", { style: "display:flex;flex-wrap:wrap;gap:12px;align-items:center" }, [seg,
+      el("span", { class: "note", style: "margin:0", text: "Simulación: calcular el plan no cambia nada en el equipo." })]);
+    var body = [head];
+    if (S.plan.loading || S.plan.items === null) {
+      body.push(loadingBox("Calculando el plan: se evalúan los controles y se lee el estado actual…"));
+    } else {
+      var items = S.plan.items, planned = items.filter(function (i) { return i.status === "planned"; });
+      if (!items.length) body.push(el("p", { class: "empty", text: "No hay controles fallidos: nada que corregir." }));
+      GROUPS.forEach(function (g) {
+        var sel = items.filter(function (i) { return i.status === g[0]; });
+        if (!sel.length) return;
+        var grp = el("div", { class: "plan-group" }, [el("h3", null, [g[1] + " (" + sel.length + ")", g[2] ? el("span", { class: "hint", text: "→ " + g[2] }) : null])]);
+        sel.forEach(function (it) {
+          var steps = it.steps && it.steps.length ? el("ul", null, it.steps.map(function (s) { return el("li", { class: "mono", text: s }); })) : null;
+          grp.appendChild(el("div", { class: "item" }, [
+            el("div", { class: "h" }, [sevBadge(it.severity), el("span", { class: "t", text: it.title }), el("span", { class: "rid", text: it.rule_id }),
+              el("span", { class: "risk", text: "riesgo " + (RISK[it.risk] || it.risk) + (it.reboot ? " · reinicio" : "") })]),
+            steps, !steps && (it.reason || it.summary) ? el("p", { text: it.reason || it.summary }) : null
+          ]));
+        });
+        body.push(grp);
+      });
+      if (planned.length) {
+        var cmd = "bastion harden --apply" + (S.plan.wave > 1 ? " --wave " + S.plan.wave : "");
+        body.push(el("div", { class: "plan-group" }, [el("h3", { text: "Aplicar" }), cmdBox(cmd),
+          el("p", { class: "note", text: "Aplicar se hace desde la terminal " + (S.info.family === "windows" ? "(PowerShell como administrador)" : "(sudo)") +
+            ": Bastion pide confirmación, guarda una instantánea, verifica cada control y revierte el que falle. Para deshacerlo todo: bastion rollback." })]));
+      }
+    }
+    app.appendChild(el("section", null, [card("Plan de hardening", body,
+      S.plan.items ? el("span", { text: plural(S.plan.items.filter(function (i) { return i.status === "planned"; }).length, "cambio", "cambios") + " en la ola " + S.plan.wave }) : null)]));
+  }
+
+  // ---- Historial ----
+  function renderHistory() {
+    var rows = S.reports.slice().reverse();
+    var tbl = el("table", null, [el("thead", null, [el("tr", null, ["Fecha", "Perfil", "Puntuación", "Cambio", "Fallidos", "Sin evaluar", ""].map(function (h, i) {
+      return el("th", { text: h, style: i >= 2 && i <= 5 ? "text-align:right" : null });
+    }))])]);
+    var tb = el("tbody");
+    rows.forEach(function (m, i) {
+      var prev = rows[i + 1], d = prev ? m.score.value - prev.score.value : null;
+      tb.appendChild(el("tr", { class: m.id === S.reportId ? "current" : null }, [
+        el("td", null, [el("div", { text: fmtDate(m.finished_at) }), el("div", { class: "sub", text: "Bastion " + m.version })]),
+        el("td", { text: m.profile_name || m.profile }),
+        el("td", { class: "num" }, [el("strong", { text: m.score.value + " ", style: "color:" + scoreColor(m.score.value) }), m.score.grade]),
+        el("td", { class: "num", text: d === null ? "—" : (d > 0 ? "+" + d : String(d)), style: d > 0 ? "color:var(--good-text)" : d < 0 ? "color:var(--critical)" : null }),
+        el("td", { class: "num", text: String(m.score.failed) }),
+        el("td", { class: "num", text: String((m.score.skipped || 0) + (m.score.errors || 0)) }),
+        el("td", { style: "text-align:right" }, [m.id === S.reportId ? el("span", { class: "sub", text: "en pantalla" }) :
+          el("button", { class: "btn copy", type: "button", text: "Ver", onclick: function () { openReport(m.id).then(function () { go("panel"); }); } })])
+      ]));
+    });
+    tbl.appendChild(tb);
+    app.appendChild(el("section", null, [card("Escaneos", [rows.length ? el("div", { class: "table-wrap" }, [tbl]) : el("p", { class: "empty", text: "Sin escaneos guardados." }),
+      el("p", { class: "note", text: "Se conservan los últimos escaneos en " + S.info.reports_dir + "." })], el("span", { text: plural(rows.length, "escaneo", "escaneos") }))]));
+
+    var changes;
+    if (S.changes === null) changes = loadingBox("Cargando…");
+    else if (!S.changes.length) changes = el("p", { class: "empty", text: "Todavía no se ha aplicado ningún cambio de hardening en este equipo." });
+    else {
+      var t2 = el("table", null, [el("thead", null, [el("tr", null, ["Cambio", "Fecha", "Ola", "Estado", "Verificados", "Fallidos", "Deshechos"].map(function (h, i) {
+        return el("th", { text: h, style: i >= 4 ? "text-align:right" : null });
+      }))])]);
+      var b2 = el("tbody");
+      S.changes.forEach(function (c) {
+        b2.appendChild(el("tr", null, [el("td", { class: "mono", text: c.id }), el("td", { text: fmtDate(c.created_at) }), el("td", { text: String(c.wave) }),
+          el("td", null, [CHANGE[c.status] || c.status, c.reboot ? el("div", { class: "sub", text: "requiere reinicio" }) : null]),
+          el("td", { class: "num", text: String(c.verified) }), el("td", { class: "num", text: String(c.failed) }), el("td", { class: "num", text: String(c.rolled_back) })]));
+      });
+      t2.appendChild(b2);
+      changes = el("div", null, [el("div", { class: "table-wrap" }, [t2]), cmdBox("bastion rollback " + S.changes[0].id),
+        el("p", { class: "note", text: "Deshacer un cambio se hace desde la terminal con privilegios (sin ID, deshace el último)." })]);
+    }
+    app.appendChild(el("section", null, [card("Cambios de hardening", [changes])]));
+  }
+
+  // ---- Excepciones ----
+  function renderExceptions() {
+    var body;
+    var titles = {};
+    (S.report.results || []).forEach(function (x) { titles[x.rule.id] = x.rule.title; });
+    if (S.exceptions === null) body = loadingBox("Cargando…");
+    else if (!S.exceptions.length) body = el("p", { class: "empty", text: "No hay excepciones. Úsalas para aceptar de forma documentada un control que falla por un buen motivo." });
+    else {
+      var t = el("table", null, [el("thead", null, [el("tr", null, ["Control", "Vigencia", "Responsable", "Equipos", "Motivo"].map(function (h) { return el("th", { text: h }); }))])]);
+      var tb = el("tbody");
+      S.exceptions.forEach(function (x) {
+        var state = x.expired ? el("span", { style: "color:var(--critical);font-weight:600", text: "Caducada el " + x.expires }) :
+          el("span", { style: x.days_left <= 30 ? "color:var(--serious);font-weight:600" : null, text: "Hasta el " + x.expires + " (" + plural(x.days_left, "día", "días") + ")" });
+        tb.appendChild(el("tr", null, [el("td", null, [el("div", { class: "mono", text: x.rule }), titles[x.rule] ? el("div", { class: "sub", text: titles[x.rule] }) : null]),
+          el("td", null, [state, el("div", { class: "sub", text: "creada el " + x.created })]), el("td", { text: x.owner || "—" }),
+          el("td", { text: x.hosts && x.hosts.length ? x.hosts.join(", ") : "todos" }), el("td", { text: x.reason })]));
+      });
+      t.appendChild(tb);
+      body = el("div", { class: "table-wrap" }, [t]);
+    }
+    app.appendChild(el("section", null, [card("Excepciones", [body,
+      el("p", { class: "note", style: "margin-top:16px", text: "Se gestionan desde la terminal con privilegios. Cada excepción caduca como mucho al año; al caducar, el control vuelve a contar como fallido." }),
+      cmdBox('bastion exceptions add <ID> --reason "motivo" --expires 90d'), cmdBox("bastion exceptions remove <ID>")])]));
+  }
+
+  // ---- Arranque ----
+  if (!token) {
+    S.error = "Falta el token de la sesión. Abre la dirección completa que muestra \"bastion ui\" en la terminal.";
+    route();
+    return;
+  }
+  route();
+  busy(true);
+  Promise.all([api("/api/state"), api("/api/reports")]).then(function (res) {
+    S.info = res[0]; S.reports = res[1];
+    document.title = "Bastion · " + S.info.hostname;
+    var last = S.reports[S.reports.length - 1];
+    // Sin escaneos recientes (última hora) se escanea al abrir.
+    if (!last || Date.now() - new Date(last.finished_at).getTime() > 3600 * 1000) { busy(false); scan(); return; }
+    S.latestId = last.id;
+    return openReport(last.id).then(function () { route(); });
+  }).catch(function (e) {
+    S.error = "No se pudo conectar con Bastion: " + e.message + ". ¿Sigue abierta la terminal con bastion ui?";
+    render();
+  }).then(function () { busy(false); });
+})();
+</script>
+</body>
+</html>

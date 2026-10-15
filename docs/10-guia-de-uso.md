@@ -8,6 +8,7 @@
 |---|---|
 | `bastion info [--json]` | Plataforma, rol, etiquetas, perfil por defecto, probes disponibles y rutas |
 | `bastion scan` | Auditar el equipo (solo lectura) |
+| `bastion ui [--port N] [--no-open]` | Consola local en el navegador: postura, tendencia, plan, historial y excepciones (ver abajo) |
 | `bastion profiles [--all]` | Perfiles disponibles y número de reglas |
 | `bastion rules list [--all] [-p perfil]` | Reglas aplicables (o todas) |
 | `bastion rules show <ID>` | Detalle, remediación, impacto y referencias de un control |
@@ -79,6 +80,24 @@ sudo bastion rollback                # si algo no te convence, se deshace todo
 ```
 
 Cada control se aplica con instantánea previa, se verifica y, si no se cumple o falla, se revierte solo. Olas, acceso remoto, GPO e instantáneas se explican en [05-remediacion-segura.md](05-remediacion-segura.md).
+
+## Consola local: `bastion ui`
+
+```bash
+sudo bastion ui                      # abre el navegador con la consola
+bastion ui --port 8790 --no-open     # puerto fijo, sin abrir el navegador
+```
+
+Muestra la dirección (`http://127.0.0.1:<puerto>/?t=<token>`) y queda en marcha hasta Ctrl+C. Al abrirla escanea si el último escaneo tiene más de una hora; cada escaneo se guarda en el directorio de informes y alimenta la tendencia y el historial. Las pestañas se describen en [07-ui-y-diseno.md](07-ui-y-diseno.md#consola-local-bastion-ui-).
+
+La consola **solo lee y escanea**: el plan de hardening es una simulación y los cambios se aplican desde la terminal con `bastion harden --apply`. Solo escucha en `127.0.0.1` y exige el token de la dirección, así que ni otra web ni otro usuario del equipo pueden usarla ([ADR-0008](adr/0008-consola-local.md)).
+
+**Servidor sin escritorio:** fija el puerto y abre un túnel SSH desde tu equipo.
+
+```bash
+sudo bastion ui --port 8790 --no-open          # en el servidor
+ssh -L 8790:127.0.0.1:8790 usuario@servidor    # en tu equipo; abre la dirección que mostró el servidor
+```
 
 ## Aceptar un riesgo: `bastion exceptions`
 

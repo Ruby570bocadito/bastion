@@ -20,6 +20,7 @@ Bastion es una **suite de 16 herramientas sobre el mismo motor y el mismo agente
 |---|---|---|---|
 | `scan` | Evaluar | ✅ | 1 |
 | `report` | Gobernar | ✅ consola, JSON y HTML · 🔜 PDF por marco | 1 / 5 |
+| `ui` | Gobernar | ✅ consola local: tendencia, plan, historial y excepciones | 1 |
 | `rule` (SDK) | Gobernar | ✅ `list`, `show`, `lint`, `doc` · 🔜 `new`, `test`, `pack` | 1 / 2 |
 | `update` | — | ✅ | 0 |
 | `surface` | Evaluar | 🔜 | 1 |

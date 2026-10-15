@@ -42,7 +42,7 @@ Tipografía: la del sistema (`system-ui`, Segoe UI, Roboto). Monoespaciada para 
 | Bloque | Forma | Por qué |
 |---|---|---|
 | Postura | Cifra principal (64 px) + calificación A-F + medidor | Es el dato que se busca primero |
-| Fallidos / superados / errores / no aplican | Tiras KPI | Cuatro números de cabecera; un gráfico añadiría ruido |
+| Fallidos / superados / sin evaluar o excepciones / no aplican | Tiras KPI | Cuatro números de cabecera; un gráfico añadiría ruido |
 | Empieza por aquí | Lista priorizada (severidad y riesgo de rotura) | Convierte el informe en un plan |
 | Fallidos por severidad | Barras horizontales con escala compartida y valor al final | Comparar magnitudes de una categoría ordinal |
 | Puntuación por categoría | Medidores 0-100, peores primero | Una proporción frente a un límite |
@@ -57,7 +57,23 @@ Características técnicas:
 - **Seguro ante datos hostiles**: ver [08-seguridad-de-la-plataforma.md](08-seguridad-de-la-plataforma.md#informe-html).
 - El tema elegido se recuerda en `localStorage` (si está disponible).
 
-## Consola (✅)
+## Consola local: `bastion ui` (✅)
+
+![Consola local de Bastion](assets/consola.png)
+
+Un panel en el navegador para trabajar con un equipo, no solo mirar una foto. Se sirve desde el propio binario en `127.0.0.1` con un token por sesión y no tiene dependencias externas ([ADR-0008](adr/0008-consola-local.md)).
+
+| Pestaña | Contenido |
+|---|---|
+| **Panel** | Postura con la variación desde el escaneo anterior, KPIs, **tendencia** de la puntuación (SVG, cada punto abre ese escaneo), **corrección automática** (cuántos fallidos se corrigen solos, por ola) con el comando listo para copiar, prioridades, severidad y categorías más débiles |
+| **Controles** | El informe HTML del escaneo, incrustado y abierto directamente en la tabla de controles |
+| **Plan de hardening** | La simulación de `harden` para la ola 1, 2 o 3: el diff "actual → nuevo" de cada cambio y qué queda para otra ola, para el acceso remoto, para la GPO o es manual |
+| **Historial** | Escaneos guardados con su puntuación y variación (se puede abrir cualquiera) y los cambios de hardening aplicados, con el comando para deshacerlos |
+| **Excepciones** | Vigencia de cada excepción: en naranja si caduca en menos de 30 días, en rojo si ha caducado |
+
+Al abrirla escanea si el último escaneo tiene más de una hora. El botón **Escanear ahora** añade un punto a la tendencia. Mismos tokens, temas claro y oscuro y comportamiento responsive que el informe.
+
+## Consola de texto (✅)
 
 - Colores ANSI solo cuando la salida es una terminal y no está activo `NO_COLOR`/`--no-color`.
 - En Windows se activa el modo VT. En la consola clásica (conhost), los símbolos Unicode que su fuente no tiene se sustituyen (✓ → √, ✗ → ×).

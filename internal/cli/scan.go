@@ -68,50 +68,14 @@ func runScan(f scanFlags) error {
 		return fmt.Errorf("--format debe ser console o json")
 	}
 	cfg := loadConfig()
-	cat, err := loadCatalog(cfg)
-	if err != nil {
-		return err
-	}
-	info := platform.Detect()
-	requested := f.profile
-	if requested == "" {
-		requested = cfg.Profile
-	}
-	prof, err := resolveProfile(cat, info, requested)
-	if err != nil {
-		return err
-	}
-	if !rule.MatchesPlatform(prof.Platforms, info.Tags) {
-		fmt.Fprintf(os.Stderr, "aviso: el perfil %s está pensado para %s y este equipo es %s\n",
-			prof.ID, strings.Join(prof.Platforms, ", "), strings.Join(info.Tags, ", "))
-	}
-
-	selected := filterRules(cat.Select(info.Tags, prof.ID), f.ids, f.category)
-	if len(selected) == 0 {
-		return fmt.Errorf("ninguna regla aplicable con esos filtros")
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
 	progress := newProgress(f.format == "console" && !f.quiet)
-	started := time.Now()
-	eng := engine.New()
-	eng.HostTags = info.Tags
-	results := evaluate(ctx, eng, selected, info, progress.update)
+	rep, err := scanReport(ctx, cfg, f.profile, f.ids, f.category, progress.update)
 	progress.done()
-	finished := time.Now()
-
-	rep := &engine.Report{
-		Schema:     engine.SchemaVersion,
-		Tool:       engine.ToolInfo{Name: "bastion", Version: version.Version, Commit: version.Commit},
-		Host:       info,
-		Profile:    prof,
-		StartedAt:  started.UTC(),
-		FinishedAt: finished.UTC(),
-		DurationMs: finished.Sub(started).Milliseconds(),
-		Score:      engine.ComputeScore(results),
-		Results:    results,
+	if err != nil {
+		return err
 	}
 
 	switch f.format {
@@ -142,13 +106,9 @@ func runScan(f scanFlags) error {
 		fmt.Fprintf(msgs, "  %s Informe guardado: %s\n", s.Cyan(report.Sym("→")), o)
 	}
 	if f.save || (f.open && htmlOut == "") {
-		dir, userDir := reportsDir(cfg)
-		h, j, err := report.Save(dir, rep, cfg.Reports.Keep)
+		h, j, _, userDir, err := saveReport(cfg, rep)
 		if err != nil {
-			return fmt.Errorf("no se pudo guardar el informe en %s: %w", dir, err)
-		}
-		if !userDir {
-			_ = config.GrantUserRead(dir) // que el navegador sin elevar pueda abrirlo
+			return err
 		}
 		htmlOut = h
 		fmt.Fprintf(msgs, "  %s Informe HTML: %s\n", s.Cyan(report.Sym("→")), h)
@@ -177,6 +137,57 @@ func runScan(f scanFlags) error {
 		return &ExitError{Code: 2, Msg: fmt.Sprintf("puntuación %d inferior al mínimo exigido (%d)", rep.Score.Value, f.minScore)}
 	}
 	return nil
+}
+
+// scanReport evalúa el perfil (el pedido, el de config.yaml o el del rol
+// del equipo), aplica las excepciones y construye el informe.
+func scanReport(ctx context.Context, cfg config.Config, profile string, ids, cats []string, progress func(int, int)) (*engine.Report, error) {
+	cat, err := loadCatalog(cfg)
+	if err != nil {
+		return nil, err
+	}
+	info := platform.Detect()
+	prof, err := resolveProfile(cat, info, firstNonEmpty(profile, cfg.Profile))
+	if err != nil {
+		return nil, err
+	}
+	if !rule.MatchesPlatform(prof.Platforms, info.Tags) {
+		fmt.Fprintf(os.Stderr, "aviso: el perfil %s está pensado para %s y este equipo es %s\n",
+			prof.ID, strings.Join(prof.Platforms, ", "), strings.Join(info.Tags, ", "))
+	}
+	selected := filterRules(cat.Select(info.Tags, prof.ID), ids, cats)
+	if len(selected) == 0 {
+		return nil, fmt.Errorf("ninguna regla aplicable con esos filtros")
+	}
+	started := time.Now()
+	eng := engine.New()
+	eng.HostTags = info.Tags
+	results := evaluate(ctx, eng, selected, info, progress)
+	finished := time.Now()
+	return &engine.Report{
+		Schema:     engine.SchemaVersion,
+		Tool:       engine.ToolInfo{Name: "bastion", Version: version.Version, Commit: version.Commit},
+		Host:       info,
+		Profile:    prof,
+		StartedAt:  started.UTC(),
+		FinishedAt: finished.UTC(),
+		DurationMs: finished.Sub(started).Milliseconds(),
+		Score:      engine.ComputeScore(results),
+		Results:    results,
+	}, nil
+}
+
+// saveReport guarda el informe HTML y JSON en el directorio de informes.
+func saveReport(cfg config.Config, rep *engine.Report) (htmlPath, jsonPath, dir string, userDir bool, err error) {
+	dir, userDir = reportsDir(cfg)
+	htmlPath, jsonPath, err = report.Save(dir, rep, cfg.Reports.Keep)
+	if err != nil {
+		return "", "", dir, userDir, fmt.Errorf("no se pudo guardar el informe en %s: %w", dir, err)
+	}
+	if !userDir {
+		_ = config.GrantUserRead(dir) // que el navegador sin elevar pueda abrirlo
+	}
+	return htmlPath, jsonPath, dir, userDir, nil
 }
 
 func filterRules(rs []*rule.Rule, ids, cats []string) []*rule.Rule {

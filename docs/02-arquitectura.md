@@ -100,11 +100,14 @@ bastion/
 ├── internal/
 │   ├── cli/                comandos
 │   ├── config/             rutas y config.yaml (+ permisos por SO)
-│   ├── engine/             evaluación, operadores, puntuación
+│   ├── engine/             evaluación, operadores, puntuación, excepciones
+│   ├── exceptions/         exceptions.yaml (riesgo aceptado con caducidad)
 │   ├── platform/           detección de plataforma (linux/windows)
 │   ├── probes/             recolectores (+ parsers puros con tests)
-│   ├── report/             consola, JSON, HTML (assets/report.html)
+│   ├── remediate/          harden: acciones tipadas, plan, instantáneas, rollback
+│   ├── report/             consola, JSON, HTML (assets/report.html), historial
 │   ├── selfupdate/         actualización verificada
+│   ├── ui/                 consola local "bastion ui" (assets/ui.html)
 │   └── version/            versión inyectada con -ldflags
 ├── pkg/rule/               formato público de reglas y perfiles
 ├── rules/                  paquete oficial (incrustado en el binario)
@@ -116,7 +119,7 @@ bastion/
 └── Makefile
 ```
 
-Cuando llegue el modo flota se añadirán `cmd/bastion-server/`, `internal/server/...`, `proto/` (contratos gRPC) y `ui/` (React).
+Cuando llegue el modo flota se añadirán `cmd/bastion-server/`, `internal/server/...`, `proto/` (contratos gRPC) y `web/` (consola de flota en React).
 
 ## Modo flota (🔜 fase 3)
 

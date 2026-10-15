@@ -35,7 +35,7 @@
 - [ ] `bastion surface` (superficie de ataque).
 - [ ] Firma de releases (cosign) y Authenticode.
 - [ ] Prueba de los instaladores de punta a punta en CI (espejo local).
-- [ ] UI local: `bastion ui` (servidor en 127.0.0.1 con el informe interactivo e historial).
+- [x] UI local: `bastion ui` (127.0.0.1 con token): postura, tendencia, plan por olas, historial de escaneos y cambios, excepciones ([ADR-0008](adr/0008-consola-local.md)).
 
 **Terminado cuando:** un auditor puede llevar el binario en un USB, auditar Windows 11, Server 2022 (miembro y DC) y Ubuntu 24.04 y entregar un informe defendible sin falsos positivos conocidos.
 

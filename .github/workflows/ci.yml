@@ -55,6 +55,24 @@ jobs:
           test "$(sudo $b scan --format json | jq '.score.exceptions')" -eq 1
           sudo $b exceptions remove "$id" --no-color
           test "$(sudo $b scan --format json | jq '.score.exceptions')" -eq 0
+      # Consola local: sin token no hay datos, Host ajeno rechazado, y con
+      # token escanea y calcula el plan.
+      - name: Consola local (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo ./bin/bastion ui --no-open --port 8790 --no-color > ui.log 2>&1 &
+          pid=$!
+          for i in $(seq 1 40); do grep -q '?t=' ui.log && break; sleep 0.5; done
+          tok=$(grep -o '?t=[A-Za-z0-9_-]*' ui.log | head -1 | cut -c4-)
+          base=http://127.0.0.1:8790
+          test "$(curl -s -o /dev/null -w '%{http_code}' $base/api/state)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example' $base/)" = 403
+          curl -sf -H "X-Bastion-Token: $tok" $base/api/state | jq -e '.hostname'
+          curl -sf -X POST -H "X-Bastion-Token: $tok" $base/api/scan | jq -e '.report.score.value >= 0'
+          curl -sf -H "X-Bastion-Token: $tok" "$base/api/plan?wave=1" | jq -e 'length > 0'
+          curl -sf -H "X-Bastion-Token: $tok" $base/api/reports | jq -e 'length >= 1'
+          sudo kill "$pid" || true
       # Ciclo completo de hardening en la máquina desechable del runner:
       # aplicar la ola 1 debe mejorar la postura y el rollback debe dejarla
       # exactamente como estaba.

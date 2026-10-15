@@ -42,6 +42,12 @@ Bastion se ejecuta como **SYSTEM/root** en equipos críticos. Para un atacante e
 - **CSP**: `default-src 'none'; script-src 'nonce-<aleatorio>'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'`. Aunque se inyectara HTML, ningún script sin el nonce se ejecutaría y no se puede cargar nada externo.
 - Los enlaces externos (MITRE) usan `rel="noopener noreferrer"`.
 
+### Consola local (`bastion ui`)
+- Escucha solo en `127.0.0.1` y toda la API exige un token aleatorio de 256 bits por sesión (cabecera `X-Bastion-Token`, comparación en tiempo constante).
+- Rechaza cualquier `Host` que no sea de loopback (**DNS rebinding**) y las peticiones de escritura con un `Origin` ajeno; no responde a CORS, así que una web maliciosa no puede enviar el token ni leer respuestas (**CSRF**).
+- CSP con nonce y `frame-ancestors 'none'`, `nosniff`, `no-referrer`, `no-store`, COOP/CORP; datos insertados con `textContent`.
+- Solo lee y escanea: aplicar o deshacer cambios y editar excepciones sigue exigiendo la terminal. Detalle en [ADR-0008](adr/0008-consola-local.md).
+
 ### Permisos
 - Linux: `/etc/bastion` y `/var/lib/bastion` con `0750` (root). Informes con `0640`.
 - Windows: `%ProgramData%\Bastion` sin herencia, acceso total solo para Administradores (`S-1-5-32-544`) y SYSTEM (`S-1-5-18`), por SID para que funcione en cualquier idioma. El directorio `reports` concede además **lectura** al usuario que ejecutó el escaneo: con UAC, su navegador corre sin elevar y no podría abrir el informe.
