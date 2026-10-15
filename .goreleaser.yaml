@@ -1,0 +1,57 @@
+# GoReleaser v2 · https://goreleaser.com
+# Se ejecuta desde .github/workflows/release.yml al publicar una etiqueta vX.Y.Z.
+version: 2
+project_name: bastion
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: bastion
+    main: ./cmd/bastion
+    binary: bastion
+    env: [CGO_ENABLED=0]
+    goos: [linux, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/tu-usuario/bastion/internal/version.Version={{ .Version }}
+      - -X github.com/tu-usuario/bastion/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/tu-usuario/bastion/internal/version.Date={{ .Date }}
+      - -X github.com/tu-usuario/bastion/internal/version.Repo={{ envOrDefault "GITHUB_REPOSITORY" "tu-usuario/bastion" }}
+
+archives:
+  - id: default
+    # Nombre SIN versión: los instaladores y "bastion update" lo construyen
+    # a partir del sistema y la arquitectura.
+    name_template: "bastion_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+sboms:
+  - artifacts: archive
+
+release:
+  extra_files:
+    # version.txt lo genera el workflow: es lo que consultan los instaladores
+    # en <releases>/latest/download/version.txt
+    - glob: ./.release/version.txt
+    - glob: ./scripts/install.sh
+    - glob: ./scripts/install.ps1
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^test:", "^chore:"]

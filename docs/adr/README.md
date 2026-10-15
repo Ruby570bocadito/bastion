@@ -1,0 +1,12 @@
+# Decisiones de arquitectura (ADR)
+
+Registro de decisiones importantes: contexto, decisión y consecuencias. Una ADR aceptada no se edita; si cambia la decisión, se crea una nueva que la sustituye.
+
+| ADR | Título | Estado |
+|---|---|---|
+| [0001](0001-go-como-lenguaje.md) | Go como lenguaje del agente y del servidor | Aceptada |
+| [0002](0002-reglas-declarativas.md) | Reglas declarativas en YAML | Aceptada |
+| [0003](0003-standalone-primero.md) | Modo standalone primero, flota después | Aceptada |
+| [0004](0004-sin-ejecucion-arbitraria.md) | Sin ejecución arbitraria de comandos | Aceptada |
+| [0005](0005-instalador-de-una-linea.md) | Instalador de una línea con verificación SHA-256 | Aceptada |
+| [0006](0006-informe-html-autocontenido.md) | Informe HTML autocontenido como primera UI | Aceptada |

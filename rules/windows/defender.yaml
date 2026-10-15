@@ -1,0 +1,280 @@
+# Microsoft Defender Antivirus y reglas de reducción de la superficie de ataque (ASR).
+# Si hay un antivirus de terceros, Defender queda pasivo y estos controles no aplican.
+id: WIN-DEF-001
+title: Protección en tiempo real activada
+description: La protección en tiempo real de Microsoft Defender debe estar activa.
+rationale: Sin protección en tiempo real el malware conocido se ejecuta sin oposición.
+category: Defender
+severity: critical
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SI-3]
+  mitre_mitigations: [M1049]
+  mitre_techniques: [T1562.001]
+check:
+  probe: ps
+  query: defender_status
+  field: RealTimeProtectionEnabled
+  op: eq
+  expected: true
+remediation:
+  summary: Activar la protección en tiempo real e investigar quién la desactivó.
+  commands: Set-MpPreference -DisableRealtimeMonitoring $false
+  breaking_risk: none
+---
+id: WIN-DEF-002
+title: Protección contra alteraciones (Tamper Protection)
+description: La protección contra alteraciones de Defender debe estar activa.
+rationale: Impide que el malware o un atacante con privilegios desactive Defender.
+category: Defender
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SI-3, SI-7]
+  mitre_mitigations: [M1049]
+  mitre_techniques: [T1562.001]
+check:
+  probe: ps
+  query: defender_status
+  field: IsTamperProtected
+  op: eq
+  expected: true
+remediation:
+  summary: Activar Tamper Protection desde Seguridad de Windows, Intune o Microsoft Defender for Endpoint.
+  breaking_risk: none
+---
+id: WIN-DEF-003
+title: Firmas de Defender actualizadas
+description: Las firmas antivirus no deben tener más de 7 días.
+rationale: Unas firmas antiguas no detectan amenazas recientes.
+category: Defender
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SI-3(2)]
+  mitre_mitigations: [M1049]
+check:
+  probe: ps
+  query: defender_status
+  field: AntivirusSignatureAge
+  op: lte
+  expected: 7
+remediation:
+  summary: Comprobar Windows Update / WSUS y forzar la actualización.
+  commands: Update-MpSignature
+  breaking_risk: none
+---
+id: WIN-DEF-004
+title: Protección en la nube activada
+description: La protección basada en la nube (MAPS) debe estar activa.
+rationale: Permite bloquear en segundos amenazas nuevas que aún no tienen firma.
+category: Defender
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SI-3]
+  mitre_mitigations: [M1049]
+check:
+  probe: ps
+  query: defender_prefs
+  field: MAPSReporting
+  op: gte
+  expected: 1
+remediation:
+  summary: Activar MAPS (Advanced).
+  commands: Set-MpPreference -MAPSReporting Advanced
+  breaking_risk: none
+---
+id: WIN-DEF-005
+title: Bloqueo de aplicaciones potencialmente no deseadas (PUA)
+description: La protección PUA debe estar en modo Bloquear (1).
+rationale: Bloquea adware, mineros y herramientas que suelen preceder a un compromiso.
+category: Defender
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SI-3]
+  mitre_mitigations: [M1049]
+check:
+  probe: ps
+  query: defender_prefs
+  field: PUAProtection
+  op: eq
+  expected: 1
+remediation:
+  summary: Activar PUA en modo bloqueo.
+  commands: Set-MpPreference -PUAProtection Enabled
+  breaking_risk: low
+---
+id: WIN-DEF-006
+title: "ASR: bloquear el robo de credenciales de LSASS"
+description: La regla ASR 9e6c4e1f-7d60-472f-ba1a-a39ef669e4b2 debe estar en modo Bloquear.
+rationale: Bloquea el acceso a la memoria de LSASS que usan Mimikatz y herramientas similares.
+category: Defender
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SI-3, SC-39]
+  mitre_mitigations: [M1040]
+  mitre_techniques: [T1003.001]
+check:
+  probe: ps
+  query: defender_asr
+  field: 9e6c4e1f-7d60-472f-ba1a-a39ef669e4b2
+  op: eq
+  expected: 1
+  default: 0
+remediation:
+  summary: Activar la regla en modo Bloquear (prueba antes en modo Auditoría, valor 2).
+  commands: Add-MpPreference -AttackSurfaceReductionRules_Ids 9e6c4e1f-7d60-472f-ba1a-a39ef669e4b2 -AttackSurfaceReductionRules_Actions Enabled
+  breaking_risk: low
+---
+id: WIN-DEF-007
+title: "ASR: bloquear procesos hijos de Office"
+description: La regla ASR d4f940ab-401b-4efc-aadc-ad5f3c50688a debe estar en modo Bloquear.
+rationale: Las macros maliciosas lanzan PowerShell, cmd o mshta desde Word y Excel; esta regla corta esa cadena.
+category: Defender
+severity: high
+platforms: [windows-client]
+profiles: [win-workstation-l1]
+references:
+  nist: [SI-3]
+  mitre_mitigations: [M1040]
+  mitre_techniques: [T1204.002, T1566.001]
+check:
+  probe: ps
+  query: defender_asr
+  field: d4f940ab-401b-4efc-aadc-ad5f3c50688a
+  op: eq
+  expected: 1
+  default: 0
+remediation:
+  summary: Activar la regla en modo Bloquear tras una fase de auditoría.
+  commands: Add-MpPreference -AttackSurfaceReductionRules_Ids d4f940ab-401b-4efc-aadc-ad5f3c50688a -AttackSurfaceReductionRules_Actions Enabled
+  breaking_risk: medium
+impact: Complementos de Office legítimos que lancen procesos pueden verse bloqueados; revisa el evento 1122 en modo auditoría.
+---
+id: WIN-DEF-008
+title: "ASR: bloquear contenido ejecutable del correo"
+description: La regla ASR be9ba2d9-53ea-4cdc-84e5-9b1eeee46550 debe estar en modo Bloquear.
+rationale: Impide ejecutar adjuntos ejecutables y scripts directamente desde el cliente de correo o el webmail.
+category: Defender
+severity: high
+platforms: [windows-client]
+profiles: [win-workstation-l1]
+references:
+  nist: [SI-3, SI-8]
+  mitre_mitigations: [M1040]
+  mitre_techniques: [T1566.001]
+check:
+  probe: ps
+  query: defender_asr
+  field: be9ba2d9-53ea-4cdc-84e5-9b1eeee46550
+  op: eq
+  expected: 1
+  default: 0
+remediation:
+  summary: Activar la regla en modo Bloquear.
+  commands: Add-MpPreference -AttackSurfaceReductionRules_Ids be9ba2d9-53ea-4cdc-84e5-9b1eeee46550 -AttackSurfaceReductionRules_Actions Enabled
+  breaking_risk: low
+---
+id: WIN-DEF-009
+title: "ASR: bloquear controladores firmados vulnerables"
+description: La regla ASR 56a863a9-875e-4185-98a7-b882c64b5ce5 debe estar en modo Bloquear.
+rationale: Evita técnicas BYOVD (bring your own vulnerable driver) usadas para matar el EDR y escalar al kernel.
+category: Defender
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SI-3, CM-7]
+  mitre_mitigations: [M1040]
+  mitre_techniques: [T1068, T1562.001]
+check:
+  probe: ps
+  query: defender_asr
+  field: 56a863a9-875e-4185-98a7-b882c64b5ce5
+  op: eq
+  expected: 1
+  default: 0
+remediation:
+  summary: Activar la regla en modo Bloquear.
+  commands: Add-MpPreference -AttackSurfaceReductionRules_Ids 56a863a9-875e-4185-98a7-b882c64b5ce5 -AttackSurfaceReductionRules_Actions Enabled
+  breaking_risk: low
+---
+id: WIN-DEF-010
+title: "ASR: bloquear scripts ofuscados"
+description: La regla ASR 5beb7efe-fd9a-4556-801d-275e5ffc04cc debe estar en modo Bloquear.
+rationale: La ofuscación de scripts es típica de cargadores de malware.
+category: Defender
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l2, win-server-l2]
+references:
+  nist: [SI-3]
+  mitre_mitigations: [M1040]
+  mitre_techniques: [T1027]
+check:
+  probe: ps
+  query: defender_asr
+  field: 5beb7efe-fd9a-4556-801d-275e5ffc04cc
+  op: eq
+  expected: 1
+  default: 0
+remediation:
+  summary: Activar la regla tras una fase de auditoría.
+  breaking_risk: medium
+impact: Algunos scripts de administración comprimidos o minificados pueden bloquearse.
+---
+id: WIN-DEF-011
+title: "ASR: bloquear persistencia por suscripciones WMI"
+description: La regla ASR e6db77e5-3df2-4cf1-b95a-636979351e5b debe estar en modo Bloquear.
+rationale: Las suscripciones a eventos WMI son un mecanismo de persistencia sigiloso.
+category: Defender
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l2, win-server-l2]
+references:
+  nist: [SI-3]
+  mitre_mitigations: [M1040]
+  mitre_techniques: [T1546.003]
+check:
+  probe: ps
+  query: defender_asr
+  field: e6db77e5-3df2-4cf1-b95a-636979351e5b
+  op: eq
+  expected: 1
+  default: 0
+remediation:
+  summary: Activar la regla tras una fase de auditoría.
+  breaking_risk: medium
+impact: Algunas herramientas de gestión (SCCM, agentes de monitorización) usan WMI; valida en modo auditoría.
+---
+id: WIN-DEF-012
+title: Protección de red activada
+description: Network Protection debe estar en modo Bloquear (1).
+rationale: Bloquea conexiones a dominios e IPs maliciosas desde cualquier proceso, no solo el navegador.
+category: Defender
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l2, win-server-l2]
+references:
+  nist: [SC-7, SI-3]
+  mitre_mitigations: [M1031]
+  mitre_techniques: [T1071, T1566.002]
+check:
+  probe: ps
+  query: defender_prefs
+  field: EnableNetworkProtection
+  op: eq
+  expected: 1
+remediation:
+  summary: Activar Network Protection.
+  commands: Set-MpPreference -EnableNetworkProtection Enabled
+  breaking_risk: low

@@ -1,0 +1,118 @@
+<div align="center">
+
+# 🛡️ Bastion
+
+**Auditoría y hardening para Windows, Windows Server y Linux**
+
+Evalúa la configuración de seguridad de tus equipos frente a perfiles de hardening,
+calcula una puntuación de postura, la mapea a MITRE ATT&CK y te dice qué corregir primero.
+
+[Instalación](#-instalación-en-una-línea) · [Uso](docs/10-guia-de-uso.md) · [Documentación](docs/README.md) · [Hoja de ruta](docs/13-hoja-de-ruta.md)
+
+</div>
+
+---
+
+![Informe HTML de Bastion](docs/assets/informe-claro.png)
+
+## ✨ Qué hace hoy
+
+| | |
+|---|---|
+| 🔍 **Auditoría de solo lectura** | 131 controles reales para Windows 10/11, Windows Server 2016-2025 (miembro y DC) y Linux (Ubuntu, Debian, RHEL y derivados). Nunca modifica el sistema. |
+| 🎯 **Perfiles por rol** | Estación de trabajo, servidor miembro, controlador de dominio y servidor Linux, con niveles L1/L2. Bastion detecta el rol y elige el perfil. |
+| 📊 **Puntuación de postura** | Puntuación ponderada por severidad (0-100, A-F), por categoría y por severidad. |
+| 🧭 **MITRE ATT&CK** | Cada control enlaza técnicas y mitigaciones. El informe muestra qué técnicas quedan expuestas. |
+| 🧾 **Evidencias** | Para cada control: valor real, valor esperado y de dónde sale el dato (clave de registro, `sshd -T`, `secedit`...). |
+| 🛠️ **Remediación guiada** | Resumen, ruta de GPO, comandos listos para copiar, riesgo de rotura e impacto. |
+| 🌐 **Informe HTML autocontenido** | Un solo fichero, modo claro y oscuro, filtros, sin conexión, imprimible a PDF. |
+| ⚙️ **Listo para CI/CD** | Salida JSON estable y `--min-score` para fallar un pipeline de imágenes doradas. |
+| 🔄 **Auto-actualización verificada** | `bastion update` descarga, verifica la suma SHA-256 y se reemplaza. Las reglas viajan dentro del binario. |
+
+## 🚀 Instalación en una línea
+
+El mismo comando **instala, actualiza, prepara y lanza un primer escaneo**. Vuelve a ejecutarlo cuando quieras actualizar.
+
+**Linux** (como root):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.sh | sudo bash
+```
+
+**Windows** (PowerShell como administrador):
+
+```powershell
+irm https://raw.githubusercontent.com/tu-usuario/bastion/main/scripts/install.ps1 | iex
+```
+
+Opciones, instalación sin conexión, espejos internos y desinstalación: [docs/09-instalacion.md](docs/09-instalacion.md).
+
+## 🧪 Uso rápido
+
+```bash
+bastion info                        # plataforma, rol y perfil detectados
+bastion scan                        # auditar con el perfil por defecto
+bastion scan --save --open          # guardar y abrir el informe HTML
+bastion scan -p win-workstation-l2  # otro perfil
+bastion scan --format json          # salida JSON (integraciones)
+bastion scan --min-score 80         # código de salida 2 si no llega (CI/CD)
+bastion rules show WIN-NET-001      # detalle y remediación de un control
+bastion update                      # actualizar Bastion y sus reglas
+```
+
+```text
+  ▲ BASTION  · auditoría de hardening  0.1.0
+  ────────────────────────────────────────────────────────────────────────
+  Equipo    web-01 · Ubuntu 24.04.1 LTS · kernel 6.8.0 · amd64
+  Perfil    Linux Servidor · Nivel 1 (linux-server-l1)
+  Escaneo   57 controles en 39 ms
+
+  POSTURA    65/100 D  ███████████████████████░░░░░░░░░░░░░
+           ✓ 22 superados   ✗ 15 fallidos   ! 0 errores   ○ 20 no aplican
+
+  FALLIDOS (15)
+  ✗ ALTO     LNX-FW-001    Firewall de host activo
+                           ufw: actual no configurado · esperado yes
+  ✗ ALTO     LNX-MAC-001   Control de acceso obligatorio activo (AppArmor o SELinux)
+  ...
+```
+
+## 🗺️ Hacia dónde va
+
+Bastion es una suite de 16 herramientas sobre el mismo motor, organizadas en el ciclo **Evaluar → Endurecer → Defender → Gobernar**:
+
+| Fase | Estado | Contenido |
+|---|---|---|
+| 0 · Fundaciones | ✅ | Motor de reglas, probes Windows/Linux, CI, instaladores, documentación |
+| 1 · Auditoría | ✅ base · 🔜 más reglas | `scan`, informes, `rules`, perfiles. Siguiente: `surface` y unas 300 reglas |
+| 2 · Hardening | 🔜 | `harden` con instantánea, rollback y dead-man switch; `plan`; `studio` (exportar a GPO, Intune, Ansible) |
+| 3 · Flota | 🔜 | Servidor central, agentes con mTLS, UI web (React), `guard` y `observe` |
+| 4 · Defensa | 🔜 | `telemetry`, `hunt`, `lockdown`, `vuln` |
+| 5 · Enterprise | 🔜 | `ad`, anillos de despliegue, SSO, ITSM/SIEM, informes por marco |
+
+Detalle completo en la [hoja de ruta](docs/13-hoja-de-ruta.md) y en el [diseño de las herramientas](docs/03-herramientas.md).
+
+## 🔐 Principios de seguridad
+
+- **Solo lectura** mientras no se pida explícitamente lo contrario (`harden` llegará en la fase 2, con simulación y rollback).
+- **Sin ejecución arbitraria.** Las reglas son datos declarativos: un paquete de reglas no puede ejecutar comandos. Los comandos del sistema que usan los probes están fijados en el código y se invocan con ruta absoluta.
+- **Descargas verificadas** con SHA-256 en el instalador y en `bastion update`.
+- **Informe blindado.** Los datos leídos del sistema nunca se interpretan como HTML y la página tiene una CSP con nonce.
+
+Más en [docs/08-seguridad-de-la-plataforma.md](docs/08-seguridad-de-la-plataforma.md). Para reportar vulnerabilidades: [SECURITY.md](SECURITY.md).
+
+## 📚 Documentación
+
+Toda la documentación está en [`docs/`](docs/README.md): visión, arquitectura, herramientas, motor de reglas, remediación segura, catálogo de controles, diseño de la UI, seguridad, instalación, guía de uso, desarrollo, pruebas, hoja de ruta, marcos normativos y decisiones de arquitectura (ADR).
+
+## 🧑‍💻 Desarrollo
+
+```bash
+make build        # bin/bastion
+make test         # tests
+make lint         # gofmt + go vet (Linux y Windows)
+make rules-lint   # validar el paquete de reglas
+sudo make scan    # escanear este equipo
+```
+
+Guía completa: [docs/11-desarrollo.md](docs/11-desarrollo.md).

@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-__NONCE__'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta name="generator" content="Bastion">
+<title>Informe de hardening · Bastion</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f6f6f3;
+  --surface: #fcfcfb;
+  --surface-2: #f0efec;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #6e6c66;
+  --hair: #e1e0d9;
+  --axis: #c3c2b7;
+  --ring: rgba(11,11,11,.10);
+  --accent: #2a78d6;
+  --accent-soft: #cde2fb;
+  --good: #0ca30c;
+  --good-text: #006300;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --info: #898781;
+  --track: #e8e7e1;
+  --code-bg: #f0efec;
+  --shadow: 0 1px 2px rgba(11,11,11,.04), 0 8px 24px rgba(11,11,11,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-2: #232321;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #9a988f;
+    --hair: #2c2c2a;
+    --axis: #383835;
+    --ring: rgba(255,255,255,.10);
+    --accent: #3987e5;
+    --accent-soft: #184f95;
+    --good-text: #0ca30c;
+    --track: #2c2c2a;
+    --code-bg: #232321;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --surface-2: #232321;
+  --ink: #f0efec;
+  --ink-2: #c3c2b7;
+  --muted: #9a988f;
+  --hair: #2c2c2a;
+  --axis: #383835;
+  --ring: rgba(255,255,255,.10);
+  --accent: #3987e5;
+  --accent-soft: #184f95;
+  --good-text: #0ca30c;
+  --track: #2c2c2a;
+  --code-bg: #232321;
+  --shadow: none;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre, .mono { font-family: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace; font-size: 13px; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+
+/* Cabecera */
+.top { background: var(--surface); border-bottom: 1px solid var(--hair); position: sticky; top: 0; z-index: 5; }
+.top .wrap { display: flex; align-items: center; gap: 12px; height: 56px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: .2px; }
+.brand svg { width: 26px; height: 26px; color: var(--accent); }
+.brand small { color: var(--muted); font-weight: 450; }
+.spacer { flex: 1; }
+.btn {
+  appearance: none; border: 1px solid var(--hair); background: var(--surface); color: var(--ink-2);
+  border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn:hover { background: var(--surface-2); color: var(--ink); }
+.btn:focus-visible, .chip:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Equipo */
+.host { padding: 28px 0 8px; }
+.host h1 { margin: 0 0 4px; font-size: 26px; font-weight: 650; letter-spacing: -.2px; overflow-wrap: anywhere; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--ink-2); font-size: 14px; }
+.meta span { display: inline-flex; gap: 6px; }
+.meta b { color: var(--muted); font-weight: 500; }
+.warn-banner {
+  margin-top: 14px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--hair);
+  background: var(--surface); display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--ink-2);
+}
+.warn-banner .ico { color: var(--warning); flex: none; }
+
+/* Tarjetas */
+.grid { display: grid; gap: 16px; }
+.card {
+  background: var(--surface); border: 1px solid var(--ring); border-radius: 14px;
+  box-shadow: var(--shadow); padding: 20px;
+}
+.card h2 { margin: 0 0 14px; font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); font-weight: 600; }
+section { margin-top: 16px; }
+
+/* Héroe + KPIs */
+.hero-row { display: grid; grid-template-columns: minmax(280px, 1.1fr) 2fr; gap: 16px; margin-top: 18px; }
+.hero { display: flex; flex-direction: column; justify-content: space-between; }
+.hero-figure { display: flex; align-items: baseline; gap: 10px; }
+.hero-figure .num { font-size: 64px; line-height: 1; font-weight: 650; letter-spacing: -1.5px; }
+.hero-figure .of { color: var(--muted); font-size: 18px; }
+.grade {
+  margin-left: auto; align-self: center; min-width: 52px; height: 52px; border-radius: 12px;
+  display: grid; place-items: center; font-size: 26px; font-weight: 700; border: 2px solid currentColor;
+}
+.hero p { margin: 10px 0 0; color: var(--ink-2); font-size: 14px; }
+.meter { height: 10px; border-radius: 99px; background: var(--track); overflow: hidden; margin-top: 16px; }
+.meter > i { display: block; height: 100%; border-radius: 99px; }
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.kpi { padding: 18px; }
+.kpi .label { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 14px; }
+.kpi .value { font-size: 34px; font-weight: 650; margin-top: 6px; letter-spacing: -.5px; }
+.kpi .sub { color: var(--muted); font-size: 13px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; display: inline-block; }
+
+/* Dos columnas */
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* Severidad */
+.sev-row { display: grid; grid-template-columns: 110px 1fr 70px; align-items: center; gap: 12px; padding: 7px 0; }
+.sev-row + .sev-row { border-top: 1px solid var(--hair); }
+.sev-bar { height: 14px; display: flex; align-items: center; }
+.sev-bar > i { display: block; height: 14px; border-radius: 0 4px 4px 0; min-width: 0; }
+.sev-row .count { text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; font-size: 14px; }
+.ok-mark { color: var(--good-text); font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
+
+/* Badges */
+.badge {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+  padding: 2px 8px 2px 6px; border-radius: 99px; background: var(--surface-2); color: var(--ink); white-space: nowrap;
+}
+.badge .dot { width: 8px; height: 8px; }
+
+/* Categorías */
+.cat-row { display: grid; grid-template-columns: minmax(120px, 1fr) 2fr 44px; gap: 12px; align-items: center; padding: 6px 0; }
+.cat-row .meter { margin: 0; height: 8px; }
+.cat-row .v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.cat-row .n { color: var(--muted); font-size: 12px; }
+
+/* Prioridades */
+.prio { list-style: none; margin: 0; padding: 0; }
+.prio li { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; padding: 10px 0; border-top: 1px solid var(--hair); }
+.prio li:first-child { border-top: 0; padding-top: 0; }
+.prio .t { font-weight: 550; }
+.prio li > .badge { align-self: start; margin-top: 1px; }
+.prio .d { grid-column: 2; color: var(--ink-2); font-size: 13px; }
+.prio .id { color: var(--muted); font-size: 12px; margin-left: 6px; }
+
+/* ATT&CK */
+.techs { display: flex; flex-wrap: wrap; gap: 8px; }
+.tech {
+  border: 1px solid var(--hair); border-radius: 10px; padding: 8px 10px; font-size: 13px; color: var(--ink);
+  display: inline-flex; flex-direction: column; gap: 2px; min-width: 112px; background: var(--surface);
+}
+.tech:hover { border-color: var(--accent); text-decoration: none; }
+.tech .tid { font-weight: 650; font-family: ui-monospace, Consolas, monospace; }
+.tech .tn { color: var(--muted); font-size: 12px; }
+
+/* Filtros */
+.filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  border: 1px solid var(--hair); background: var(--surface); color: var(--ink-2); border-radius: 99px;
+  padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center;
+}
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.chip .c { opacity: .75; font-variant-numeric: tabular-nums; }
+input[type=search], select {
+  font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--hair);
+  border-radius: 8px; padding: 6px 10px; min-width: 0;
+}
+input[type=search] { flex: 1 1 220px; }
+
+/* Resultados */
+.results { border-top: 1px solid var(--hair); }
+details.res { border-bottom: 1px solid var(--hair); }
+details.res > summary {
+  list-style: none; cursor: pointer; display: grid; align-items: center; gap: 12px; padding: 12px 6px;
+  grid-template-columns: 112px 96px 118px 1fr 20px;
+}
+details.res > summary::-webkit-details-marker { display: none; }
+details.res > summary:hover { background: var(--surface-2); }
+details.res[open] > summary { background: var(--surface-2); }
+.rid { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; color: var(--ink-2); }
+.rtitle { font-weight: 520; min-width: 0; }
+.rtitle .why { display: block; font-weight: 400; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chev { color: var(--muted); transition: transform .15s; }
+details[open] .chev { transform: rotate(90deg); }
+.body { padding: 4px 6px 20px; display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; }
+.body h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin: 14px 0 6px; font-weight: 600; }
+.body h3:first-child { margin-top: 6px; }
+.body p { margin: 0 0 8px; color: var(--ink-2); }
+.ev { list-style: none; margin: 0; padding: 0; }
+.ev li { padding: 8px 10px; border: 1px solid var(--hair); border-radius: 10px; margin-bottom: 6px; background: var(--surface); }
+.ev ul.ev { margin: 8px 0 0 12px; }
+.ev .h { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ev .src { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.kv { display: grid; grid-template-columns: 80px 1fr; gap: 2px 10px; margin-top: 6px; font-size: 13.5px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+pre { background: var(--code-bg); border-radius: 10px; padding: 12px 84px 12px 12px; overflow-x: auto; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; position: relative; }
+.copy { position: absolute; top: 6px; right: 6px; }
+.impact { border-left: 3px solid var(--warning); padding: 8px 12px; background: var(--surface-2); border-radius: 0 8px 8px 0; color: var(--ink-2); font-size: 14px; }
+.refs { display: flex; flex-wrap: wrap; gap: 6px; }
+.ref { font-size: 12px; padding: 2px 8px; border-radius: 6px; background: var(--surface-2); color: var(--ink-2); font-family: ui-monospace, Consolas, monospace; }
+a.ref:hover { color: var(--accent); text-decoration: none; }
+.empty { padding: 32px; text-align: center; color: var(--muted); }
+footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
+
+@media (max-width: 920px) {
+  .hero-row, .two, .body { grid-template-columns: 1fr; }
+  .kpis { grid-template-columns: repeat(2, 1fr); }
+  details.res > summary { grid-template-columns: 96px 1fr 20px; }
+  details.res > summary .rsev, details.res > summary .rid { display: none; }
+}
+@media (max-width: 520px) {
+  .brand small { display: none; }
+  #print .long { display: none; }
+  .hero-figure .num { font-size: 52px; }
+  .kpi .value { font-size: 28px; }
+  .cat-row { grid-template-columns: 1fr 44px; }
+  .cat-row .meter { grid-column: 1 / -1; grid-row: 2; }
+}
+@media print {
+  .top, .filters, .copy, #theme { display: none !important; }
+  body { background: #fff; }
+  .card { box-shadow: none; break-inside: avoid; }
+  details.res { break-inside: avoid; }
+}
+@media (prefers-reduced-motion: reduce) { .chev { transition: none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z"/><path d="m9 12 2 2 4-4"/></svg>
+      Bastion <small>· informe de hardening</small>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="print" type="button" title="Imprimir o guardar como PDF">Imprimir<span class="long"> / PDF</span></button>
+    <button class="btn" id="theme" type="button" title="Cambiar tema">Tema</button>
+  </div>
+</header>
+
+<main class="wrap" id="app" aria-live="polite"></main>
+
+<script type="application/json" id="bastion-data">__BASTION_DATA__</script>
+<script nonce="__NONCE__">
+(function () {
+  "use strict";
+  // Todo el contenido procedente del sistema auditado se inserta con
+  // textContent: nunca se interpreta como HTML.
+  var data = JSON.parse(document.getElementById("bastion-data").textContent);
+  var app = document.getElementById("app");
+
+  var SEV = {
+    critical: { label: "Crítico", color: "var(--critical)", rank: 0 },
+    high: { label: "Alto", color: "var(--serious)", rank: 1 },
+    medium: { label: "Medio", color: "var(--warning)", rank: 2 },
+    low: { label: "Bajo", color: "var(--info)", rank: 3 },
+    info: { label: "Info", color: "var(--info)", rank: 4 }
+  };
+  var STATUS = {
+    fail: { label: "Fallido", icon: "✕", color: "var(--critical)" },
+    error: { label: "Error", icon: "!", color: "var(--warning)" },
+    pass: { label: "Superado", icon: "✓", color: "var(--good)" },
+    na: { label: "No aplica", icon: "–", color: "var(--info)" }
+  };
+  var ROLE = { workstation: "Estación de trabajo", server: "Servidor", dc: "Controlador de dominio" };
+  var RISK = { none: "Ninguno", low: "Bajo", medium: "Medio", high: "Alto" };
+
+  function el(tag, attrs, children) {
+    var n = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === "text") n.textContent = attrs[k];
+      else if (k === "class") n.className = attrs[k];
+      else if (k === "style") n.setAttribute("style", attrs[k]);
+      else n.setAttribute(k, attrs[k]);
+    }
+    (children || []).forEach(function (c) { if (c) n.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return n;
+  }
+  function scoreColor(v) { return v >= 80 ? "var(--good)" : v >= 60 ? "var(--warning)" : "var(--critical)"; }
+  function scoreWord(v) { return v >= 90 ? "Excelente" : v >= 80 ? "Buena" : v >= 70 ? "Mejorable" : v >= 60 ? "Débil" : "Crítica"; }
+  function dot(color) { return el("span", { class: "dot", style: "background:" + color }); }
+  function badge(color, text, icon) {
+    return el("span", { class: "badge" }, [icon ? el("span", { text: icon, style: "color:" + color + ";font-weight:700" }) : dot(color), text]);
+  }
+  function sevBadge(s) { var x = SEV[s] || SEV.info; return badge(x.color, x.label); }
+  function statusBadge(s) { var x = STATUS[s] || STATUS.na; return badge(x.color, x.label, x.icon); }
+  function fmtDate(iso) {
+    try { return new Date(iso).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" }); } catch (e) { return iso; }
+  }
+  function mitreURL(id) {
+    if (/^T\d{4}/.test(id)) return "https://attack.mitre.org/techniques/" + id.replace(".", "/") + "/";
+    if (/^M\d{4}$/.test(id)) return "https://attack.mitre.org/mitigations/" + id + "/";
+    return null;
+  }
+  function leaf(ev) {
+    while (ev.children && ev.children.length) {
+      var next = ev.children[0];
+      for (var i = 0; i < ev.children.length; i++) if (ev.children[i].status === ev.status) { next = ev.children[i]; break; }
+      if (!next.label && !(next.children && next.children.length)) next = Object.assign({}, next, { label: ev.label });
+      ev = next;
+    }
+    return ev;
+  }
+
+  // ---- Tema ----
+  var root = document.documentElement;
+  try { var saved = localStorage.getItem("bastion-theme"); if (saved) root.setAttribute("data-theme", saved); } catch (e) {}
+  document.getElementById("theme").addEventListener("click", function () {
+    var dark = root.getAttribute("data-theme") === "dark" ||
+      (!root.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    var next = dark ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem("bastion-theme", next); } catch (e) {}
+  });
+  document.getElementById("print").addEventListener("click", function () { window.print(); });
+
+  var h = data.host || {}, sc = data.score || {}, results = data.results || [];
+  document.title = "Bastion · " + (h.hostname || "informe") + " · " + sc.value + "/100";
+
+  // ---- Equipo ----
+  var meta = el("div", { class: "meta" });
+  [["Sistema", [h.name, h.build ? "build " + h.build : (h.kernel ? "kernel " + h.kernel : "")].filter(Boolean).join(" · ")],
+   ["Rol", (ROLE[h.role] || h.role || "") + (h.domain_joined ? " · " + h.domain : "") + (h.container ? " · contenedor" : "")],
+   ["Perfil", data.profile ? data.profile.name : "—"],
+   ["Fecha", fmtDate(data.finished_at)],
+   ["Duración", data.duration_ms < 1000 ? data.duration_ms + " ms" : (data.duration_ms / 1000).toFixed(1) + " s"],
+   ["Bastion", (data.tool && data.tool.version) || ""]
+  ].forEach(function (p) { if (p[1]) meta.appendChild(el("span", null, [el("b", { text: p[0] }), p[1]])); });
+  var hostSec = el("section", { class: "host" }, [el("h1", { text: h.hostname || "Equipo" }), meta]);
+  if (!h.is_admin) {
+    hostSec.appendChild(el("div", { class: "warn-banner", role: "note" }, [
+      el("span", { class: "ico", text: "⚠" }),
+      el("span", { text: "El escaneo se ejecutó sin privilegios de administrador: algunos controles no se pudieron leer y aparecen como error. Repite el escaneo como " + (h.family === "windows" ? "administrador." : "root (sudo).") })
+    ]));
+  }
+  app.appendChild(hostSec);
+
+  // ---- Héroe y KPIs ----
+  var color = scoreColor(sc.value);
+  var hero = el("div", { class: "card hero" }, [
+    el("h2", { text: "Postura de seguridad" }),
+    el("div", null, [
+      el("div", { class: "hero-figure" }, [
+        el("span", { class: "num", text: String(sc.value) }),
+        el("span", { class: "of", text: "/ 100" }),
+        el("span", { class: "grade", text: sc.grade, style: "color:" + color, title: "Calificación " + sc.grade })
+      ]),
+      el("div", { class: "meter", role: "img", "aria-label": "Puntuación " + sc.value + " de 100" }, [el("i", { style: "width:" + sc.value + "%;background:" + color })]),
+      el("p", { text: "Postura " + scoreWord(sc.value).toLowerCase() + " según el perfil " + (data.profile ? data.profile.id : "") +
+        ". Puntuación ponderada por severidad (crítico 10, alto 5, medio 3, bajo 1)." + (sc.partial ? " Es parcial: hay controles con error." : "") })
+    ])
+  ]);
+  var kpis = el("div", { class: "kpis" });
+  [["fail", sc.failed, "Fallidos", "requieren acción"], ["pass", sc.passed, "Superados", "conformes"], ["error", sc.errors, "Errores", "no se pudieron leer"], ["na", sc.na, "No aplican", "fuera del alcance de este equipo"]]
+    .forEach(function (k) {
+      var st = STATUS[k[0]];
+      kpis.appendChild(el("div", { class: "card kpi" }, [
+        el("div", { class: "label" }, [el("span", { text: st.icon, style: "color:" + st.color + ";font-weight:700" }), k[2]]),
+        el("div", { class: "value", text: String(k[1]) }),
+        el("div", { class: "sub", text: k[3] })
+      ]));
+    });
+  app.appendChild(el("div", { class: "hero-row" }, [hero, kpis]));
+
+  // ---- Prioridades + severidad ----
+  var failed = results.filter(function (r) { return r.status === "fail"; });
+  var prio = el("ol", { class: "prio" });
+  failed.slice().sort(function (a, b) {
+    return (SEV[a.rule.severity].rank - SEV[b.rule.severity].rank) ||
+      (["none", "low", "medium", "high"].indexOf(a.rule.remediation.breaking_risk) - ["none", "low", "medium", "high"].indexOf(b.rule.remediation.breaking_risk));
+  }).slice(0, 6).forEach(function (r) {
+    prio.appendChild(el("li", null, [
+      sevBadge(r.rule.severity),
+      el("div", null, [el("span", { class: "t", text: r.rule.title }), el("span", { class: "id", text: r.rule.id })]),
+      el("div", { class: "d", text: r.rule.remediation.summary + " · Riesgo de rotura: " + (RISK[r.rule.remediation.breaking_risk] || "—").toLowerCase() })
+    ]));
+  });
+  var prioCard = el("div", { class: "card" }, [el("h2", { text: "Empieza por aquí" }),
+    failed.length ? prio : el("p", { class: "empty", text: "Sin controles fallidos. ¡Buen trabajo!" })]);
+
+  var sevCard = el("div", { class: "card" }, [el("h2", { text: "Fallidos por severidad" })]);
+  var bySev = sc.by_severity || {};
+  var maxFail = 1;
+  Object.keys(bySev).forEach(function (k) { maxFail = Math.max(maxFail, bySev[k].failed || 0); });
+  ["critical", "high", "medium", "low"].forEach(function (s) {
+    var c = bySev[s]; if (!c) return;
+    var evaluated = (c.passed || 0) + (c.failed || 0);
+    var bar = el("div", { class: "sev-bar" });
+    if (c.failed > 0) bar.appendChild(el("i", { style: "width:" + Math.max(4, (c.failed / maxFail) * 100) + "%;background:" + SEV[s].color, title: c.failed + " fallidos de " + evaluated }));
+    else bar.appendChild(el("span", { class: "ok-mark" }, [el("span", { text: "✓" }), "Todos conformes"]));
+    sevCard.appendChild(el("div", { class: "sev-row" }, [sevBadge(s), bar, el("span", { class: "count", text: c.failed + " / " + evaluated })]));
+  });
+  app.appendChild(el("section", { class: "two" }, [prioCard, sevCard]));
+
+  // ---- Categorías + ATT&CK ----
+  var catCard = el("div", { class: "card" }, [el("h2", { text: "Puntuación por categoría" })]);
+  (sc.by_category || []).forEach(function (c) {
+    var ev = c.passed + c.failed;
+    if (!ev) return;
+    catCard.appendChild(el("div", { class: "cat-row" }, [
+      el("div", null, [el("div", { text: c.name }), el("div", { class: "n", text: c.passed + " de " + ev + " conformes" })]),
+      el("div", { class: "meter", title: c.name + ": " + c.value + "/100" }, [el("i", { style: "width:" + c.value + "%;background:" + scoreColor(c.value) })]),
+      el("div", { class: "v", text: String(c.value) })
+    ]));
+  });
+
+  var techs = {};
+  failed.forEach(function (r) {
+    ((r.rule.references || {}).mitre_techniques || []).forEach(function (t) {
+      techs[t] = techs[t] || { id: t, n: 0, worst: 9 };
+      techs[t].n++; techs[t].worst = Math.min(techs[t].worst, SEV[r.rule.severity].rank);
+    });
+  });
+  var techList = Object.keys(techs).map(function (k) { return techs[k]; })
+    .sort(function (a, b) { return a.worst - b.worst || b.n - a.n || (a.id < b.id ? -1 : 1); });
+  var techWrap = el("div", { class: "techs" });
+  techList.slice(0, 24).forEach(function (t) {
+    var url = mitreURL(t.id);
+    techWrap.appendChild(el("a", { class: "tech", href: url, target: "_blank", rel: "noopener noreferrer",
+      title: "Técnica " + t.id + ": " + t.n + " control(es) fallido(s) la dejan sin mitigar" }, [
+      el("span", { class: "tid", text: t.id }),
+      el("span", { class: "tn" }, [dot(Object.keys(SEV).map(function (k) { return SEV[k]; })[t.worst].color), " " + t.n + (t.n === 1 ? " control" : " controles")])
+    ]));
+  });
+  var attCard = el("div", { class: "card" }, [el("h2", { text: "Técnicas MITRE ATT&CK expuestas" }),
+    techList.length ? techWrap : el("p", { class: "empty", text: "Ningún control fallido está asociado a técnicas ATT&CK." })]);
+  if (techList.length > 24) attCard.appendChild(el("p", { class: "sub", style: "color:var(--muted);font-size:13px;margin:10px 0 0", text: "y " + (techList.length - 24) + " técnicas más en el detalle de los controles." }));
+  app.appendChild(el("section", { class: "two" }, [catCard, attCard]));
+
+  // ---- Controles ----
+  var counts = { all: results.length, fail: 0, error: 0, pass: 0, na: 0 };
+  results.forEach(function (r) { counts[r.status]++; });
+  var state = { status: counts.fail ? "fail" : "all", sev: "", cat: "", q: "" };
+
+  var chips = el("div", { class: "chips", role: "group", "aria-label": "Filtrar por estado" });
+  [["all", "Todos"], ["fail", "Fallidos"], ["error", "Errores"], ["pass", "Superados"], ["na", "No aplican"]].forEach(function (c) {
+    var b = el("button", { class: "chip", type: "button", "data-s": c[0], "aria-pressed": String(state.status === c[0]) },
+      [c[1], el("span", { class: "c", text: String(counts[c[0]]) })]);
+    b.addEventListener("click", function () { state.status = c[0]; render(); });
+    chips.appendChild(b);
+  });
+  var sevSel = el("select", { "aria-label": "Severidad" }, [el("option", { value: "", text: "Todas las severidades" })]);
+  ["critical", "high", "medium", "low"].forEach(function (s) { sevSel.appendChild(el("option", { value: s, text: SEV[s].label })); });
+  sevSel.addEventListener("change", function () { state.sev = sevSel.value; render(); });
+  var cats = {}; results.forEach(function (r) { cats[r.rule.category] = 1; });
+  var catSel = el("select", { "aria-label": "Categoría" }, [el("option", { value: "", text: "Todas las categorías" })]);
+  Object.keys(cats).sort().forEach(function (c) { catSel.appendChild(el("option", { value: c, text: c })); });
+  catSel.addEventListener("change", function () { state.cat = catSel.value; render(); });
+  var search = el("input", { type: "search", placeholder: "Buscar por ID, título o técnica…", "aria-label": "Buscar" });
+  search.addEventListener("input", function () { state.q = search.value.trim().toLowerCase(); render(); });
+
+  var list = el("div", { class: "results" });
+  app.appendChild(el("section", { class: "card" }, [el("h2", { text: "Controles evaluados" }),
+    el("div", { class: "filters" }, [chips, sevSel, catSel, search]), list]));
+
+  function evidence(ev) {
+    var ul = el("ul", { class: "ev" });
+    var items = ev.children && ev.children.length ? ev.children : [ev];
+    items.forEach(function (c) {
+      var li = el("li");
+      var head = el("div", { class: "h" }, [statusBadge(c.status)]);
+      if (c.label) head.appendChild(el("strong", { text: c.label }));
+      if (c.source) head.appendChild(el("span", { class: "src mono", text: c.source }));
+      li.appendChild(head);
+      if (c.children && c.children.length) li.appendChild(evidence(c));
+      else {
+        var dl = el("dl", { class: "kv" });
+        if (c.actual) { dl.appendChild(el("dt", { text: "Actual" })); dl.appendChild(el("dd", { class: "mono", text: c.actual })); }
+        if (c.expected) { dl.appendChild(el("dt", { text: "Esperado" })); dl.appendChild(el("dd", { class: "mono", text: c.expected })); }
+        if (c.message) { dl.appendChild(el("dt", { text: "Nota" })); dl.appendChild(el("dd", { text: c.message })); }
+        if (dl.childNodes.length) li.appendChild(dl);
+      }
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+
+  function refs(r) {
+    var ref = r.rule.references || {}, wrap = el("div", { class: "refs" });
+    function add(prefix, arr, linker) {
+      (arr || []).forEach(function (x) {
+        var u = linker ? linker(x) : null;
+        wrap.appendChild(u ? el("a", { class: "ref", href: u, target: "_blank", rel: "noopener noreferrer", text: x })
+          : el("span", { class: "ref", text: prefix + x }));
+      });
+    }
+    add("", ref.mitre_techniques, mitreURL);
+    add("", ref.mitre_mitigations, mitreURL);
+    add("NIST ", ref.nist);
+    add("CIS ", ref.cis);
+    add("STIG ", ref.stig);
+    add("ENS ", ref.ens);
+    return wrap;
+  }
+
+  function row(r) {
+    var rule = r.rule, l = leaf(r);
+    var d = el("details", { class: "res" });
+    var sub = r.status === "pass" ? (l.actual ? "Actual: " + l.actual : "") :
+      r.status === "fail" ? [l.label, l.actual ? "actual " + l.actual : "", l.expected ? "esperado " + l.expected : ""].filter(Boolean).join(" · ") :
+      (l.message || "");
+    d.appendChild(el("summary", null, [
+      statusBadge(r.status),
+      el("span", { class: "rsev" }, [sevBadge(rule.severity)]),
+      el("span", { class: "rid", text: rule.id }),
+      el("span", { class: "rtitle" }, [rule.title, sub ? el("span", { class: "why", text: sub }) : null]),
+      el("span", { class: "chev", text: "›", "aria-hidden": "true" })
+    ]));
+    var left = el("div", null, [
+      el("h3", { text: "Descripción" }), el("p", { text: rule.description }),
+      rule.rationale ? el("h3", { text: "Por qué importa" }) : null, rule.rationale ? el("p", { text: rule.rationale }) : null,
+      el("h3", { text: "Evidencia" }), evidence(r)
+    ]);
+    var rem = rule.remediation || {};
+    var right = el("div", null, [el("h3", { text: "Remediación" }), el("p", { text: rem.summary })]);
+    if (rem.gpo) { right.appendChild(el("h3", { text: "Directiva de grupo (GPO)" })); right.appendChild(el("p", { class: "mono", text: rem.gpo })); }
+    if (rem.commands) {
+      right.appendChild(el("h3", { text: "Comandos" }));
+      var copy = el("button", { class: "btn copy", type: "button", text: "Copiar" });
+      var pre = el("pre", null, [el("code", { text: rem.commands }), copy]);
+      copy.addEventListener("click", function (e) {
+        e.preventDefault();
+        if (navigator.clipboard) navigator.clipboard.writeText(rem.commands).then(function () { copy.textContent = "Copiado"; setTimeout(function () { copy.textContent = "Copiar"; }, 1500); });
+      });
+      right.appendChild(pre);
+    }
+    right.appendChild(el("h3", { text: "Riesgo de rotura" }));
+    right.appendChild(el("p", { text: (RISK[rem.breaking_risk] || "—") + (rem.reboot_required ? " · requiere reinicio" : "") }));
+    if (rule.impact) { right.appendChild(el("h3", { text: "Impacto" })); right.appendChild(el("div", { class: "impact", text: rule.impact })); }
+    right.appendChild(el("h3", { text: "Referencias" }));
+    right.appendChild(refs(r));
+    d.appendChild(el("div", { class: "body" }, [left, right]));
+    return d;
+  }
+
+  function matches(r) {
+    if (state.status !== "all" && r.status !== state.status) return false;
+    if (state.sev && r.rule.severity !== state.sev) return false;
+    if (state.cat && r.rule.category !== state.cat) return false;
+    if (state.q) {
+      var ref = r.rule.references || {};
+      var hay = [r.rule.id, r.rule.title, r.rule.category].concat(ref.mitre_techniques || [], ref.nist || []).join(" ").toLowerCase();
+      if (hay.indexOf(state.q) < 0) return false;
+    }
+    return true;
+  }
+
+  function render() {
+    Array.prototype.forEach.call(chips.children, function (b) { b.setAttribute("aria-pressed", String(b.getAttribute("data-s") === state.status)); });
+    list.textContent = "";
+    var shown = results.filter(matches);
+    if (!shown.length) { list.appendChild(el("div", { class: "empty", text: "Ningún control coincide con los filtros." })); return; }
+    shown.forEach(function (r) { list.appendChild(row(r)); });
+  }
+  render();
+
+  app.appendChild(el("footer", null, [
+    "Generado por Bastion " + ((data.tool && data.tool.version) || "") + " · formato " + data.schema +
+    ". Bastion solo lee la configuración: no se ha modificado nada en el equipo. Revisa el impacto de cada cambio antes de aplicarlo en producción."
+  ]));
+})();
+</script>
+</body>
+</html>

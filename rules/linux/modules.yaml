@@ -1,0 +1,258 @@
+# Módulos del kernel que un servidor no necesita. Un módulo cumple si no
+# existe en el sistema o si está bloqueado (install /bin/false + blacklist)
+# y no está cargado.
+id: LNX-MOD-001
+title: "Módulo deshabilitado: Sistema de ficheros cramfs"
+description: El módulo del kernel cramfs no debe poder cargarse.
+rationale: Sistema de ficheros comprimido de solo lectura que un servidor no necesita.
+category: Módulos del kernel
+severity: low
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+check:
+  any:
+    - {label: no disponible, probe: kmod, name: cramfs, field: available, op: eq, expected: false}
+    - all:
+        - {label: no cargado, probe: kmod, name: cramfs, field: loaded, op: eq, expected: false}
+        - {label: carga bloqueada, probe: kmod, name: cramfs, field: install_disabled, op: eq, expected: true}
+        - {label: en blacklist, probe: kmod, name: cramfs, field: blacklisted, op: eq, expected: true}
+remediation:
+  summary: Bloquear la carga del módulo y descargarlo.
+  commands: |
+    printf 'install cramfs /bin/false\nblacklist cramfs\n' > /etc/modprobe.d/bastion-cramfs.conf
+    modprobe -r cramfs 2>/dev/null || true
+  breaking_risk: low
+---
+id: LNX-MOD-002
+title: "Módulo deshabilitado: Sistema de ficheros freevxfs"
+description: El módulo del kernel freevxfs no debe poder cargarse.
+rationale: Sistema de ficheros de Veritas sin uso en servidores modernos.
+category: Módulos del kernel
+severity: low
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+check:
+  any:
+    - {label: no disponible, probe: kmod, name: freevxfs, field: available, op: eq, expected: false}
+    - all:
+        - {label: no cargado, probe: kmod, name: freevxfs, field: loaded, op: eq, expected: false}
+        - {label: carga bloqueada, probe: kmod, name: freevxfs, field: install_disabled, op: eq, expected: true}
+        - {label: en blacklist, probe: kmod, name: freevxfs, field: blacklisted, op: eq, expected: true}
+remediation:
+  summary: Bloquear la carga del módulo y descargarlo.
+  commands: |
+    printf 'install freevxfs /bin/false\nblacklist freevxfs\n' > /etc/modprobe.d/bastion-freevxfs.conf
+    modprobe -r freevxfs 2>/dev/null || true
+  breaking_risk: low
+---
+id: LNX-MOD-003
+title: "Módulo deshabilitado: Sistema de ficheros HFS"
+description: El módulo del kernel hfs no debe poder cargarse.
+rationale: Sistema de ficheros de Apple heredado.
+category: Módulos del kernel
+severity: low
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+check:
+  any:
+    - {label: no disponible, probe: kmod, name: hfs, field: available, op: eq, expected: false}
+    - all:
+        - {label: no cargado, probe: kmod, name: hfs, field: loaded, op: eq, expected: false}
+        - {label: carga bloqueada, probe: kmod, name: hfs, field: install_disabled, op: eq, expected: true}
+        - {label: en blacklist, probe: kmod, name: hfs, field: blacklisted, op: eq, expected: true}
+remediation:
+  summary: Bloquear la carga del módulo y descargarlo.
+  commands: |
+    printf 'install hfs /bin/false\nblacklist hfs\n' > /etc/modprobe.d/bastion-hfs.conf
+    modprobe -r hfs 2>/dev/null || true
+  breaking_risk: low
+---
+id: LNX-MOD-004
+title: "Módulo deshabilitado: Sistema de ficheros HFS+"
+description: El módulo del kernel hfsplus no debe poder cargarse.
+rationale: Sistema de ficheros de Apple que un servidor Linux no necesita.
+category: Módulos del kernel
+severity: low
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+check:
+  any:
+    - {label: no disponible, probe: kmod, name: hfsplus, field: available, op: eq, expected: false}
+    - all:
+        - {label: no cargado, probe: kmod, name: hfsplus, field: loaded, op: eq, expected: false}
+        - {label: carga bloqueada, probe: kmod, name: hfsplus, field: install_disabled, op: eq, expected: true}
+        - {label: en blacklist, probe: kmod, name: hfsplus, field: blacklisted, op: eq, expected: true}
+remediation:
+  summary: Bloquear la carga del módulo y descargarlo.
+  commands: |
+    printf 'install hfsplus /bin/false\nblacklist hfsplus\n' > /etc/modprobe.d/bastion-hfsplus.conf
+    modprobe -r hfsplus 2>/dev/null || true
+  breaking_risk: low
+---
+id: LNX-MOD-005
+title: "Módulo deshabilitado: Sistema de ficheros JFFS2"
+description: El módulo del kernel jffs2 no debe poder cargarse.
+rationale: Sistema de ficheros para memorias flash de dispositivos embebidos.
+category: Módulos del kernel
+severity: low
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+check:
+  any:
+    - {label: no disponible, probe: kmod, name: jffs2, field: available, op: eq, expected: false}
+    - all:
+        - {label: no cargado, probe: kmod, name: jffs2, field: loaded, op: eq, expected: false}
+        - {label: carga bloqueada, probe: kmod, name: jffs2, field: install_disabled, op: eq, expected: true}
+        - {label: en blacklist, probe: kmod, name: jffs2, field: blacklisted, op: eq, expected: true}
+remediation:
+  summary: Bloquear la carga del módulo y descargarlo.
+  commands: |
+    printf 'install jffs2 /bin/false\nblacklist jffs2\n' > /etc/modprobe.d/bastion-jffs2.conf
+    modprobe -r jffs2 2>/dev/null || true
+  breaking_risk: low
+---
+id: LNX-MOD-006
+title: "Módulo deshabilitado: Almacenamiento USB"
+description: El módulo del kernel usb-storage no debe poder cargarse.
+rationale: Impide montar memorias USB, vía de entrada de malware y de fuga de datos.
+category: Módulos del kernel
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1091, T1052.001]
+check:
+  any:
+    - {label: no disponible, probe: kmod, name: usb-storage, field: available, op: eq, expected: false}
+    - all:
+        - {label: no cargado, probe: kmod, name: usb-storage, field: loaded, op: eq, expected: false}
+        - {label: carga bloqueada, probe: kmod, name: usb-storage, field: install_disabled, op: eq, expected: true}
+        - {label: en blacklist, probe: kmod, name: usb-storage, field: blacklisted, op: eq, expected: true}
+remediation:
+  summary: Bloquear la carga del módulo y descargarlo.
+  commands: |
+    printf 'install usb-storage /bin/false\nblacklist usb-storage\n' > /etc/modprobe.d/bastion-usb-storage.conf
+    modprobe -r usb_storage 2>/dev/null || true
+  breaking_risk: medium
+impact: Las memorias y discos USB dejarán de funcionar en este equipo.
+---
+id: LNX-MOD-007
+title: "Módulo deshabilitado: Protocolo DCCP"
+description: El módulo del kernel dccp no debe poder cargarse.
+rationale: Protocolo de red poco usado con vulnerabilidades históricas de escalada local.
+category: Módulos del kernel
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l2]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1068]
+check:
+  any:
+    - {label: no disponible, probe: kmod, name: dccp, field: available, op: eq, expected: false}
+    - all:
+        - {label: no cargado, probe: kmod, name: dccp, field: loaded, op: eq, expected: false}
+        - {label: carga bloqueada, probe: kmod, name: dccp, field: install_disabled, op: eq, expected: true}
+        - {label: en blacklist, probe: kmod, name: dccp, field: blacklisted, op: eq, expected: true}
+remediation:
+  summary: Bloquear la carga del módulo y descargarlo.
+  commands: |
+    printf 'install dccp /bin/false\nblacklist dccp\n' > /etc/modprobe.d/bastion-dccp.conf
+    modprobe -r dccp 2>/dev/null || true
+  breaking_risk: low
+---
+id: LNX-MOD-008
+title: "Módulo deshabilitado: Protocolo SCTP"
+description: El módulo del kernel sctp no debe poder cargarse.
+rationale: Protocolo de red poco usado fuera de telecomunicaciones; reduce superficie del kernel.
+category: Módulos del kernel
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l2]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1068]
+check:
+  any:
+    - {label: no disponible, probe: kmod, name: sctp, field: available, op: eq, expected: false}
+    - all:
+        - {label: no cargado, probe: kmod, name: sctp, field: loaded, op: eq, expected: false}
+        - {label: carga bloqueada, probe: kmod, name: sctp, field: install_disabled, op: eq, expected: true}
+        - {label: en blacklist, probe: kmod, name: sctp, field: blacklisted, op: eq, expected: true}
+remediation:
+  summary: Bloquear la carga del módulo y descargarlo.
+  commands: |
+    printf 'install sctp /bin/false\nblacklist sctp\n' > /etc/modprobe.d/bastion-sctp.conf
+    modprobe -r sctp 2>/dev/null || true
+  breaking_risk: low
+---
+id: LNX-MOD-009
+title: "Módulo deshabilitado: Protocolo RDS"
+description: El módulo del kernel rds no debe poder cargarse.
+rationale: Protocolo de red con vulnerabilidades históricas de escalada local.
+category: Módulos del kernel
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l2]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1068]
+check:
+  any:
+    - {label: no disponible, probe: kmod, name: rds, field: available, op: eq, expected: false}
+    - all:
+        - {label: no cargado, probe: kmod, name: rds, field: loaded, op: eq, expected: false}
+        - {label: carga bloqueada, probe: kmod, name: rds, field: install_disabled, op: eq, expected: true}
+        - {label: en blacklist, probe: kmod, name: rds, field: blacklisted, op: eq, expected: true}
+remediation:
+  summary: Bloquear la carga del módulo y descargarlo.
+  commands: |
+    printf 'install rds /bin/false\nblacklist rds\n' > /etc/modprobe.d/bastion-rds.conf
+    modprobe -r rds 2>/dev/null || true
+  breaking_risk: low
+---
+id: LNX-MOD-010
+title: "Módulo deshabilitado: Protocolo TIPC"
+description: El módulo del kernel tipc no debe poder cargarse.
+rationale: Protocolo de clúster poco usado con vulnerabilidades históricas.
+category: Módulos del kernel
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l2]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1068]
+check:
+  any:
+    - {label: no disponible, probe: kmod, name: tipc, field: available, op: eq, expected: false}
+    - all:
+        - {label: no cargado, probe: kmod, name: tipc, field: loaded, op: eq, expected: false}
+        - {label: carga bloqueada, probe: kmod, name: tipc, field: install_disabled, op: eq, expected: true}
+        - {label: en blacklist, probe: kmod, name: tipc, field: blacklisted, op: eq, expected: true}
+remediation:
+  summary: Bloquear la carga del módulo y descargarlo.
+  commands: |
+    printf 'install tipc /bin/false\nblacklist tipc\n' > /etc/modprobe.d/bastion-tipc.conf
+    modprobe -r tipc 2>/dev/null || true
+  breaking_risk: low

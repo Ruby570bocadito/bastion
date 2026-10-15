@@ -1,0 +1,12 @@
+/bin/
+/dist/
+/.release/
+*.exe
+*.test
+*.out
+/report.*
+/bastion-*.html
+/bastion-*.json
+.DS_Store
+.idea/
+.vscode/

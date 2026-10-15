@@ -1,0 +1,134 @@
+# Servicios innecesarios o inseguros. Si el servicio no está instalado, cumple.
+id: LNX-SVC-001
+title: Avahi (mDNS) deshabilitado
+description: El servicio avahi-daemon no debe estar habilitado ni en ejecución en servidores.
+rationale: mDNS/DNS-SD anuncia servicios en la red local y amplía la superficie de ataque sin aportar nada en un servidor.
+category: Servicios
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1557]
+check:
+  all:
+    - {label: arranque, probe: systemd, unit: avahi-daemon.service, field: enabled, op: not_in, expected: [enabled, enabled-runtime], on_missing: pass}
+    - {label: estado, probe: systemd, unit: avahi-daemon.service, field: active, op: ne, expected: active, on_missing: pass}
+remediation:
+  summary: Detener y enmascarar avahi.
+  commands: |
+    systemctl stop avahi-daemon.socket avahi-daemon.service
+    systemctl mask avahi-daemon.socket avahi-daemon.service
+  breaking_risk: low
+---
+id: LNX-SVC-002
+title: Servidor de impresión CUPS deshabilitado
+description: El servicio cups no debe estar habilitado en servidores que no imprimen.
+rationale: CUPS ha tenido vulnerabilidades graves de ejecución remota y no es necesario en la mayoría de servidores.
+category: Servicios
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1210]
+check:
+  all:
+    - {label: arranque, probe: systemd, unit: cups.service, field: enabled, op: not_in, expected: [enabled, enabled-runtime], on_missing: pass}
+    - {label: estado, probe: systemd, unit: cups.service, field: active, op: ne, expected: active, on_missing: pass}
+remediation:
+  summary: Detener y enmascarar cups (o desinstalarlo).
+  commands: |
+    systemctl stop cups.socket cups.service cups-browsed.service 2>/dev/null
+    systemctl mask cups.socket cups.service cups-browsed.service
+  breaking_risk: low
+---
+id: LNX-SVC-003
+title: rpcbind deshabilitado
+description: rpcbind no debe estar activo salvo que el equipo use NFSv3 u otros servicios RPC.
+rationale: rpcbind expone información de servicios RPC y se ha usado para amplificación DDoS.
+category: Servicios
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+check:
+  all:
+    - {label: arranque, probe: systemd, unit: rpcbind.service, field: enabled, op: not_in, expected: [enabled, enabled-runtime], on_missing: pass}
+    - {label: estado, probe: systemd, unit: rpcbind.service, field: active, op: ne, expected: active, on_missing: pass}
+remediation:
+  summary: Detener y enmascarar rpcbind.
+  commands: |
+    systemctl stop rpcbind.socket rpcbind.service
+    systemctl mask rpcbind.socket rpcbind.service
+  breaking_risk: medium
+impact: Los montajes NFSv3 dejarán de funcionar.
+---
+id: LNX-SVC-004
+title: Servidor Telnet no instalado
+description: No debe haber un servidor Telnet instalado.
+rationale: Telnet transmite credenciales y sesiones en texto claro.
+category: Servicios
+severity: high
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-7, SC-8]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1040]
+check:
+  all:
+    - {label: telnetd, probe: package, name: telnetd, op: absent}
+    - {label: inetutils-telnetd, probe: package, name: inetutils-telnetd, op: absent}
+    - {label: telnet-server, probe: package, name: telnet-server, op: absent}
+remediation:
+  summary: Desinstalar el servidor Telnet y usar SSH.
+  commands: |
+    apt-get purge -y telnetd inetutils-telnetd 2>/dev/null || dnf remove -y telnet-server
+  breaking_risk: low
+---
+id: LNX-SVC-005
+title: Servidor FTP no instalado
+description: vsftpd no debe estar instalado salvo necesidad justificada.
+rationale: FTP transmite credenciales en claro; usa SFTP.
+category: Servicios
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-7, SC-8]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1040]
+check:
+  probe: package
+  name: vsftpd
+  op: absent
+remediation:
+  summary: Desinstalar vsftpd y usar SFTP.
+  breaking_risk: medium
+---
+id: LNX-SVC-006
+title: Sincronización horaria activa
+description: Debe haber un servicio de sincronización horaria activo (chrony o systemd-timesyncd).
+rationale: Sin hora fiable no se pueden correlacionar logs ni validar certificados y Kerberos.
+category: Servicios
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AU-8]
+check:
+  any:
+    - {label: chrony, probe: systemd, unit: chrony.service, field: active, op: eq, expected: active}
+    - {label: chronyd, probe: systemd, unit: chronyd.service, field: active, op: eq, expected: active}
+    - {label: systemd-timesyncd, probe: systemd, unit: systemd-timesyncd.service, field: active, op: eq, expected: active}
+remediation:
+  summary: Instalar y activar chrony (o systemd-timesyncd).
+  commands: |
+    apt-get install -y chrony 2>/dev/null || dnf install -y chrony
+    systemctl enable --now chrony 2>/dev/null || systemctl enable --now chronyd
+  breaking_risk: none

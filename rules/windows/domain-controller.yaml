@@ -1,0 +1,91 @@
+# Controles específicos de controladores de dominio.
+id: WIN-DC-001
+title: Print Spooler deshabilitado en controladores de dominio
+description: El servicio Spooler debe estar deshabilitado en los DC.
+rationale: El Spooler permite forzar al DC a autenticarse contra un atacante (PrinterBug) y ha sufrido vulnerabilidades críticas (PrintNightmare).
+category: Active Directory
+severity: critical
+platforms: [windows-dc]
+profiles: [win-dc-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1187, T1068, T1210]
+check:
+  probe: service
+  name: Spooler
+  field: start_type
+  op: eq
+  expected: disabled
+  on_missing: pass
+remediation:
+  summary: Detener y deshabilitar el Spooler en todos los DC.
+  commands: Stop-Service Spooler; Set-Service Spooler -StartupType Disabled
+  breaking_risk: low
+impact: La limpieza automática de impresoras publicadas en AD (pruning) deja de funcionar en ese DC.
+---
+id: WIN-DC-002
+title: Firma LDAP obligatoria
+description: El DC debe exigir firma en las conexiones LDAP (LDAPServerIntegrity = 2).
+rationale: Sin firma LDAP, un atacante puede retransmitir autenticaciones al DC (NTLM relay a LDAP) y modificar el directorio.
+category: Active Directory
+severity: high
+platforms: [windows-dc]
+profiles: [win-dc-l1]
+references:
+  nist: [SC-8, SC-23]
+  mitre_techniques: [T1557]
+check:
+  probe: registry
+  path: HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters
+  name: LDAPServerIntegrity
+  op: eq
+  expected: 2
+  default: 1
+remediation:
+  summary: Habilitar "Domain controller - LDAP server signing requirements" = Require signing.
+  breaking_risk: high
+impact: Los clientes que hacen binds simples sin firmar dejarán de funcionar. Revisa antes el evento 2889 en los DC.
+---
+id: WIN-DC-003
+title: Channel binding LDAP activado
+description: LdapEnforceChannelBinding debe ser 1 (cuando sea compatible) o 2 (siempre).
+rationale: Protege LDAPS frente a ataques de retransmisión de autenticación.
+category: Active Directory
+severity: high
+platforms: [windows-dc]
+profiles: [win-dc-l1]
+references:
+  nist: [SC-23]
+  mitre_techniques: [T1557]
+check:
+  probe: registry
+  path: HKLM\SYSTEM\CurrentControlSet\Services\NTDS\Parameters
+  name: LdapEnforceChannelBinding
+  op: gte
+  expected: 1
+  default: 0
+remediation:
+  summary: Fijar "Domain controller - LDAP server channel binding token requirements" en "When supported" o "Always".
+  breaking_risk: medium
+---
+id: WIN-KRB-001
+title: Kerberos solo con AES (sin DES ni RC4)
+description: Los tipos de cifrado Kerberos permitidos deben excluir DES y RC4 e incluir AES.
+rationale: Los tickets RC4 permiten Kerberoasting y crackeo rápido de cuentas de servicio.
+category: Active Directory
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l2, win-server-l2, win-dc-l1]
+references:
+  nist: [SC-13, IA-5]
+  mitre_mitigations: [M1041]
+  mitre_techniques: [T1558.003]
+check:
+  all:
+    - {label: sin DES ni RC4, probe: registry, path: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters, name: SupportedEncryptionTypes, op: bits_clear, expected: 7}
+    - {label: AES permitido, probe: registry, path: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters, name: SupportedEncryptionTypes, op: bits_any, expected: 24}
+remediation:
+  summary: Fijar "Network security - Configure encryption types allowed for Kerberos" en AES128, AES256 y Future (2147483640).
+  breaking_risk: high
+impact: Cuentas, aplicaciones o trusts que solo soporten RC4 dejarán de autenticarse. Revisa el evento 4769 (tipo 0x17) en los DC antes de aplicar.

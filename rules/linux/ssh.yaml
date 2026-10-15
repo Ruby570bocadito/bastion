@@ -1,0 +1,282 @@
+# Servidor OpenSSH. Se evalúa la configuración EFECTIVA (sshd -T) cuando
+# Bastion se ejecuta como root; si no, se interpreta sshd_config.
+id: LNX-SSH-001
+title: Prohibir el acceso de root por SSH
+description: PermitRootLogin debe ser "no".
+rationale: Obliga a entrar con una cuenta nominal y elevar con sudo, lo que deja trazabilidad y elimina el objetivo más atacado por fuerza bruta.
+category: SSH
+severity: high
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-6(2), AC-17]
+  mitre_mitigations: [M1026, M1042]
+  mitre_techniques: [T1021.004, T1110]
+check:
+  probe: sshd
+  key: permitrootlogin
+  op: eq
+  expected: "no"
+  default: prohibit-password
+remediation:
+  summary: Añadir "PermitRootLogin no" en un fichero drop-in y recargar sshd.
+  commands: |
+    echo 'PermitRootLogin no' > /etc/ssh/sshd_config.d/00-bastion.conf
+    sshd -t && systemctl reload ssh 2>/dev/null || systemctl reload sshd
+  breaking_risk: medium
+impact: Comprueba antes que existe otra cuenta con sudo y acceso SSH o te quedarás sin acceso.
+---
+id: LNX-SSH-002
+title: Prohibir contraseñas vacías en SSH
+description: PermitEmptyPasswords debe ser "no".
+rationale: Una cuenta sin contraseña sería accesible remotamente sin ninguna credencial.
+category: SSH
+severity: high
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [IA-5]
+  mitre_techniques: [T1078]
+check:
+  probe: sshd
+  key: permitemptypasswords
+  op: eq
+  expected: "no"
+  default: "no"
+remediation:
+  summary: Fijar "PermitEmptyPasswords no".
+  breaking_risk: none
+---
+id: LNX-SSH-003
+title: Limitar intentos de autenticación SSH
+description: MaxAuthTries debe ser 4 o menos.
+rationale: Reduce la eficacia de los ataques de fuerza bruta por conexión.
+category: SSH
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-7]
+  mitre_mitigations: [M1036]
+  mitre_techniques: [T1110]
+check:
+  probe: sshd
+  key: maxauthtries
+  op: lte
+  expected: 4
+  default: 6
+remediation:
+  summary: Fijar "MaxAuthTries 4".
+  breaking_risk: low
+impact: Usuarios con muchas claves en su agente SSH pueden agotar los intentos; que indiquen la clave con IdentitiesOnly.
+---
+id: LNX-SSH-004
+title: Deshabilitar el reenvío X11
+description: X11Forwarding debe ser "no".
+rationale: El reenvío X11 expone el servidor gráfico del cliente al servidor remoto y amplía la superficie de ataque.
+category: SSH
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-7]
+check:
+  probe: sshd
+  key: x11forwarding
+  op: eq
+  expected: "no"
+  default: "no"
+remediation:
+  summary: Fijar "X11Forwarding no".
+  breaking_risk: low
+---
+id: LNX-SSH-005
+title: Deshabilitar autenticación basada en host (rhosts)
+description: IgnoreRhosts debe ser "yes" y HostbasedAuthentication "no".
+rationale: La confianza por host es un mecanismo heredado que permite suplantación.
+category: SSH
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [IA-2]
+check:
+  all:
+    - {label: IgnoreRhosts, probe: sshd, key: ignorerhosts, op: eq, expected: "yes", default: "yes"}
+    - {label: HostbasedAuthentication, probe: sshd, key: hostbasedauthentication, op: eq, expected: "no", default: "no"}
+remediation:
+  summary: Fijar "IgnoreRhosts yes" y "HostbasedAuthentication no".
+  breaking_risk: none
+---
+id: LNX-SSH-006
+title: Tiempo de gracia de login reducido
+description: LoginGraceTime debe estar entre 1 y 60 segundos.
+rationale: Limita las conexiones sin autenticar abiertas, que pueden agotar el servidor.
+category: SSH
+severity: low
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-12]
+check:
+  probe: sshd
+  key: logingracetime
+  op: between
+  expected: [1, 60]
+  default: 120
+remediation:
+  summary: Fijar "LoginGraceTime 60".
+  breaking_risk: none
+---
+id: LNX-SSH-007
+title: Sin cifrados SSH débiles
+description: Ciphers no debe incluir algoritmos CBC, 3DES, Arcfour ni Blowfish.
+rationale: Estos cifrados tienen debilidades conocidas (p. ej. ataques de oráculo sobre CBC).
+category: SSH
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [SC-8, SC-13]
+  mitre_techniques: [T1040]
+check:
+  probe: sshd
+  key: ciphers
+  op: not_regex
+  expected: "(?i)(cbc|3des|arcfour|blowfish|cast128|rijndael)"
+  default: chacha20-poly1305@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com
+remediation:
+  summary: Definir una lista de cifrados modernos.
+  commands: |
+    echo 'Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr' >> /etc/ssh/sshd_config.d/00-bastion.conf
+  breaking_risk: low
+impact: Clientes SSH muy antiguos (equipos de red, appliances) podrían no conectar.
+---
+id: LNX-SSH-008
+title: Sin algoritmos MAC SSH débiles
+description: MACs no debe incluir MD5, RIPEMD-160, SHA1-96 ni UMAC-64.
+rationale: Los MAC con resúmenes cortos o rotos reducen la integridad del canal.
+category: SSH
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [SC-8]
+check:
+  probe: sshd
+  key: macs
+  op: not_regex
+  expected: "(?i)(hmac-md5|hmac-ripemd160|hmac-sha1-96|umac-64)"
+  default: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1
+remediation:
+  summary: Definir una lista de MAC modernos.
+  commands: |
+    echo 'MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256' >> /etc/ssh/sshd_config.d/00-bastion.conf
+  breaking_risk: low
+---
+id: LNX-SSH-009
+title: Sin intercambio de claves SSH débil
+description: KexAlgorithms no debe incluir variantes Diffie-Hellman con SHA-1.
+rationale: diffie-hellman-group1/group14/group-exchange con SHA-1 se consideran inseguros.
+category: SSH
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [SC-8, SC-13]
+check:
+  probe: sshd
+  key: kexalgorithms
+  op: not_regex
+  expected: "(?i)(group1-sha1|group14-sha1|group-exchange-sha1)"
+  default: sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256
+remediation:
+  summary: Eliminar los algoritmos con SHA-1 de KexAlgorithms.
+  breaking_risk: low
+---
+id: LNX-SSH-010
+title: Permisos de sshd_config
+description: /etc/ssh/sshd_config debe pertenecer a root con permisos 0600 o más restrictivos.
+rationale: Evita que usuarios sin privilegios lean o alteren la configuración del servicio de acceso remoto.
+category: SSH
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-3, CM-6]
+  mitre_mitigations: [M1022]
+check:
+  all:
+    - {label: permisos, probe: file, path: /etc/ssh/sshd_config, field: mode, op: mode_max, expected: "0600", on_missing: na}
+    - {label: propietario, probe: file, path: /etc/ssh/sshd_config, field: owner, op: eq, expected: root, on_missing: na}
+remediation:
+  summary: Ajustar propietario y permisos.
+  commands: |
+    chown root:root /etc/ssh/sshd_config && chmod 600 /etc/ssh/sshd_config
+  breaking_risk: none
+---
+id: LNX-SSH-011
+title: Tiempo de inactividad de sesiones SSH
+description: ClientAliveInterval debe estar configurado (mayor que 0) para cerrar sesiones abandonadas.
+rationale: Las sesiones abiertas sin vigilancia pueden ser aprovechadas por terceros.
+category: SSH
+severity: low
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-12, SC-10]
+check:
+  probe: sshd
+  key: clientaliveinterval
+  op: between
+  expected: [1, 900]
+  default: 0
+remediation:
+  summary: Fijar "ClientAliveInterval 300" y "ClientAliveCountMax 3".
+  breaking_risk: low
+---
+id: LNX-SSH-012
+title: Acceso SSH restringido a usuarios o grupos
+description: Debe existir al menos una directiva AllowUsers, AllowGroups, DenyUsers o DenyGroups.
+rationale: Limita qué cuentas pueden entrar por SSH, de modo que una cuenta de servicio comprometida no sirva para acceder.
+category: SSH
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-3, AC-17]
+  mitre_mitigations: [M1018]
+  mitre_techniques: [T1021.004]
+check:
+  any:
+    - {label: AllowGroups, probe: sshd, key: allowgroups, op: exists}
+    - {label: AllowUsers, probe: sshd, key: allowusers, op: exists}
+    - {label: DenyGroups, probe: sshd, key: denygroups, op: exists}
+    - {label: DenyUsers, probe: sshd, key: denyusers, op: exists}
+remediation:
+  summary: Crear un grupo (p. ej. ssh-users) y añadir "AllowGroups ssh-users".
+  breaking_risk: high
+impact: Las cuentas que no estén en la lista perderán el acceso SSH; verifica la lista antes de recargar.
+---
+id: LNX-SSH-013
+title: Solo autenticación por clave en SSH
+description: PasswordAuthentication debe ser "no".
+rationale: Elimina por completo los ataques de fuerza bruta y relleno de credenciales contra SSH.
+category: SSH
+severity: high
+platforms: [linux]
+profiles: [linux-server-l2]
+references:
+  nist: [IA-2(1), IA-5]
+  mitre_mitigations: [M1032]
+  mitre_techniques: [T1110]
+check:
+  probe: sshd
+  key: passwordauthentication
+  op: eq
+  expected: "no"
+  default: "yes"
+remediation:
+  summary: Desplegar claves públicas a los usuarios y fijar "PasswordAuthentication no".
+  breaking_risk: high
+impact: Los usuarios sin clave pública configurada no podrán entrar.

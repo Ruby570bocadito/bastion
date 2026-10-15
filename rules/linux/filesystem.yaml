@@ -1,0 +1,162 @@
+# Sistema de ficheros: particiones, opciones de montaje y permisos críticos.
+id: LNX-FS-001
+title: /tmp en partición propia con nodev, nosuid y noexec
+description: /tmp debe ser un punto de montaje separado con las opciones nodev, nosuid y noexec.
+rationale: /tmp es escribible por todos; sin estas opciones es un lugar habitual para ejecutar binarios descargados por un atacante.
+category: Sistema de ficheros
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-7, AC-3]
+  mitre_mitigations: [M1022]
+  mitre_techniques: [T1059.004]
+check:
+  all:
+    - {label: montaje propio, probe: mount, path: /tmp, op: exists}
+    - {label: opciones, probe: mount, path: /tmp, field: options, op: contains, expected: [nodev, nosuid, noexec]}
+remediation:
+  summary: Montar /tmp como tmpfs (o partición) con nodev,nosuid,noexec.
+  commands: |
+    systemctl unmask tmp.mount 2>/dev/null
+    mkdir -p /etc/systemd/system/tmp.mount.d
+    printf '[Mount]\nOptions=mode=1777,strictatime,nosuid,nodev,noexec,size=25%%\n' > /etc/systemd/system/tmp.mount.d/bastion.conf
+    systemctl daemon-reload && systemctl enable --now tmp.mount
+  breaking_risk: medium
+  reboot_required: true
+impact: Algunos instaladores ejecutan scripts desde /tmp; con noexec fallarán (configura TMPDIR en esos casos).
+---
+id: LNX-FS-002
+title: /dev/shm con nodev, nosuid y noexec
+description: La memoria compartida /dev/shm debe montarse con nodev, nosuid y noexec.
+rationale: /dev/shm es escribible por todos y se usa para ejecutar cargas sin tocar el disco.
+category: Sistema de ficheros
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-7]
+  mitre_techniques: [T1059.004]
+check:
+  probe: mount
+  path: /dev/shm
+  field: options
+  op: contains
+  expected: [nodev, nosuid, noexec]
+  on_missing: na
+remediation:
+  summary: Añadir a /etc/fstab "tmpfs /dev/shm tmpfs defaults,nodev,nosuid,noexec 0 0" y remontar.
+  commands: |
+    mount -o remount,nodev,nosuid,noexec /dev/shm
+  breaking_risk: low
+---
+id: LNX-FS-003
+title: Permisos de /etc/shadow
+description: /etc/shadow debe pertenecer a root (grupo root o shadow) con permisos 0640 o más restrictivos.
+rationale: Contiene los hashes de las contraseñas; si es legible se pueden crackear fuera de línea.
+category: Sistema de ficheros
+severity: high
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-3, IA-5]
+  mitre_mitigations: [M1022]
+  mitre_techniques: [T1003.008]
+check:
+  all:
+    - {label: permisos, probe: file, path: /etc/shadow, field: mode, op: mode_max, expected: "0640"}
+    - {label: propietario, probe: file, path: /etc/shadow, field: owner, op: eq, expected: root}
+    - {label: grupo, probe: file, path: /etc/shadow, field: group, op: in, expected: [root, shadow]}
+remediation:
+  summary: Restaurar propietario y permisos.
+  commands: |
+    chown root:shadow /etc/shadow 2>/dev/null || chown root:root /etc/shadow
+    chmod 640 /etc/shadow
+  breaking_risk: none
+---
+id: LNX-FS-004
+title: Permisos de /etc/passwd
+description: /etc/passwd debe pertenecer a root:root con permisos 0644 o más restrictivos.
+rationale: Si fuera escribible, cualquiera podría crear una cuenta con UID 0.
+category: Sistema de ficheros
+severity: high
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-3]
+  mitre_mitigations: [M1022]
+  mitre_techniques: [T1136.001]
+check:
+  all:
+    - {label: permisos, probe: file, path: /etc/passwd, field: mode, op: mode_max, expected: "0644"}
+    - {label: propietario, probe: file, path: /etc/passwd, field: owner, op: eq, expected: root}
+remediation:
+  summary: Restaurar propietario y permisos.
+  commands: |
+    chown root:root /etc/passwd && chmod 644 /etc/passwd
+  breaking_risk: none
+---
+id: LNX-FS-005
+title: Permisos de /etc/gshadow
+description: /etc/gshadow debe pertenecer a root con permisos 0640 o más restrictivos.
+rationale: Contiene hashes de contraseñas de grupo.
+category: Sistema de ficheros
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-3]
+  mitre_mitigations: [M1022]
+check:
+  all:
+    - {label: permisos, probe: file, path: /etc/gshadow, field: mode, op: mode_max, expected: "0640", on_missing: na}
+    - {label: propietario, probe: file, path: /etc/gshadow, field: owner, op: eq, expected: root, on_missing: na}
+remediation:
+  summary: Restaurar propietario y permisos.
+  commands: |
+    chown root:shadow /etc/gshadow 2>/dev/null || chown root:root /etc/gshadow
+    chmod 640 /etc/gshadow
+  breaking_risk: none
+---
+id: LNX-FS-006
+title: Permisos de /etc/crontab
+description: /etc/crontab debe pertenecer a root con permisos 0600.
+rationale: Evita que usuarios sin privilegios lean o modifiquen tareas que se ejecutan como root.
+category: Sistema de ficheros
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-3]
+  mitre_mitigations: [M1022]
+  mitre_techniques: [T1053.003]
+check:
+  all:
+    - {label: permisos, probe: file, path: /etc/crontab, field: mode, op: mode_max, expected: "0600", on_missing: na}
+    - {label: propietario, probe: file, path: /etc/crontab, field: owner, op: eq, expected: root, on_missing: na}
+remediation:
+  summary: Ajustar propietario y permisos.
+  commands: |
+    chown root:root /etc/crontab && chmod 600 /etc/crontab
+  breaking_risk: none
+---
+id: LNX-BOOT-001
+title: Permisos de la configuración del cargador de arranque
+description: grub.cfg debe pertenecer a root con permisos 0600 o más restrictivos.
+rationale: grub.cfg puede revelar parámetros del kernel y el hash de la contraseña de GRUB.
+category: Arranque
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-3]
+  mitre_techniques: [T1542]
+check:
+  all:
+    - {label: permisos, probe: file, path: [/boot/grub/grub.cfg, /boot/grub2/grub.cfg], field: mode, op: mode_max, expected: "0600", on_missing: na}
+    - {label: propietario, probe: file, path: [/boot/grub/grub.cfg, /boot/grub2/grub.cfg], field: owner, op: eq, expected: root, on_missing: na}
+remediation:
+  summary: Ajustar propietario y permisos de grub.cfg.
+  commands: |
+    for f in /boot/grub/grub.cfg /boot/grub2/grub.cfg; do [ -f "$f" ] && chown root:root "$f" && chmod 600 "$f"; done
+  breaking_risk: none

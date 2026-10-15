@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tu-usuario/bastion/rules/schema/rule.schema.json",
+  "title": "Regla de Bastion",
+  "description": "Control de seguridad declarativo. Ver docs/04-motor-de-reglas.md. Para validación en el editor añade al inicio del YAML: # yaml-language-server: $schema=../schema/rule.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "description", "category", "severity", "platforms", "profiles", "check", "remediation"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[A-Z0-9]+(-[A-Z0-9]+){2,}$", "examples": ["LNX-SSH-001", "WIN-NET-004"] },
+    "title": { "type": "string", "minLength": 5 },
+    "description": { "type": "string" },
+    "rationale": { "type": "string" },
+    "category": { "type": "string" },
+    "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+    "platforms": {
+      "type": "array", "minItems": 1,
+      "items": { "enum": ["windows", "windows-client", "windows-server", "windows-member", "windows-dc", "linux", "linux-debian", "linux-ubuntu", "linux-rhel", "linux-fedora", "linux-suse"] }
+    },
+    "profiles": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "references": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "nist": { "type": "array", "items": { "type": "string" } },
+        "cis": { "type": "array", "items": { "type": "string" } },
+        "stig": { "type": "array", "items": { "type": "string" } },
+        "ens": { "type": "array", "items": { "type": "string" } },
+        "mitre_mitigations": { "type": "array", "items": { "type": "string", "pattern": "^M\\d{4}$" } },
+        "mitre_techniques": { "type": "array", "items": { "type": "string", "pattern": "^T\\d{4}(\\.\\d{3})?$" } },
+        "urls": { "type": "array", "items": { "type": "string", "format": "uri" } }
+      }
+    },
+    "check": { "$ref": "#/$defs/check" },
+    "remediation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["summary", "breaking_risk"],
+      "properties": {
+        "summary": { "type": "string" },
+        "gpo": { "type": "string" },
+        "commands": { "type": "string" },
+        "breaking_risk": { "enum": ["none", "low", "medium", "high"] },
+        "reboot_required": { "type": "boolean" }
+      }
+    },
+    "impact": { "type": "string" }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "oneOf": [
+        { "required": ["probe", "op"] },
+        { "required": ["all"] },
+        { "required": ["any"] }
+      ],
+      "properties": {
+        "all": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/check" } },
+        "any": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/check" } },
+        "label": { "type": "string" },
+        "probe": {
+          "enum": ["file_content", "file_regex", "file_kv", "sysctl", "file", "sshd", "kmod", "systemd", "mount", "package", "registry", "secpol", "auditpol", "service", "ps"]
+        },
+        "field": { "type": "string" },
+        "op": {
+          "enum": ["eq", "ne", "gt", "gte", "lt", "lte", "between", "in", "not_in", "contains", "not_contains", "regex", "not_regex", "bits_set", "bits_clear", "bits_any", "mode_max", "exists", "absent"]
+        },
+        "expected": {},
+        "default": {},
+        "on_missing": { "enum": ["fail", "pass", "na"] },
+        "each": { "enum": ["all", "any"] }
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+// Bastion: auditoría y hardening para Windows, Windows Server y Linux.
+package main
+
+import (
+	"os"
+
+	"github.com/tu-usuario/bastion/internal/cli"
+	"github.com/tu-usuario/bastion/internal/selfupdate"
+)
+
+func main() {
+	selfupdate.CleanupOld()
+	os.Exit(cli.Execute())
+}

@@ -1,0 +1,154 @@
+# Control de acceso obligatorio, firewall, auditoría y actualizaciones.
+id: LNX-MAC-001
+title: Control de acceso obligatorio activo (AppArmor o SELinux)
+description: AppArmor debe estar habilitado o SELinux en modo enforcing.
+rationale: El MAC limita lo que puede hacer un servicio comprometido aunque se ejecute como root.
+category: Control de acceso
+severity: high
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-3(3), AC-6]
+  mitre_mitigations: [M1038, M1048]
+  mitre_techniques: [T1068]
+check:
+  any:
+    - {label: AppArmor, probe: file_content, path: /sys/module/apparmor/parameters/enabled, op: eq, expected: "Y"}
+    - {label: SELinux enforcing, probe: file_content, path: /sys/fs/selinux/enforce, op: eq, expected: 1}
+remediation:
+  summary: Activar AppArmor (Debian/Ubuntu) o poner SELinux en enforcing (RHEL).
+  commands: |
+    # RHEL: sed -i 's/^SELINUX=.*/SELINUX=enforcing/' /etc/selinux/config && setenforce 1
+    # Ubuntu: systemctl enable --now apparmor
+  breaking_risk: medium
+  reboot_required: true
+impact: Revisa las denegaciones en modo permisivo antes de aplicar (Bastion observe en la fase 3).
+---
+id: LNX-FW-001
+title: Firewall de host activo
+description: Debe haber un firewall de host activo (ufw, firewalld o nftables).
+rationale: Limita los servicios accesibles desde la red aunque un servicio se exponga por error.
+category: Firewall
+severity: high
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [SC-7]
+  mitre_mitigations: [M1037]
+  mitre_techniques: [T1021, T1046]
+check:
+  any:
+    - {label: ufw, probe: file_kv, path: /etc/ufw/ufw.conf, key: ENABLED, separator: "=", op: eq, expected: "yes"}
+    - {label: firewalld, probe: systemd, unit: firewalld.service, field: active, op: eq, expected: active}
+    - {label: nftables, probe: systemd, unit: nftables.service, field: active, op: eq, expected: active}
+remediation:
+  summary: Activar ufw (Ubuntu) o firewalld (RHEL) con entrada denegada por defecto.
+  commands: |
+    # Ubuntu: ufw allow OpenSSH && ufw default deny incoming && ufw --force enable
+    # RHEL:   systemctl enable --now firewalld
+  breaking_risk: high
+impact: Permite primero SSH y los servicios publicados o perderás el acceso.
+---
+id: LNX-LOG-001
+title: auditd instalado y en ejecución
+description: El demonio de auditoría auditd debe estar habilitado y activo.
+rationale: auditd registra cambios de identidad, uso de privilegios y accesos a ficheros sensibles, imprescindible para detectar y para el análisis forense.
+category: Registro y auditoría
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AU-2, AU-12]
+  mitre_mitigations: [M1047]
+check:
+  all:
+    - {label: habilitado, probe: systemd, unit: auditd.service, field: enabled, op: eq, expected: enabled}
+    - {label: activo, probe: systemd, unit: auditd.service, field: active, op: eq, expected: active}
+remediation:
+  summary: Instalar y habilitar auditd.
+  commands: |
+    apt-get install -y auditd audispd-plugins 2>/dev/null || dnf install -y audit
+    systemctl enable --now auditd
+  breaking_risk: none
+---
+id: LNX-LOG-002
+title: journald con almacenamiento persistente
+description: journald debe conservar los logs en disco (Storage=persistent, o auto con /var/log/journal).
+rationale: Con almacenamiento volátil los logs se pierden al reiniciar, justo cuando más se necesitan.
+category: Registro y auditoría
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AU-9, AU-11]
+  mitre_techniques: [T1070.002]
+check:
+  all:
+    - label: no volátil
+      probe: file_kv
+      path: [/usr/lib/systemd/journald.conf.d/*.conf, /etc/systemd/journald.conf, /etc/systemd/journald.conf.d/*.conf]
+      key: Storage
+      separator: "="
+      op: not_in
+      expected: [volatile, none]
+      on_missing: pass
+    - any:
+        - label: Storage=persistent
+          probe: file_kv
+          path: [/usr/lib/systemd/journald.conf.d/*.conf, /etc/systemd/journald.conf, /etc/systemd/journald.conf.d/*.conf]
+          key: Storage
+          separator: "="
+          op: eq
+          expected: persistent
+        - {label: /var/log/journal existe, probe: file, path: /var/log/journal, op: exists}
+remediation:
+  summary: Fijar Storage=persistent en un drop-in de journald.
+  commands: |
+    mkdir -p /etc/systemd/journald.conf.d
+    printf '[Journal]\nStorage=persistent\n' > /etc/systemd/journald.conf.d/bastion.conf
+    systemctl restart systemd-journald
+  breaking_risk: none
+---
+id: LNX-UPD-001
+title: Actualizaciones de seguridad automáticas (Debian/Ubuntu)
+description: unattended-upgrades debe estar instalado y activado.
+rationale: La mayoría de compromisos explotan vulnerabilidades con parche disponible.
+category: Actualizaciones
+severity: medium
+platforms: [linux-debian, linux-ubuntu]
+profiles: [linux-server-l1]
+references:
+  nist: [SI-2]
+  mitre_mitigations: [M1051]
+check:
+  all:
+    - {label: instalado, probe: package, name: unattended-upgrades, op: exists}
+    - {label: activado, probe: file_regex, path: /etc/apt/apt.conf.d/*, pattern: '^\s*APT::Periodic::Unattended-Upgrade\s+"1"', op: gte, expected: 1}
+remediation:
+  summary: Instalar y activar unattended-upgrades.
+  commands: |
+    apt-get install -y unattended-upgrades
+    dpkg-reconfigure -f noninteractive unattended-upgrades
+  breaking_risk: low
+---
+id: LNX-UPD-002
+title: Actualizaciones de seguridad automáticas (RHEL)
+description: El temporizador de dnf-automatic debe estar habilitado.
+rationale: La mayoría de compromisos explotan vulnerabilidades con parche disponible.
+category: Actualizaciones
+severity: medium
+platforms: [linux-rhel, linux-fedora]
+profiles: [linux-server-l1]
+references:
+  nist: [SI-2]
+  mitre_mitigations: [M1051]
+check:
+  any:
+    - {label: dnf-automatic.timer, probe: systemd, unit: dnf-automatic.timer, field: enabled, op: eq, expected: enabled}
+    - {label: dnf-automatic-install.timer, probe: systemd, unit: dnf-automatic-install.timer, field: enabled, op: eq, expected: enabled}
+remediation:
+  summary: Instalar dnf-automatic con upgrade_type = security y habilitar el temporizador.
+  commands: |
+    dnf install -y dnf-automatic
+    systemctl enable --now dnf-automatic-install.timer
+  breaking_risk: low

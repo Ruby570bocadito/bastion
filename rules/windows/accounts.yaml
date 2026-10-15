@@ -1,0 +1,141 @@
+# Cuentas y directiva de contraseñas (directiva de seguridad local).
+id: WIN-ACC-001
+title: Longitud mínima de contraseña de 14 caracteres
+description: La directiva local debe exigir contraseñas de al menos 14 caracteres.
+rationale: La longitud es el factor que más aumenta el coste de los ataques de fuerza bruta y de crackeo de hashes.
+category: Cuentas
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [IA-5(1)]
+  mitre_mitigations: [M1027]
+  mitre_techniques: [T1110]
+check:
+  probe: secpol
+  section: System Access
+  key: MinimumPasswordLength
+  op: gte
+  expected: 14
+remediation:
+  summary: Fijar la longitud mínima en 14 o más.
+  gpo: Computer Configuration > Windows Settings > Security Settings > Account Policies > Password Policy > Minimum password length
+  commands: net accounts /minpwlen:14
+  breaking_risk: low
+impact: En equipos unidos a dominio, las cuentas de dominio siguen la directiva del dominio (Default Domain Policy o FGPP).
+---
+id: WIN-ACC-002
+title: Complejidad de contraseñas activada
+description: La directiva "La contraseña debe cumplir los requisitos de complejidad" debe estar habilitada.
+rationale: Evita contraseñas triviales en las cuentas locales.
+category: Cuentas
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [IA-5(1)]
+  mitre_mitigations: [M1027]
+  mitre_techniques: [T1110]
+check:
+  probe: secpol
+  section: System Access
+  key: PasswordComplexity
+  op: eq
+  expected: 1
+remediation:
+  summary: Habilitar la complejidad de contraseñas.
+  gpo: Computer Configuration > Windows Settings > Security Settings > Account Policies > Password Policy > Password must meet complexity requirements
+  breaking_risk: none
+---
+id: WIN-ACC-003
+title: Bloqueo de cuenta tras 5 intentos o menos
+description: El umbral de bloqueo de cuenta debe estar entre 1 y 5 intentos fallidos.
+rationale: Sin bloqueo, las cuentas locales admiten fuerza bruta ilimitada.
+category: Cuentas
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AC-7]
+  mitre_mitigations: [M1036]
+  mitre_techniques: [T1110.001]
+check:
+  probe: secpol
+  section: System Access
+  key: LockoutBadCount
+  op: between
+  expected: [1, 5]
+remediation:
+  summary: Fijar el umbral en 5 con una duración de bloqueo de 15 minutos o más.
+  gpo: Computer Configuration > Windows Settings > Security Settings > Account Policies > Account Lockout Policy > Account lockout threshold
+  commands: net accounts /lockoutthreshold:5 /lockoutduration:15 /lockoutwindow:15
+  breaking_risk: low
+---
+id: WIN-ACC-004
+title: Cuenta de invitado deshabilitada
+description: La cuenta Guest/Invitado debe estar deshabilitada.
+rationale: Permite acceso anónimo al equipo y a recursos compartidos.
+category: Cuentas
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AC-2, IA-2]
+  mitre_mitigations: [M1018]
+  mitre_techniques: [T1078.001]
+check:
+  probe: secpol
+  section: System Access
+  key: EnableGuestAccount
+  op: eq
+  expected: 0
+remediation:
+  summary: Deshabilitar la cuenta de invitado.
+  gpo: Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > Accounts > Guest account status
+  breaking_risk: none
+---
+id: WIN-ACC-005
+title: Contraseñas en blanco solo en consola local
+description: Las cuentas con contraseña en blanco solo deben poder iniciar sesión en la consola (LimitBlankPasswordUse = 1).
+rationale: Impide el uso remoto (red, RDP) de cuentas sin contraseña.
+category: Cuentas
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [IA-5]
+  mitre_techniques: [T1078]
+check:
+  probe: registry
+  path: HKLM\SYSTEM\CurrentControlSet\Control\Lsa
+  name: LimitBlankPasswordUse
+  op: eq
+  expected: 1
+  default: 1
+remediation:
+  summary: Habilitar "Accounts - Limit local account use of blank passwords to console logon only".
+  gpo: Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > Accounts > Limit local account use of blank passwords to console logon only
+  breaking_risk: none
+---
+id: WIN-ACC-006
+title: Contraseña del administrador local gestionada con LAPS
+description: Windows LAPS (o LAPS heredado) debe estar configurado para rotar la contraseña del administrador local.
+rationale: Una misma contraseña de administrador local en todos los equipos permite el movimiento lateral con un único hash (pass-the-hash).
+category: Cuentas
+severity: high
+platforms: [windows-client, windows-member]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [IA-5, AC-2]
+  mitre_mitigations: [M1026, M1027]
+  mitre_techniques: [T1550.002, T1078.003]
+check:
+  any:
+    - {label: Windows LAPS (GPO), probe: registry, path: HKLM\SOFTWARE\Microsoft\Policies\LAPS, name: BackupDirectory, op: in, expected: [1, 2]}
+    - {label: Windows LAPS (Intune/CSP), probe: registry, path: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\LAPS, name: BackupDirectory, op: in, expected: [1, 2]}
+    - {label: LAPS heredado, probe: registry, path: HKLM\SOFTWARE\Policies\Microsoft Services\AdmPwd, name: AdmPwdEnabled, op: eq, expected: 1}
+remediation:
+  summary: Configurar Windows LAPS con copia de la contraseña en Active Directory o Entra ID.
+  gpo: Computer Configuration > Administrative Templates > System > LAPS > Configure password backup directory
+  breaking_risk: none
+impact: Solo tiene sentido en equipos gestionados (dominio o Entra ID); en equipos aislados documenta una excepción.

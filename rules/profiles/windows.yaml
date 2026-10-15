@@ -1,0 +1,41 @@
+# Perfiles para Windows 10/11 y Windows Server 2016-2025.
+id: win-workstation-l1
+name: Windows Estación de trabajo · Nivel 1
+description: >
+  Línea base esencial para Windows 10/11: credenciales, red, Defender,
+  auditoría y cuentas. Bajo riesgo de rotura.
+platforms: [windows-client]
+default_for: [windows-client]
+---
+id: win-workstation-l2
+name: Windows Estación de trabajo · Nivel 2
+description: >
+  Alta seguridad para Windows 10/11 (equipos de administradores, directivos,
+  datos sensibles). Incluye el Nivel 1.
+platforms: [windows-client]
+extends: [win-workstation-l1]
+---
+id: win-server-l1
+name: Windows Server miembro · Nivel 1
+description: >
+  Línea base esencial para Windows Server 2016-2025 unido a dominio o
+  independiente.
+platforms: [windows-server]
+default_for: [windows-member]
+---
+id: win-server-l2
+name: Windows Server miembro · Nivel 2
+description: >
+  Defensa en profundidad para servidores críticos. Incluye el Nivel 1.
+platforms: [windows-server]
+extends: [win-server-l1]
+---
+id: win-dc-l1
+name: Controlador de dominio · Nivel 1
+description: >
+  Línea base para controladores de dominio de Active Directory. Incluye la
+  base de servidor y añade los controles específicos de DC (LDAP, Kerberos,
+  Print Spooler...).
+platforms: [windows-dc]
+extends: [win-server-l1]
+default_for: [windows-dc]

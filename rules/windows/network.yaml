@@ -1,0 +1,236 @@
+# Protocolos de red: SMB, resolución de nombres y firewall.
+id: WIN-NET-001
+title: SMBv1 deshabilitado en el servidor SMB
+description: El protocolo SMB 1.0 debe estar deshabilitado.
+rationale: SMBv1 es obsoleto y fue el vector de EternalBlue (WannaCry, NotPetya).
+category: Red
+severity: critical
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1210]
+check:
+  probe: ps
+  query: smb_server
+  field: EnableSMB1Protocol
+  op: eq
+  expected: false
+remediation:
+  summary: Deshabilitar SMBv1.
+  commands: Set-SmbServerConfiguration -EnableSMB1Protocol $false -Force
+  breaking_risk: medium
+  reboot_required: true
+impact: Impresoras, escáneres o NAS muy antiguos que solo hablen SMBv1 dejarán de conectar. Audita antes con AuditSmb1Access (evento 3000).
+---
+id: WIN-NET-002
+title: Característica SMB 1.0/CIFS desinstalada
+description: La característica opcional SMB1Protocol no debe estar instalada.
+rationale: Eliminar el componente impide que se vuelva a activar SMBv1 por error.
+category: Red
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1210]
+check:
+  probe: ps
+  query: optional_features
+  field: SMB1Protocol
+  op: in
+  expected: [Disabled, DisabledWithPayloadRemoved]
+  on_missing: pass
+remediation:
+  summary: Desinstalar la característica SMB 1.0/CIFS.
+  commands: Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart
+  breaking_risk: medium
+  reboot_required: true
+---
+id: WIN-NET-003
+title: Firma SMB obligatoria en el servidor
+description: El servidor SMB debe exigir la firma de los paquetes (RequireSecuritySignature).
+rationale: Sin firma, un atacante en la red puede retransmitir autenticaciones NTLM (SMB relay) y obtener acceso.
+category: Red
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SC-8, SC-23]
+  mitre_mitigations: [M1037]
+  mitre_techniques: [T1557.001]
+check:
+  probe: ps
+  query: smb_server
+  field: RequireSecuritySignature
+  op: eq
+  expected: true
+remediation:
+  summary: Habilitar "Microsoft network server - Digitally sign communications (always)".
+  gpo: Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options > Microsoft network server > Digitally sign communications (always)
+  commands: Set-SmbServerConfiguration -RequireSecuritySignature $true -Force
+  breaking_risk: low
+---
+id: WIN-NET-004
+title: Firma SMB obligatoria en el cliente
+description: El cliente SMB debe exigir la firma de los paquetes.
+rationale: Protege las conexiones salientes frente a manipulación y relay.
+category: Red
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SC-8]
+  mitre_techniques: [T1557.001]
+check:
+  probe: ps
+  query: smb_client
+  field: RequireSecuritySignature
+  op: eq
+  expected: true
+remediation:
+  summary: Habilitar "Microsoft network client - Digitally sign communications (always)".
+  commands: Set-SmbClientConfiguration -RequireSecuritySignature $true -Force
+  breaking_risk: low
+---
+id: WIN-NET-005
+title: Inicios de sesión de invitado inseguros en SMB deshabilitados
+description: El cliente SMB no debe permitir conexiones como invitado (EnableInsecureGuestLogons).
+rationale: Las conexiones de invitado no autentican al servidor y permiten suplantarlo.
+category: Red
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [IA-3]
+  mitre_techniques: [T1557]
+check:
+  probe: ps
+  query: smb_client
+  field: EnableInsecureGuestLogons
+  op: eq
+  expected: false
+remediation:
+  summary: Deshabilitar "Enable insecure guest logons".
+  commands: Set-SmbClientConfiguration -EnableInsecureGuestLogons $false -Force
+  breaking_risk: low
+---
+id: WIN-NET-006
+title: LLMNR deshabilitado
+description: La resolución de nombres multicast (LLMNR) debe estar deshabilitada.
+rationale: Herramientas como Responder envenenan LLMNR para capturar hashes NTLM de toda la red.
+category: Red
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [CM-7, SC-20]
+  mitre_mitigations: [M1042, M1037]
+  mitre_techniques: [T1557.001]
+check:
+  probe: registry
+  path: HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient
+  name: EnableMulticast
+  op: eq
+  expected: 0
+  default: 1
+remediation:
+  summary: Habilitar la directiva "Turn off multicast name resolution".
+  gpo: Computer Configuration > Administrative Templates > Network > DNS Client > Turn off multicast name resolution
+  commands: reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient" /v EnableMulticast /t REG_DWORD /d 0 /f
+  breaking_risk: low
+---
+id: WIN-NET-007
+title: NetBIOS sobre TCP/IP deshabilitado
+description: NetBIOS sobre TCP/IP debe estar deshabilitado en todas las interfaces (NetbiosOptions = 2).
+rationale: NBT-NS se envenena igual que LLMNR para robar hashes NTLM.
+category: Red
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1557.001]
+check:
+  probe: registry
+  path: HKLM\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces\Tcpip_*
+  name: NetbiosOptions
+  op: eq
+  expected: 2
+  each: all
+remediation:
+  summary: Deshabilitar NetBIOS en todas las interfaces (o por DHCP, opción 001 de Microsoft).
+  commands: |
+    Get-ChildItem 'HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters\Interfaces' | ForEach-Object { Set-ItemProperty $_.PSPath -Name NetbiosOptions -Value 2 }
+  breaking_risk: medium
+impact: Aplicaciones heredadas que resuelvan nombres por NetBIOS o exploren la red ("Entorno de red") dejarán de hacerlo.
+---
+id: WIN-NET-008
+title: mDNS deshabilitado
+description: La resolución mDNS del cliente DNS debe estar deshabilitada (EnableMDNS = 0).
+rationale: mDNS es otro protocolo de resolución local susceptible de envenenamiento.
+category: Red
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l2, win-server-l2]
+references:
+  nist: [CM-7]
+  mitre_techniques: [T1557]
+check:
+  probe: registry
+  path: HKLM\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters
+  name: EnableMDNS
+  op: eq
+  expected: 0
+  default: 1
+remediation:
+  summary: Fijar EnableMDNS = 0.
+  commands: reg add "HKLM\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters" /v EnableMDNS /t REG_DWORD /d 0 /f
+  breaking_risk: low
+impact: Puede afectar al descubrimiento de impresoras y dispositivos de proyección.
+---
+id: WIN-NET-009
+title: Firewall activado en los tres perfiles
+description: El Firewall de Windows debe estar activo en los perfiles Dominio, Privado y Público.
+rationale: El firewall de host es la última barrera contra el movimiento lateral y la exposición accidental de servicios.
+category: Firewall
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SC-7]
+  mitre_mitigations: [M1037]
+  mitre_techniques: [T1021, T1210]
+check:
+  all:
+    - {label: Dominio, probe: ps, query: firewall, field: Domain.Enabled, op: eq, expected: true}
+    - {label: Privado, probe: ps, query: firewall, field: Private.Enabled, op: eq, expected: true}
+    - {label: Público, probe: ps, query: firewall, field: Public.Enabled, op: eq, expected: true}
+remediation:
+  summary: Activar el firewall en todos los perfiles.
+  commands: Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled True
+  breaking_risk: medium
+---
+id: WIN-NET-010
+title: Firewall bloquea las conexiones entrantes por defecto
+description: La acción entrante por defecto debe ser Bloquear en los tres perfiles.
+rationale: Solo deben aceptarse conexiones a los servicios permitidos explícitamente.
+category: Firewall
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SC-7(5)]
+  mitre_mitigations: [M1037]
+check:
+  all:
+    - {label: Dominio, probe: ps, query: firewall, field: Domain.DefaultInboundAction, op: in, expected: [Block, NotConfigured]}
+    - {label: Privado, probe: ps, query: firewall, field: Private.DefaultInboundAction, op: in, expected: [Block, NotConfigured]}
+    - {label: Público, probe: ps, query: firewall, field: Public.DefaultInboundAction, op: in, expected: [Block, NotConfigured]}
+remediation:
+  summary: Fijar la acción entrante por defecto en Bloquear.
+  commands: Set-NetFirewallProfile -Profile Domain,Private,Public -DefaultInboundAction Block
+  breaking_risk: medium

@@ -1,0 +1,70 @@
+# 12 · Pruebas y laboratorio
+
+Una herramienta de hardening solo es creíble si sus resultados son correctos. Un falso "superado" es peor que no tener herramienta.
+
+## Niveles de prueba
+
+| Nivel | Qué cubre | Dónde | Estado |
+|---|---|---|---|
+| Unitarias del motor | Operadores, `default`/`on_missing`, `each`, compuestas `all`/`any`, puntuación | `internal/engine/engine_test.go` | ✅ |
+| Parsers | `sshd_config` (Include, Match, tiempos), `sshd -T`, mountinfo, modprobe.d, clave/valor, INF de secedit, CSV de auditpol, UTF-16, rutas de registro | `internal/probes/parse_test.go` | ✅ |
+| Paquete de reglas | Todas las reglas y perfiles válidos, cada perfil por defecto con reglas, herencia del DC | `rules/rules_test.go` | ✅ |
+| Actualización | Comparación de versiones, `checksums.txt`, espejo simulado, **rechazo de archivo manipulado** | `internal/selfupdate/selfupdate_test.go` | ✅ |
+| Escaneo real en CI | `bastion scan` en Ubuntu y Windows Server de GitHub Actions; informes como artefacto | `.github/workflows/ci.yml` | ✅ |
+| Instaladores | ShellCheck, PSScriptAnalyzer | CI | ✅ |
+| Instaladores de punta a punta | Instalación limpia, reejecución, actualización, archivo manipulado, desinstalación contra un espejo local | Manual, ver abajo | ✅ manual · 🔜 CI |
+| Fixtures por regla | Cada regla con un caso que pasa y otro que falla sobre un sistema simulado | `bastion rules test` | 🔜 fase 2 |
+| Laboratorio de VMs | Ciclo `scan → harden → verify → rollback → verify` + idempotencia | Packer/Vagrant | 🔜 fase 2 |
+| Validación cruzada | Comparar resultados con CIS-CAT Lite, OpenSCAP y HardeningKitty | Laboratorio | 🔜 |
+
+## Ejecutar
+
+```bash
+make test                      # todo
+go test ./internal/engine/ -v  # un paquete
+go test -race ./...            # detector de carreras (el motor es concurrente)
+```
+
+## Probar los instaladores con un espejo local
+
+```bash
+# 1. Construir dos "releases"
+for v in 0.1.0 0.2.0; do
+  mkdir -p /tmp/m/download/v$v /tmp/b$v
+  go build -ldflags "-X github.com/tu-usuario/bastion/internal/version.Version=$v" -o /tmp/b$v/bastion ./cmd/bastion
+  tar -C /tmp/b$v -czf /tmp/m/download/v$v/bastion_linux_amd64.tar.gz bastion
+  (cd /tmp/m/download/v$v && sha256sum bastion_* > checksums.txt)
+done
+mkdir -p /tmp/m/latest/download && echo v0.1.0 > /tmp/m/latest/download/version.txt
+
+# 2. Servir el espejo
+(cd /tmp/m && python3 -m http.server 8765 &)
+
+# 3. Instalar como lo haría un usuario
+export BASTION_RELEASES_URL=http://127.0.0.1:8765 BASTION_HOME=/tmp/bh
+cat scripts/install.sh | sudo -E bash -s -- --prefix /tmp/bin
+
+# 4. Publicar v0.2.0 y probar la actualización (one-liner y bastion update)
+echo v0.2.0 > /tmp/m/latest/download/version.txt
+sudo -E /tmp/bin/bastion update
+```
+
+Escenarios verificados: instalación limpia con primer escaneo, reejecución sin cambios, actualización con el one-liner, auto-actualización con `bastion update`, **archivo manipulado rechazado** (en ambos caminos) y desinstalación.
+
+## Laboratorio de máquinas virtuales (🔜 fase 2)
+
+| Imagen | Rol |
+|---|---|
+| Windows 11 24H2 / 25H2 | Estación de trabajo (local y unida a dominio) |
+| Windows Server 2019, 2022, 2025 | Servidor miembro y **controlador de dominio** |
+| Ubuntu 22.04 / 24.04 | Servidor |
+| Debian 12 / 13 | Servidor |
+| Rocky / Alma 9 | Servidor con SELinux |
+
+Construidas con Packer (imágenes base) y orquestadas con Vagrant o Proxmox. Pipeline nocturno:
+
+1. Escaneo de la imagen limpia: resultado de referencia (*golden*).
+2. `harden --wave 1..3`: todas las reglas aplicables deben pasar.
+3. *Health checks*: RDP/SSH, dominio y servicios.
+4. `rollback`: el escaneo debe volver a ser idéntico al de referencia.
+5. `harden` dos veces: el segundo no debe cambiar nada (idempotencia).

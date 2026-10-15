@@ -1,0 +1,288 @@
+package probes
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+	"unicode/utf16"
+)
+
+func init() {
+	Register(fileContentProbe{})
+	Register(fileRegexProbe{})
+	Register(fileKVProbe{})
+}
+
+const maxReadBytes = 4 << 20 // 4 MiB por fichero
+
+// cmdResult es la salida de un comando del sistema.
+type cmdResult struct {
+	Stdout   string
+	Stderr   string
+	ExitCode int
+}
+
+// runCmd ejecuta un comando fijo (nunca definido por una regla) con timeout.
+// Un código de salida distinto de 0 no se trata como error: muchos comandos
+// (systemctl is-enabled, rpm -q) lo usan para informar de estado.
+func runCmd(ctx context.Context, name string, args ...string) (cmdResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
+	var out, errb bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	err := cmd.Run()
+	res := cmdResult{Stdout: out.String(), Stderr: errb.String()}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		res.ExitCode = exitErr.ExitCode()
+		return res, nil
+	}
+	if err != nil {
+		return res, fmt.Errorf("%s: %w", name, err)
+	}
+	return res, nil
+}
+
+// readFileLimited lee un fichero con un límite de tamaño.
+func readFileLimited(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var buf bytes.Buffer
+	_, err = buf.ReadFrom(&limitedReader{f: f, n: maxReadBytes})
+	return buf.Bytes(), err
+}
+
+type limitedReader struct {
+	f interface{ Read([]byte) (int, error) }
+	n int64
+}
+
+func (l *limitedReader) Read(p []byte) (int, error) {
+	if l.n <= 0 {
+		return 0, errors.New("fichero demasiado grande")
+	}
+	if int64(len(p)) > l.n {
+		p = p[:l.n]
+	}
+	n, err := l.f.Read(p)
+	l.n -= int64(n)
+	return n, err
+}
+
+// decodeText convierte UTF-16 (con BOM) o UTF-8 con BOM a string. Windows
+// genera UTF-16 en secedit y otras herramientas.
+func decodeText(b []byte) string {
+	if len(b) >= 2 && b[0] == 0xFF && b[1] == 0xFE {
+		return decodeUTF16(b[2:], false)
+	}
+	if len(b) >= 2 && b[0] == 0xFE && b[1] == 0xFF {
+		return decodeUTF16(b[2:], true)
+	}
+	return strings.TrimPrefix(string(b), "\xef\xbb\xbf")
+}
+
+func decodeUTF16(b []byte, bigEndian bool) string {
+	u := make([]uint16, 0, len(b)/2)
+	for i := 0; i+1 < len(b); i += 2 {
+		if bigEndian {
+			u = append(u, uint16(b[i])<<8|uint16(b[i+1]))
+		} else {
+			u = append(u, uint16(b[i+1])<<8|uint16(b[i]))
+		}
+	}
+	return string(utf16.Decode(u))
+}
+
+// expandPaths expande globs y devuelve los ficheros existentes en orden.
+func expandPaths(patterns []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, pat := range patterns {
+		matches, err := filepath.Glob(pat)
+		if err != nil || len(matches) == 0 {
+			matches = []string{pat}
+		}
+		sort.Strings(matches)
+		for _, m := range matches {
+			if st, err := os.Stat(m); err == nil && st.Mode().IsRegular() && !seen[m] {
+				seen[m] = true
+				out = append(out, m)
+			}
+		}
+	}
+	return out
+}
+
+func isComment(line string) bool {
+	t := strings.TrimSpace(line)
+	return strings.HasPrefix(t, "#") || strings.HasPrefix(t, ";")
+}
+
+// --- file_content: contenido completo de un fichero pequeño (/sys, /proc) ---
+
+type fileContentProbe struct{}
+
+func (fileContentProbe) Name() string         { return "file_content" }
+func (fileContentProbe) DefaultField() string { return "value" }
+
+func (fileContentProbe) Collect(_ context.Context, p Params) (Observation, error) {
+	if err := p.Require("path"); err != nil {
+		return Observation{}, err
+	}
+	path := p.String("path")
+	b, err := readFileLimited(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return Observation{Found: false, Source: path}, nil
+	}
+	if err != nil {
+		return Observation{}, err
+	}
+	return Observation{Found: true, Source: path, Fields: map[string]any{
+		"value": strings.TrimSpace(decodeText(b)),
+	}}, nil
+}
+
+// --- file_regex: cuenta líneas que coinciden con una expresión regular ---
+
+type fileRegexProbe struct{}
+
+func (fileRegexProbe) Name() string         { return "file_regex" }
+func (fileRegexProbe) DefaultField() string { return "count" }
+
+func (fileRegexProbe) Collect(_ context.Context, p Params) (Observation, error) {
+	if err := p.Require("path", "pattern"); err != nil {
+		return Observation{}, err
+	}
+	re, err := regexp.Compile(p.String("pattern"))
+	if err != nil {
+		return Observation{}, fmt.Errorf("pattern inválido: %w", err)
+	}
+	skipComments := p.Bool("ignore_comments", true)
+	files := expandPaths(p.Strings("path"))
+	src := strings.Join(p.Strings("path"), ", ")
+	if len(files) == 0 {
+		return Observation{Found: false, Source: src}, nil
+	}
+	count := 0
+	var matches []string
+	for _, f := range files {
+		b, err := readFileLimited(f)
+		if err != nil {
+			if errors.Is(err, os.ErrPermission) {
+				return Observation{}, fmt.Errorf("sin permiso para leer %s (ejecuta como administrador/root)", f)
+			}
+			return Observation{}, err
+		}
+		sc := bufio.NewScanner(strings.NewReader(decodeText(b)))
+		sc.Buffer(make([]byte, 64*1024), 1024*1024)
+		n := 0
+		for sc.Scan() {
+			n++
+			line := sc.Text()
+			if skipComments && isComment(line) {
+				continue
+			}
+			if re.MatchString(line) {
+				count++
+				if len(matches) < 10 {
+					matches = append(matches, fmt.Sprintf("%s:%d: %s", f, n, truncate(strings.TrimSpace(line), 160)))
+				}
+			}
+		}
+	}
+	return Observation{Found: true, Source: src, Fields: map[string]any{
+		"count":   count,
+		"matches": matches,
+		"files":   len(files),
+	}}, nil
+}
+
+// --- file_kv: valor de una clave en ficheros clave/valor (login.defs, ini) ---
+
+type fileKVProbe struct{}
+
+func (fileKVProbe) Name() string         { return "file_kv" }
+func (fileKVProbe) DefaultField() string { return "value" }
+
+func (fileKVProbe) Collect(_ context.Context, p Params) (Observation, error) {
+	if err := p.Require("path", "key"); err != nil {
+		return Observation{}, err
+	}
+	files := expandPaths(p.Strings("path"))
+	src := strings.Join(p.Strings("path"), ", ")
+	if len(files) == 0 {
+		return Observation{Found: false, Source: src}, nil
+	}
+	key := p.String("key")
+	sep := p.String("separator")
+	ci := p.Bool("case_insensitive", false)
+	var value, from string
+	found := false
+	for _, f := range files {
+		b, err := readFileLimited(f)
+		if err != nil {
+			return Observation{}, err
+		}
+		if v, ok := parseKV(decodeText(b), key, sep, ci); ok {
+			value, from, found = v, f, true // gana la última aparición (semántica systemd)
+		}
+	}
+	if !found {
+		return Observation{Found: false, Source: src}, nil
+	}
+	return Observation{Found: true, Source: from, Fields: map[string]any{"value": value, "file": from}}, nil
+}
+
+// parseKV busca key en un texto "clave valor" o "clave=valor". Devuelve la
+// última aparición. Ignora comentarios y cabeceras de sección [x].
+func parseKV(text, key, sep string, ci bool) (string, bool) {
+	var value string
+	found := false
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || isComment(line) || strings.HasPrefix(line, "[") {
+			continue
+		}
+		var k, v string
+		if sep == "" {
+			fields := strings.Fields(line)
+			if len(fields) == 0 {
+				continue
+			}
+			k = fields[0]
+			v = strings.TrimSpace(strings.TrimPrefix(line, fields[0]))
+		} else {
+			i := strings.Index(line, sep)
+			if i < 0 {
+				continue
+			}
+			k, v = strings.TrimSpace(line[:i]), strings.TrimSpace(line[i+len(sep):])
+		}
+		if k == key || (ci && strings.EqualFold(k, key)) {
+			value, found = strings.Trim(v, `"'`), true
+		}
+	}
+	return value, found
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
+}

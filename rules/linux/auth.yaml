@@ -1,0 +1,181 @@
+# Cuentas, contraseñas y sudo.
+id: LNX-AUTH-001
+title: Solo root tiene UID 0
+description: La única cuenta con UID 0 debe ser root.
+rationale: Una segunda cuenta con UID 0 es una puerta trasera clásica con privilegios totales.
+category: Autenticación
+severity: critical
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-6, IA-2]
+  mitre_mitigations: [M1026]
+  mitre_techniques: [T1136.001, T1078.003]
+check:
+  probe: file_regex
+  path: /etc/passwd
+  pattern: '^[^:]+:[^:]*:0:'
+  op: eq
+  expected: 1
+remediation:
+  summary: Investigar y eliminar (o cambiar el UID de) cualquier otra cuenta con UID 0.
+  commands: |
+    awk -F: '$3 == 0 {print $1}' /etc/passwd
+  breaking_risk: low
+---
+id: LNX-AUTH-002
+title: Sin cuentas con contraseña vacía
+description: Ninguna cuenta de /etc/shadow debe tener el campo de contraseña vacío.
+rationale: Una cuenta sin contraseña permite acceso sin credenciales.
+category: Autenticación
+severity: critical
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [IA-5]
+  mitre_techniques: [T1078]
+check:
+  probe: file_regex
+  path: /etc/shadow
+  pattern: '^[^:]+::'
+  op: eq
+  expected: 0
+remediation:
+  summary: Bloquear las cuentas afectadas o asignarles contraseña.
+  commands: |
+    awk -F: '($2 == "") {print $1}' /etc/shadow   # listar
+    passwd -l <usuario>                           # bloquear
+  breaking_risk: low
+---
+id: LNX-AUTH-003
+title: Caducidad máxima de contraseñas
+description: PASS_MAX_DAYS en /etc/login.defs debe estar entre 1 y 365.
+rationale: Limita la ventana de uso de una contraseña filtrada. Aplica a las cuentas creadas a partir del cambio.
+category: Autenticación
+severity: low
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [IA-5(1)]
+  mitre_mitigations: [M1027]
+check:
+  probe: file_kv
+  path: /etc/login.defs
+  key: PASS_MAX_DAYS
+  op: between
+  expected: [1, 365]
+remediation:
+  summary: Fijar PASS_MAX_DAYS 365 y aplicarlo a las cuentas existentes con chage.
+  commands: |
+    sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS\t365/' /etc/login.defs
+  breaking_risk: low
+---
+id: LNX-AUTH-004
+title: Algoritmo de hash de contraseñas robusto
+description: ENCRYPT_METHOD en /etc/login.defs debe ser YESCRYPT o SHA512.
+rationale: Los algoritmos antiguos (MD5, DES) permiten crackear los hashes rápidamente.
+category: Autenticación
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [IA-5(1)]
+  mitre_techniques: [T1110.002]
+check:
+  probe: file_kv
+  path: /etc/login.defs
+  key: ENCRYPT_METHOD
+  op: in
+  expected: [YESCRYPT, SHA512]
+remediation:
+  summary: Fijar ENCRYPT_METHOD YESCRYPT (o SHA512) y forzar el cambio de contraseñas antiguas.
+  breaking_risk: none
+---
+id: LNX-AUTH-005
+title: umask por defecto restrictiva
+description: UMASK en /etc/login.defs debe ser 027 o 077.
+rationale: Con 022 los ficheros nuevos son legibles por todos los usuarios del sistema.
+category: Autenticación
+severity: low
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-3]
+check:
+  probe: file_kv
+  path: /etc/login.defs
+  key: UMASK
+  op: in
+  expected: ["027", "077"]
+remediation:
+  summary: Fijar UMASK 027.
+  breaking_risk: low
+---
+id: LNX-AUTH-006
+title: sudo usa un pseudo-terminal (use_pty)
+description: sudoers debe incluir "Defaults use_pty".
+rationale: Impide que un proceso lanzado con sudo siga ejecutándose en segundo plano tras la sesión e inyecte comandos en la terminal del usuario.
+category: Autenticación
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-6]
+  mitre_techniques: [T1548.003]
+check:
+  probe: file_regex
+  path: [/etc/sudoers, /etc/sudoers.d/*]
+  pattern: '^\s*Defaults\s+([^#]*,\s*)?use_pty\b'
+  op: gte
+  expected: 1
+  on_missing: na
+remediation:
+  summary: Añadir "Defaults use_pty" con visudo.
+  commands: |
+    echo 'Defaults use_pty' > /etc/sudoers.d/00-bastion && chmod 440 /etc/sudoers.d/00-bastion && visudo -c
+  breaking_risk: none
+---
+id: LNX-AUTH-007
+title: sudo registra en fichero propio
+description: sudoers debe incluir "Defaults logfile=...".
+rationale: Un registro dedicado facilita auditar el uso de privilegios.
+category: Autenticación
+severity: low
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AU-2, AU-12]
+check:
+  probe: file_regex
+  path: [/etc/sudoers, /etc/sudoers.d/*]
+  pattern: '^\s*Defaults\s+([^#]*,\s*)?logfile\s*='
+  op: gte
+  expected: 1
+  on_missing: na
+remediation:
+  summary: Añadir 'Defaults logfile="/var/log/sudo.log"' con visudo.
+  breaking_risk: none
+---
+id: LNX-AUTH-008
+title: sudo exige contraseña (sin NOPASSWD)
+description: Ninguna regla de sudoers debe usar NOPASSWD.
+rationale: NOPASSWD convierte cualquier compromiso de la cuenta en un compromiso de root inmediato.
+category: Autenticación
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l2]
+references:
+  nist: [AC-6, IA-11]
+  mitre_mitigations: [M1026]
+  mitre_techniques: [T1548.003]
+check:
+  probe: file_regex
+  path: [/etc/sudoers, /etc/sudoers.d/*]
+  pattern: 'NOPASSWD'
+  op: eq
+  expected: 0
+  on_missing: na
+remediation:
+  summary: Eliminar NOPASSWD de sudoers salvo para cuentas de automatización acotadas a comandos concretos.
+  breaking_risk: medium
+impact: Scripts y herramientas de automatización que usen sudo sin contraseña dejarán de funcionar.

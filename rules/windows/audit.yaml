@@ -1,0 +1,350 @@
+# Directiva de auditoría avanzada y registro de eventos.
+# El valor de auditpol es un campo de bits: 1 = aciertos, 2 = errores, 3 = ambos.
+id: WIN-AUD-001
+title: "Auditoría: Creación de procesos"
+description: La subcategoría "Process Creation" debe auditar aciertos.
+rationale: Registra cada proceso creado (evento 4688). Es la base de casi todas las detecciones de ataques.
+category: Auditoría y registro
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AU-2, AU-12]
+  mitre_mitigations: [M1047]
+  mitre_techniques: [T1059, T1204]
+check:
+  probe: auditpol
+  guid: 0CCE922B-69AE-11D9-BED3-505054503030
+  op: bits_set
+  expected: 1
+  default: 0
+remediation:
+  summary: Configurar "Process Creation" en aciertos en la directiva de auditoría avanzada.
+  gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
+  commands: auditpol /set /subcategory:"{0CCE922B-69AE-11D9-BED3-505054503030}" /success:enable
+  breaking_risk: none
+---
+id: WIN-AUD-003
+title: "Auditoría: Inicio de sesión"
+description: La subcategoría "Logon" debe auditar aciertos y errores.
+rationale: Permite detectar fuerza bruta, uso de credenciales robadas y movimiento lateral (4624/4625).
+category: Auditoría y registro
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AU-2, AU-12]
+  mitre_mitigations: [M1047]
+  mitre_techniques: [T1110, T1078]
+check:
+  probe: auditpol
+  guid: 0CCE9215-69AE-11D9-BED3-505054503030
+  op: bits_set
+  expected: 3
+  default: 0
+remediation:
+  summary: Configurar "Logon" en aciertos y errores en la directiva de auditoría avanzada.
+  gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
+  commands: auditpol /set /subcategory:"{0CCE9215-69AE-11D9-BED3-505054503030}" /success:enable /failure:enable
+  breaking_risk: none
+---
+id: WIN-AUD-004
+title: "Auditoría: Validación de credenciales"
+description: La subcategoría "Credential Validation" debe auditar aciertos y errores.
+rationale: Registra validaciones NTLM y Kerberos (4776), clave para detectar password spraying.
+category: Auditoría y registro
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AU-2, AU-12]
+  mitre_mitigations: [M1047]
+  mitre_techniques: [T1110.003]
+check:
+  probe: auditpol
+  guid: 0CCE923F-69AE-11D9-BED3-505054503030
+  op: bits_set
+  expected: 3
+  default: 0
+remediation:
+  summary: Configurar "Credential Validation" en aciertos y errores en la directiva de auditoría avanzada.
+  gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
+  commands: auditpol /set /subcategory:"{0CCE923F-69AE-11D9-BED3-505054503030}" /success:enable /failure:enable
+  breaking_risk: none
+---
+id: WIN-AUD-005
+title: "Auditoría: Administración de grupos de seguridad"
+description: La subcategoría "Security Group Management" debe auditar aciertos.
+rationale: Detecta altas en grupos privilegiados como Administradores (4728/4732/4756).
+category: Auditoría y registro
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AU-2, AU-12]
+  mitre_mitigations: [M1047]
+  mitre_techniques: [T1098]
+check:
+  probe: auditpol
+  guid: 0CCE9237-69AE-11D9-BED3-505054503030
+  op: bits_set
+  expected: 1
+  default: 0
+remediation:
+  summary: Configurar "Security Group Management" en aciertos en la directiva de auditoría avanzada.
+  gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
+  commands: auditpol /set /subcategory:"{0CCE9237-69AE-11D9-BED3-505054503030}" /success:enable
+  breaking_risk: none
+---
+id: WIN-AUD-006
+title: "Auditoría: Administración de cuentas de usuario"
+description: La subcategoría "User Account Management" debe auditar aciertos y errores.
+rationale: Detecta creación de cuentas, cambios de contraseña y habilitación de cuentas (4720/4722/4724).
+category: Auditoría y registro
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AU-2, AU-12]
+  mitre_mitigations: [M1047]
+  mitre_techniques: [T1136.001, T1098]
+check:
+  probe: auditpol
+  guid: 0CCE9235-69AE-11D9-BED3-505054503030
+  op: bits_set
+  expected: 3
+  default: 0
+remediation:
+  summary: Configurar "User Account Management" en aciertos y errores en la directiva de auditoría avanzada.
+  gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
+  commands: auditpol /set /subcategory:"{0CCE9235-69AE-11D9-BED3-505054503030}" /success:enable /failure:enable
+  breaking_risk: none
+---
+id: WIN-AUD-007
+title: "Auditoría: Cambio de directiva de auditoría"
+description: La subcategoría "Audit Policy Change" debe auditar aciertos.
+rationale: Detecta a un atacante desactivando la auditoría para ocultar su rastro (4719).
+category: Auditoría y registro
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AU-2, AU-12]
+  mitre_mitigations: [M1047]
+  mitre_techniques: [T1562.002]
+check:
+  probe: auditpol
+  guid: 0CCE922F-69AE-11D9-BED3-505054503030
+  op: bits_set
+  expected: 1
+  default: 0
+remediation:
+  summary: Configurar "Audit Policy Change" en aciertos en la directiva de auditoría avanzada.
+  gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
+  commands: auditpol /set /subcategory:"{0CCE922F-69AE-11D9-BED3-505054503030}" /success:enable
+  breaking_risk: none
+---
+id: WIN-AUD-008
+title: "Auditoría: Inicio de sesión especial"
+description: La subcategoría "Special Logon" debe auditar aciertos.
+rationale: Registra los inicios de sesión con privilegios administrativos (4672).
+category: Auditoría y registro
+severity: low
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AU-2, AU-12]
+  mitre_mitigations: [M1047]
+  mitre_techniques: [T1078]
+check:
+  probe: auditpol
+  guid: 0CCE921B-69AE-11D9-BED3-505054503030
+  op: bits_set
+  expected: 1
+  default: 0
+remediation:
+  summary: Configurar "Special Logon" en aciertos en la directiva de auditoría avanzada.
+  gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
+  commands: auditpol /set /subcategory:"{0CCE921B-69AE-11D9-BED3-505054503030}" /success:enable
+  breaking_risk: none
+---
+id: WIN-AUD-009
+title: "Auditoría: Extensión del sistema de seguridad"
+description: La subcategoría "Security System Extension" debe auditar aciertos.
+rationale: Detecta la instalación de servicios y paquetes de seguridad, habitual en persistencia (4697).
+category: Auditoría y registro
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AU-2, AU-12]
+  mitre_mitigations: [M1047]
+  mitre_techniques: [T1543.003]
+check:
+  probe: auditpol
+  guid: 0CCE9211-69AE-11D9-BED3-505054503030
+  op: bits_set
+  expected: 1
+  default: 0
+remediation:
+  summary: Configurar "Security System Extension" en aciertos en la directiva de auditoría avanzada.
+  gpo: Computer Configuration > Windows Settings > Security Settings > Advanced Audit Policy Configuration
+  commands: auditpol /set /subcategory:"{0CCE9211-69AE-11D9-BED3-505054503030}" /success:enable
+  breaking_risk: none
+---
+id: WIN-AUD-002
+title: Línea de comandos en los eventos de creación de procesos
+description: El evento 4688 debe incluir la línea de comandos completa.
+rationale: Sin la línea de comandos, el evento 4688 apenas sirve para detectar PowerShell codificado, LOLBins o movimiento lateral.
+category: Auditoría y registro
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AU-3]
+  mitre_mitigations: [M1047]
+  mitre_techniques: [T1059]
+check:
+  probe: registry
+  path: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit
+  name: ProcessCreationIncludeCmdLine_Enabled
+  op: eq
+  expected: 1
+  default: 0
+remediation:
+  summary: Habilitar "Include command line in process creation events".
+  gpo: Computer Configuration > Administrative Templates > System > Audit Process Creation > Include command line in process creation events
+  breaking_risk: none
+---
+id: WIN-AUD-010
+title: La auditoría avanzada prevalece sobre la clásica
+description: SCENoApplyLegacyAuditPolicy debe ser 1 para que las subcategorías no sean sobrescritas por la directiva clásica.
+rationale: Sin este ajuste, una directiva de auditoría clásica puede anular la configuración avanzada sin que nadie lo note.
+category: Auditoría y registro
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AU-2]
+  mitre_mitigations: [M1047]
+check:
+  probe: registry
+  path: HKLM\SYSTEM\CurrentControlSet\Control\Lsa
+  name: SCENoApplyLegacyAuditPolicy
+  op: eq
+  expected: 1
+  default: 0
+remediation:
+  summary: Habilitar "Audit - Force audit policy subcategory settings to override audit policy category settings".
+  breaking_risk: none
+---
+id: WIN-AUD-011
+title: Registro de Seguridad de 192 MB o más
+description: El tamaño máximo del registro de Seguridad debe ser de al menos 196.608 KB.
+rationale: Con el tamaño por defecto (20 MB) los eventos se sobrescriben en horas y se pierde la evidencia.
+category: Auditoría y registro
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AU-4, AU-11]
+  mitre_techniques: [T1070.001]
+check:
+  any:
+    - {label: directiva (KB), probe: registry, path: HKLM\SOFTWARE\Policies\Microsoft\Windows\EventLog\Security, name: MaxSize, op: gte, expected: 196608}
+    - {label: servicio (bytes), probe: registry, path: HKLM\SYSTEM\CurrentControlSet\Services\EventLog\Security, name: MaxSize, op: gte, expected: 201326592, default: 20971520}
+remediation:
+  summary: Aumentar el tamaño del registro de Seguridad (y reenviar los eventos a un SIEM).
+  commands: wevtutil sl Security /ms:201326592
+  breaking_risk: none
+---
+id: WIN-PS-001
+title: Registro de bloques de script de PowerShell
+description: Script Block Logging debe estar activado.
+rationale: Registra el código PowerShell real que se ejecuta, incluso ofuscado o en memoria (evento 4104).
+category: PowerShell
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AU-2, AU-12]
+  mitre_mitigations: [M1047]
+  mitre_techniques: [T1059.001]
+check:
+  probe: registry
+  path: HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
+  name: EnableScriptBlockLogging
+  op: eq
+  expected: 1
+  default: 0
+remediation:
+  summary: Habilitar "Turn on PowerShell Script Block Logging".
+  gpo: Computer Configuration > Administrative Templates > Windows Components > Windows PowerShell > Turn on PowerShell Script Block Logging
+  breaking_risk: none
+---
+id: WIN-PS-002
+title: PowerShell 2.0 eliminado
+description: Las características MicrosoftWindowsPowerShellV2Root y MicrosoftWindowsPowerShellV2 no deben estar habilitadas.
+rationale: Los atacantes fuerzan PowerShell 2.0 para saltarse AMSI y el registro de scripts.
+category: PowerShell
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1059.001, T1562.001]
+check:
+  all:
+    - {label: V2Root, probe: ps, query: optional_features, field: MicrosoftWindowsPowerShellV2Root, op: in, expected: [Disabled, DisabledWithPayloadRemoved], on_missing: pass}
+    - {label: V2, probe: ps, query: optional_features, field: MicrosoftWindowsPowerShellV2, op: in, expected: [Disabled, DisabledWithPayloadRemoved], on_missing: pass}
+remediation:
+  summary: Deshabilitar PowerShell 2.0.
+  commands: Disable-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2Root -NoRestart
+  breaking_risk: low
+---
+id: WIN-PS-003
+title: Registro de módulos de PowerShell
+description: Module Logging debe estar activado.
+rationale: Registra la ejecución de cmdlets y sus parámetros (evento 4103).
+category: PowerShell
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l2, win-server-l2]
+references:
+  nist: [AU-12]
+  mitre_mitigations: [M1047]
+  mitre_techniques: [T1059.001]
+check:
+  probe: registry
+  path: HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging
+  name: EnableModuleLogging
+  op: eq
+  expected: 1
+  default: 0
+remediation:
+  summary: Habilitar "Turn on Module Logging" con el módulo "*".
+  breaking_risk: none
+impact: Aumenta el volumen de eventos; dimensiona el registro y el SIEM.
+---
+id: WIN-PS-004
+title: Transcripción de PowerShell
+description: La transcripción de sesiones de PowerShell debe estar activada.
+rationale: Guarda la entrada y salida completa de cada sesión, muy útil en el análisis forense.
+category: PowerShell
+severity: low
+platforms: [windows]
+profiles: [win-workstation-l2, win-server-l2]
+references:
+  nist: [AU-12]
+  mitre_techniques: [T1059.001]
+check:
+  probe: registry
+  path: HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription
+  name: EnableTranscripting
+  op: eq
+  expected: 1
+  default: 0
+remediation:
+  summary: Habilitar "Turn on PowerShell Transcription" con un directorio de salida protegido.
+  breaking_risk: none

@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Formato
+        if: runner.os == 'Linux'
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: Vet
+        run: go vet ./...
+      - name: Tests
+        run: go test ./...
+      - name: Tests con detector de carreras
+        if: runner.os == 'Linux'
+        run: go test -race ./...
+      - name: Validar reglas
+        run: go run ./cmd/bastion rules lint
+      - name: Compilar
+        run: go build -o bin/ ./cmd/bastion
+      # Escaneo real en el runner: prueba todos los probes contra un
+      # Ubuntu y un Windows Server reales.
+      - name: Escaneo real (Linux)
+        if: runner.os == 'Linux'
+        run: sudo ./bin/bastion scan --all -o report.html -o report.json
+      - name: Escaneo real (Windows)
+        if: runner.os == 'Windows'
+        run: .\bin\bastion.exe scan --all -o report.html -o report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: informe-${{ matrix.os }}
+          path: report.*
+
+  scripts:
+    name: Instaladores
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) {
+            Set-PSRepository PSGallery -InstallationPolicy Trusted
+            Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          }
+          $r = Invoke-ScriptAnalyzer -Path scripts/install.ps1 -Severity Warning,Error
+          $r | Format-Table -AutoSize
+          if ($r | Where-Object Severity -eq 'Error') { exit 1 }
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck scripts/install.sh
+
+  cross:
+    name: Compilación cruzada
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: |
+          for target in linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+            GOOS=${target%/*} GOARCH=${target#*/} CGO_ENABLED=0 go build -o /dev/null ./cmd/bastion
+            echo "ok $target"
+          done

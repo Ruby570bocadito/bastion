@@ -1,0 +1,185 @@
+# Sistema: UAC, arranque seguro, AutoRun, cifrado y servicios.
+id: WIN-SYS-001
+title: Control de cuentas de usuario (UAC) activado
+description: EnableLUA debe ser 1.
+rationale: Sin UAC todos los procesos de un administrador se ejecutan con privilegios completos.
+category: Sistema
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AC-6]
+  mitre_mitigations: [M1052]
+  mitre_techniques: [T1548.002]
+check:
+  probe: registry
+  path: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+  name: EnableLUA
+  op: eq
+  expected: 1
+  default: 1
+remediation:
+  summary: Habilitar "User Account Control - Run all administrators in Admin Approval Mode".
+  breaking_risk: low
+  reboot_required: true
+---
+id: WIN-SYS-002
+title: UAC pide consentimiento a los administradores
+description: ConsentPromptBehaviorAdmin debe ser 1 (credenciales) o 2 (consentimiento en escritorio seguro).
+rationale: Con el valor por defecto (5) algunas elevaciones se aprueban automáticamente y permiten bypass de UAC.
+category: Sistema
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AC-6]
+  mitre_mitigations: [M1052]
+  mitre_techniques: [T1548.002]
+check:
+  probe: registry
+  path: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
+  name: ConsentPromptBehaviorAdmin
+  op: in
+  expected: [1, 2]
+  default: 5
+remediation:
+  summary: Fijar "Behavior of the elevation prompt for administrators" en "Prompt for consent on the secure desktop".
+  breaking_risk: low
+---
+id: WIN-SYS-003
+title: Arranque seguro (Secure Boot) activado
+description: UEFI Secure Boot debe estar activado.
+rationale: Impide cargar bootkits y cargadores de arranque no firmados.
+category: Sistema
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SI-7]
+  mitre_mitigations: [M1046]
+  mitre_techniques: [T1542.003]
+check:
+  probe: registry
+  path: HKLM\SYSTEM\CurrentControlSet\Control\SecureBoot\State
+  name: UEFISecureBootEnabled
+  op: eq
+  expected: 1
+remediation:
+  summary: Activar Secure Boot en el firmware UEFI (requiere disco GPT y arranque UEFI).
+  breaking_risk: medium
+  reboot_required: true
+impact: Los equipos con arranque BIOS heredado necesitan convertir el disco a GPT (mbr2gpt) antes.
+---
+id: WIN-SYS-004
+title: AutoRun y AutoPlay deshabilitados
+description: AutoRun debe estar deshabilitado para todas las unidades.
+rationale: Evita la ejecución automática de malware desde unidades extraíbles.
+category: Sistema
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [CM-7, MP-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1091]
+check:
+  all:
+    - {label: NoDriveTypeAutoRun, probe: registry, path: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer, name: NoDriveTypeAutoRun, op: eq, expected: 255, default: 145}
+    - {label: NoAutorun, probe: registry, path: HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer, name: NoAutorun, op: eq, expected: 1, default: 0}
+remediation:
+  summary: Habilitar "Turn off Autoplay" (todas las unidades) y "Set the default behavior for AutoRun" (no ejecutar).
+  gpo: Computer Configuration > Administrative Templates > Windows Components > AutoPlay Policies
+  breaking_risk: none
+---
+id: WIN-SYS-005
+title: Integridad de memoria (HVCI) en ejecución
+description: La integridad de código protegida por hipervisor debe estar en ejecución.
+rationale: Impide cargar controladores no firmados o vulnerables en el kernel.
+category: Sistema
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l2, win-server-l2]
+references:
+  nist: [SI-7]
+  mitre_mitigations: [M1050]
+  mitre_techniques: [T1068, T1014]
+check:
+  probe: ps
+  query: device_guard
+  field: SecurityServicesRunning
+  op: contains
+  expected: 2
+remediation:
+  summary: Activar la integridad de memoria (Memory Integrity) por GPO, Intune o Seguridad de Windows.
+  breaking_risk: medium
+  reboot_required: true
+impact: Controladores antiguos incompatibles impedirán activarlo o dejarán de cargarse.
+---
+id: WIN-ENC-001
+title: BitLocker protege la unidad del sistema
+description: La unidad del sistema debe estar cifrada con BitLocker y la protección activa.
+rationale: Protege los datos y las credenciales en caché si el equipo se pierde o es robado.
+category: Cifrado
+severity: high
+platforms: [windows-client]
+profiles: [win-workstation-l1]
+references:
+  nist: [SC-28, MP-5]
+  mitre_mitigations: [M1041]
+  mitre_techniques: [T1005, T1003]
+check:
+  probe: ps
+  query: bitlocker_os
+  field: ProtectionStatus
+  op: eq
+  expected: "On"
+remediation:
+  summary: Activar BitLocker con TPM (y PIN en equipos de alto riesgo) y custodiar la clave de recuperación en AD o Entra ID.
+  commands: Enable-BitLocker -MountPoint $env:SystemDrive -TpmProtector -EncryptionMethod XtsAes256
+  breaking_risk: low
+---
+id: WIN-ENC-002
+title: TLS 1.0 y 1.1 deshabilitados en el servidor
+description: SChannel no debe aceptar TLS 1.0 ni TLS 1.1 como servidor.
+rationale: TLS 1.0/1.1 están obsoletos (RFC 8996) y tienen debilidades criptográficas conocidas.
+category: Cifrado
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l2, win-server-l1]
+references:
+  nist: [SC-8, SC-13]
+  mitre_techniques: [T1040, T1557]
+check:
+  all:
+    - {label: TLS 1.0, probe: registry, path: HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0\Server, name: Enabled, op: eq, expected: 0, default: 1}
+    - {label: TLS 1.1, probe: registry, path: HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Server, name: Enabled, op: eq, expected: 0, default: 1}
+remediation:
+  summary: Deshabilitar TLS 1.0/1.1 en SChannel (servidor) y reiniciar.
+  breaking_risk: medium
+  reboot_required: true
+impact: Clientes antiguos (Windows 7 sin parches, Java antiguo, appliances) no podrán conectar a los servicios TLS del equipo.
+---
+id: WIN-SVC-001
+title: Registro remoto deshabilitado
+description: El servicio RemoteRegistry debe estar deshabilitado.
+rationale: Permite leer y modificar el registro por red, útil para reconocimiento y persistencia.
+category: Servicios
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l2, win-server-l2]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1012, T1112]
+check:
+  probe: service
+  name: RemoteRegistry
+  field: start_type
+  op: eq
+  expected: disabled
+  on_missing: pass
+remediation:
+  summary: Deshabilitar el servicio.
+  commands: Set-Service RemoteRegistry -StartupType Disabled; Stop-Service RemoteRegistry
+  breaking_risk: low
+impact: Algunas herramientas de inventario y monitorización usan el registro remoto.

@@ -1,0 +1,16 @@
+# Perfiles para Linux (Ubuntu, Debian, RHEL y derivados).
+id: linux-server-l1
+name: Linux Servidor · Nivel 1
+description: >
+  Línea base esencial para servidores Linux. Controles de alto valor y bajo
+  riesgo de rotura, alineados con el Nivel 1 de CIS.
+platforms: [linux]
+default_for: [linux]
+---
+id: linux-server-l2
+name: Linux Servidor · Nivel 2
+description: >
+  Defensa en profundidad para servidores expuestos o con datos sensibles.
+  Incluye el Nivel 1 y añade controles que pueden requerir validación previa.
+platforms: [linux]
+extends: [linux-server-l1]

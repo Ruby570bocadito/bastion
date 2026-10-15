@@ -1,0 +1,175 @@
+# Parámetros de seguridad del kernel (sysctl en ejecución).
+id: LNX-KRN-001
+title: ASLR completo activado
+description: La aleatorización del espacio de direcciones (ASLR) debe estar en modo completo (2).
+rationale: ASLR dificulta la explotación de corrupciones de memoria al hacer impredecibles las direcciones de pila, heap y bibliotecas.
+category: Kernel
+severity: high
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [SI-16]
+  mitre_mitigations: [M1050]
+  mitre_techniques: [T1068]
+check:
+  probe: sysctl
+  key: kernel.randomize_va_space
+  op: eq
+  expected: 2
+remediation:
+  summary: Fijar kernel.randomize_va_space = 2 de forma persistente.
+  commands: |
+    echo 'kernel.randomize_va_space = 2' > /etc/sysctl.d/60-bastion-aslr.conf
+    sysctl -w kernel.randomize_va_space=2
+  breaking_risk: none
+---
+id: LNX-KRN-002
+title: Ocultar direcciones del kernel (kptr_restrict)
+description: kernel.kptr_restrict debe ser 1 o superior para no exponer punteros del kernel a usuarios sin privilegios.
+rationale: Las direcciones del kernel en /proc facilitan saltarse KASLR al explotar vulnerabilidades locales.
+category: Kernel
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [SI-16]
+  mitre_mitigations: [M1050]
+  mitre_techniques: [T1068]
+check:
+  probe: sysctl
+  key: kernel.kptr_restrict
+  op: gte
+  expected: 1
+remediation:
+  summary: Fijar kernel.kptr_restrict = 2 (o 1).
+  commands: |
+    echo 'kernel.kptr_restrict = 2' > /etc/sysctl.d/60-bastion-kptr.conf
+    sysctl -w kernel.kptr_restrict=2
+  breaking_risk: none
+---
+id: LNX-KRN-003
+title: Restringir dmesg a usuarios privilegiados
+description: kernel.dmesg_restrict debe ser 1 para que solo root pueda leer el buffer del kernel.
+rationale: El log del kernel puede revelar direcciones de memoria y detalles útiles para explotar el sistema.
+category: Kernel
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [SI-11]
+  mitre_mitigations: [M1050]
+check:
+  probe: sysctl
+  key: kernel.dmesg_restrict
+  op: eq
+  expected: 1
+remediation:
+  summary: Fijar kernel.dmesg_restrict = 1.
+  commands: |
+    echo 'kernel.dmesg_restrict = 1' > /etc/sysctl.d/60-bastion-dmesg.conf
+    sysctl -w kernel.dmesg_restrict=1
+  breaking_risk: none
+---
+id: LNX-KRN-004
+title: Restringir ptrace (Yama)
+description: kernel.yama.ptrace_scope debe ser 1 o superior para que un proceso no pueda inspeccionar otros procesos arbitrarios del mismo usuario.
+rationale: Sin esta restricción, un proceso comprometido puede leer la memoria de otros (p. ej. robar credenciales de ssh-agent o del navegador).
+category: Kernel
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-6]
+  mitre_mitigations: [M1026]
+  mitre_techniques: [T1055.008]
+check:
+  probe: sysctl
+  key: kernel.yama.ptrace_scope
+  op: gte
+  expected: 1
+  on_missing: na
+remediation:
+  summary: Fijar kernel.yama.ptrace_scope = 1.
+  commands: |
+    echo 'kernel.yama.ptrace_scope = 1' > /etc/sysctl.d/60-bastion-ptrace.conf
+    sysctl -w kernel.yama.ptrace_scope=1
+  breaking_risk: low
+impact: Los depuradores (gdb, strace -p) solo podrán adjuntarse a procesos hijos salvo que se ejecuten como root.
+---
+id: LNX-KRN-005
+title: Sin volcados de memoria de binarios setuid
+description: fs.suid_dumpable debe ser 0 para que los programas setuid no generen core dumps.
+rationale: Un core dump de un proceso privilegiado puede contener contraseñas, claves o hashes legibles por usuarios sin privilegios.
+category: Kernel
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [CM-6]
+check:
+  probe: sysctl
+  key: fs.suid_dumpable
+  op: eq
+  expected: 0
+remediation:
+  summary: Fijar fs.suid_dumpable = 0 y limitar los core dumps.
+  commands: |
+    echo 'fs.suid_dumpable = 0' > /etc/sysctl.d/60-bastion-coredump.conf
+    sysctl -w fs.suid_dumpable=0
+  breaking_risk: none
+---
+id: LNX-KRN-006
+title: Protección de enlaces simbólicos y duros
+description: fs.protected_symlinks y fs.protected_hardlinks deben estar activados.
+rationale: Impiden ataques de condición de carrera en directorios con escritura global como /tmp (TOCTOU) para escalar privilegios.
+category: Kernel
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-6]
+  mitre_techniques: [T1068]
+check:
+  all:
+    - label: fs.protected_symlinks
+      probe: sysctl
+      key: fs.protected_symlinks
+      op: eq
+      expected: 1
+    - label: fs.protected_hardlinks
+      probe: sysctl
+      key: fs.protected_hardlinks
+      op: eq
+      expected: 1
+remediation:
+  summary: Activar ambos parámetros.
+  commands: |
+    printf 'fs.protected_symlinks = 1\nfs.protected_hardlinks = 1\n' > /etc/sysctl.d/60-bastion-links.conf
+    sysctl --system
+  breaking_risk: none
+---
+id: LNX-KRN-007
+title: BPF sin privilegios deshabilitado
+description: kernel.unprivileged_bpf_disabled debe ser 1 o 2.
+rationale: eBPF sin privilegios ha sido el vector de numerosas escaladas de privilegios locales.
+category: Kernel
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l2]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1050]
+  mitre_techniques: [T1068]
+check:
+  probe: sysctl
+  key: kernel.unprivileged_bpf_disabled
+  op: gte
+  expected: 1
+  on_missing: na
+remediation:
+  summary: Fijar kernel.unprivileged_bpf_disabled = 1.
+  commands: |
+    echo 'kernel.unprivileged_bpf_disabled = 1' > /etc/sysctl.d/60-bastion-bpf.conf
+    sysctl -w kernel.unprivileged_bpf_disabled=1
+  breaking_risk: low
+impact: Herramientas eBPF ejecutadas por usuarios sin privilegios dejarán de funcionar.

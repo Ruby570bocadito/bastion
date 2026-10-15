@@ -1,0 +1,66 @@
+# Acceso remoto: RDP, Asistencia remota y WinRM.
+# Cuando existe la clave de directiva (GPO) prevalece sobre la configuración local.
+id: WIN-RDP-001
+title: RDP exige autenticación a nivel de red (NLA)
+description: Las conexiones de Escritorio remoto deben requerir NLA.
+rationale: NLA autentica antes de crear la sesión, lo que reduce la exposición a vulnerabilidades previas a la autenticación (p. ej. BlueKeep) y a ataques de agotamiento.
+category: Acceso remoto
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AC-17, IA-2]
+  mitre_mitigations: [M1035]
+  mitre_techniques: [T1021.001, T1210]
+check:
+  any:
+    - {label: directiva, probe: registry, path: HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services, name: UserAuthentication, op: eq, expected: 1}
+    - all:
+        - {label: sin directiva, probe: registry, path: HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services, name: UserAuthentication, op: absent}
+        - {label: local, probe: registry, path: HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp, name: UserAuthentication, op: eq, expected: 1, default: 1}
+remediation:
+  summary: Habilitar "Require user authentication for remote connections by using Network Level Authentication".
+  gpo: Computer Configuration > Administrative Templates > Windows Components > Remote Desktop Services > Remote Desktop Session Host > Security
+  breaking_risk: low
+---
+id: WIN-RDP-002
+title: Asistencia remota solicitada deshabilitada
+description: La Asistencia remota solicitada (fAllowToGetHelp) debe estar deshabilitada.
+rationale: Es un canal de control remoto adicional usado en fraudes de soporte técnico.
+category: Acceso remoto
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AC-17, CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1219]
+check:
+  any:
+    - {label: directiva, probe: registry, path: HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services, name: fAllowToGetHelp, op: eq, expected: 0}
+    - all:
+        - {label: sin directiva, probe: registry, path: HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services, name: fAllowToGetHelp, op: absent}
+        - {label: local, probe: registry, path: HKLM\SYSTEM\CurrentControlSet\Control\Remote Assistance, name: fAllowToGetHelp, op: eq, expected: 0, default: 1}
+remediation:
+  summary: Deshabilitar "Configure Solicited Remote Assistance".
+  gpo: Computer Configuration > Administrative Templates > System > Remote Assistance > Configure Solicited Remote Assistance
+  breaking_risk: low
+---
+id: WIN-WRM-001
+title: WinRM sin autenticación Basic ni tráfico sin cifrar
+description: El servicio WinRM no debe permitir autenticación Basic ni tráfico sin cifrar.
+rationale: Basic envía las credenciales reutilizables en cada petición y sin cifrado pueden capturarse.
+category: Acceso remoto
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AC-17(2), SC-8]
+  mitre_techniques: [T1021.006, T1040]
+check:
+  all:
+    - {label: AllowBasic, probe: registry, path: HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service, name: AllowBasic, op: eq, expected: 0, default: 0}
+    - {label: AllowUnencryptedTraffic, probe: registry, path: HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service, name: AllowUnencryptedTraffic, op: eq, expected: 0, default: 0}
+remediation:
+  summary: Deshabilitar "Allow Basic authentication" y "Allow unencrypted traffic" en el servicio WinRM.
+  breaking_risk: low

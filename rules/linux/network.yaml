@@ -1,0 +1,200 @@
+# Parámetros de red del kernel (sysctl).
+id: LNX-NET-001
+title: Reenvío de paquetes IP deshabilitado
+description: El equipo no debe enrutar paquetes entre interfaces (net.ipv4.ip_forward = 0) salvo que sea un router.
+rationale: Un servidor que reenvía tráfico puede usarse para pivotar entre redes y saltarse la segmentación.
+category: Red
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [SC-7, CM-7]
+  mitre_mitigations: [M1030]
+check:
+  all:
+    - label: IPv4
+      probe: sysctl
+      key: net.ipv4.ip_forward
+      op: eq
+      expected: 0
+    - label: IPv6
+      probe: sysctl
+      key: net.ipv6.conf.all.forwarding
+      op: eq
+      expected: 0
+      on_missing: na
+remediation:
+  summary: Deshabilitar el reenvío IPv4/IPv6 si el equipo no es un router.
+  commands: |
+    printf 'net.ipv4.ip_forward = 0\nnet.ipv6.conf.all.forwarding = 0\n' > /etc/sysctl.d/60-bastion-forward.conf
+    sysctl --system
+  breaking_risk: medium
+impact: Los hosts de Docker, Kubernetes, VPN o routers NECESITAN el reenvío activado; crea una excepción para ellos.
+---
+id: LNX-NET-002
+title: No aceptar redirecciones ICMP
+description: El kernel no debe aceptar redirecciones ICMP (accept_redirects = 0) en IPv4 ni IPv6.
+rationale: Un atacante en la red local puede usar redirecciones ICMP para desviar el tráfico a través de su equipo (MitM).
+category: Red
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [SC-7]
+  mitre_techniques: [T1557]
+check:
+  all:
+    - {label: ipv4 all, probe: sysctl, key: net.ipv4.conf.all.accept_redirects, op: eq, expected: 0}
+    - {label: ipv4 default, probe: sysctl, key: net.ipv4.conf.default.accept_redirects, op: eq, expected: 0}
+    - {label: ipv6 all, probe: sysctl, key: net.ipv6.conf.all.accept_redirects, op: eq, expected: 0, on_missing: na}
+    - {label: ipv6 default, probe: sysctl, key: net.ipv6.conf.default.accept_redirects, op: eq, expected: 0, on_missing: na}
+remediation:
+  summary: Fijar accept_redirects = 0 en all y default para IPv4 e IPv6.
+  commands: |
+    cat > /etc/sysctl.d/60-bastion-redirects.conf <<'CONF'
+    net.ipv4.conf.all.accept_redirects = 0
+    net.ipv4.conf.default.accept_redirects = 0
+    net.ipv6.conf.all.accept_redirects = 0
+    net.ipv6.conf.default.accept_redirects = 0
+    CONF
+    sysctl --system
+  breaking_risk: none
+---
+id: LNX-NET-003
+title: No enviar redirecciones ICMP
+description: El equipo no debe enviar redirecciones ICMP (send_redirects = 0).
+rationale: Solo los routers necesitan enviar redirecciones; en un servidor pueden facilitar la manipulación de rutas.
+category: Red
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [SC-7]
+check:
+  all:
+    - {label: all, probe: sysctl, key: net.ipv4.conf.all.send_redirects, op: eq, expected: 0}
+    - {label: default, probe: sysctl, key: net.ipv4.conf.default.send_redirects, op: eq, expected: 0}
+remediation:
+  summary: Fijar send_redirects = 0.
+  commands: |
+    printf 'net.ipv4.conf.all.send_redirects = 0\nnet.ipv4.conf.default.send_redirects = 0\n' > /etc/sysctl.d/60-bastion-sendredirects.conf
+    sysctl --system
+  breaking_risk: none
+---
+id: LNX-NET-004
+title: No aceptar paquetes con enrutamiento de origen
+description: Los paquetes con source routing deben rechazarse (accept_source_route = 0).
+rationale: El enrutamiento de origen permite a un atacante decidir la ruta del paquete y saltarse controles de red.
+category: Red
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [SC-7]
+check:
+  all:
+    - {label: ipv4 all, probe: sysctl, key: net.ipv4.conf.all.accept_source_route, op: eq, expected: 0}
+    - {label: ipv4 default, probe: sysctl, key: net.ipv4.conf.default.accept_source_route, op: eq, expected: 0}
+    - {label: ipv6 all, probe: sysctl, key: net.ipv6.conf.all.accept_source_route, op: eq, expected: 0, on_missing: na}
+    - {label: ipv6 default, probe: sysctl, key: net.ipv6.conf.default.accept_source_route, op: eq, expected: 0, on_missing: na}
+remediation:
+  summary: Fijar accept_source_route = 0 en IPv4 e IPv6.
+  breaking_risk: none
+---
+id: LNX-NET-005
+title: Filtro de ruta inversa (anti-spoofing)
+description: El filtro de ruta inversa estricto (rp_filter = 1) debe estar activo.
+rationale: Descarta paquetes con direcciones de origen falsificadas que no podrían llegar por esa interfaz.
+category: Red
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [SC-7]
+check:
+  all:
+    - {label: all, probe: sysctl, key: net.ipv4.conf.all.rp_filter, op: eq, expected: 1}
+    - {label: default, probe: sysctl, key: net.ipv4.conf.default.rp_filter, op: eq, expected: 1}
+remediation:
+  summary: Fijar rp_filter = 1.
+  commands: |
+    printf 'net.ipv4.conf.all.rp_filter = 1\nnet.ipv4.conf.default.rp_filter = 1\n' > /etc/sysctl.d/60-bastion-rpfilter.conf
+    sysctl --system
+  breaking_risk: medium
+impact: En redes con enrutamiento asimétrico (varias interfaces o rutas) puede descartar tráfico legítimo; usa el modo 2 (loose) o una excepción.
+---
+id: LNX-NET-006
+title: SYN cookies activadas
+description: net.ipv4.tcp_syncookies debe ser 1.
+rationale: Las SYN cookies mantienen el servicio disponible durante ataques de inundación SYN.
+category: Red
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [SC-5]
+  mitre_techniques: [T1499]
+check:
+  probe: sysctl
+  key: net.ipv4.tcp_syncookies
+  op: eq
+  expected: 1
+remediation:
+  summary: Fijar net.ipv4.tcp_syncookies = 1.
+  breaking_risk: none
+---
+id: LNX-NET-007
+title: Registrar paquetes marcianos
+description: Los paquetes con direcciones imposibles deben registrarse (log_martians = 1).
+rationale: Ayuda a detectar spoofing y errores de configuración de red.
+category: Red
+severity: low
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AU-12]
+check:
+  all:
+    - {label: all, probe: sysctl, key: net.ipv4.conf.all.log_martians, op: eq, expected: 1}
+    - {label: default, probe: sysctl, key: net.ipv4.conf.default.log_martians, op: eq, expected: 1}
+remediation:
+  summary: Fijar log_martians = 1.
+  breaking_risk: none
+---
+id: LNX-NET-008
+title: Ignorar ICMP de difusión y respuestas falsas
+description: icmp_echo_ignore_broadcasts e icmp_ignore_bogus_error_responses deben ser 1.
+rationale: Evita que el equipo participe en ataques smurf y llene los logs con errores ICMP falsos.
+category: Red
+severity: low
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [SC-5]
+check:
+  all:
+    - {label: broadcasts, probe: sysctl, key: net.ipv4.icmp_echo_ignore_broadcasts, op: eq, expected: 1}
+    - {label: bogus, probe: sysctl, key: net.ipv4.icmp_ignore_bogus_error_responses, op: eq, expected: 1}
+remediation:
+  summary: Fijar ambos parámetros a 1.
+  breaking_risk: none
+---
+id: LNX-NET-009
+title: No aceptar anuncios de router IPv6
+description: El equipo no debe autoconfigurarse con anuncios de router IPv6 (accept_ra = 0).
+rationale: Un atacante local puede anunciarse como router IPv6 y capturar el tráfico (ataques SLAAC/RA).
+category: Red
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l2]
+references:
+  nist: [SC-7]
+  mitre_techniques: [T1557]
+check:
+  all:
+    - {label: all, probe: sysctl, key: net.ipv6.conf.all.accept_ra, op: eq, expected: 0, on_missing: na}
+    - {label: default, probe: sysctl, key: net.ipv6.conf.default.accept_ra, op: eq, expected: 0, on_missing: na}
+remediation:
+  summary: Fijar accept_ra = 0 y configurar IPv6 de forma estática.
+  breaking_risk: high
+impact: En redes que dependen de SLAAC el equipo perderá la conectividad IPv6.
