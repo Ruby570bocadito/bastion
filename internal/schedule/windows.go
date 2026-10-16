@@ -52,9 +52,12 @@ func (taskScheduler) Enable(ctx context.Context, exe, at string) (Status, error)
 	_, err := runPS(ctx, `$a = New-ScheduledTaskAction -Execute $env:BASTION_EXE -Argument 'schedule run'; `+
 		`$t = New-ScheduledTaskTrigger -Daily -At $env:BASTION_AT; `+
 		`$s = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 1); `+
-		`$p = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest; `+
-		`Register-ScheduledTask -TaskPath $tp -TaskName $tn -Action $a -Trigger $t -Settings $s -Principal $p `+
-		`-Description 'Bastion: escaneo y superficie de ataque diarios (bastion schedule).' -Force | Out-Null`,
+		// SYSTEM por su SID y, si este Windows no lo admite ahí, por su
+		// nombre (que no se traduce).
+		`$reg = { param($u) Register-ScheduledTask -TaskPath $tp -TaskName $tn -Action $a -Trigger $t -Settings $s `+
+		`-Principal (New-ScheduledTaskPrincipal -UserId $u -LogonType ServiceAccount -RunLevel Highest) `+
+		`-Description 'Bastion: escaneo y superficie de ataque diarios (bastion schedule).' -Force | Out-Null }; `+
+		`try { & $reg 'S-1-5-18' } catch { & $reg 'SYSTEM' }`,
 		"BASTION_EXE="+exe, "BASTION_AT="+at)
 	if err != nil {
 		return Status{}, err
