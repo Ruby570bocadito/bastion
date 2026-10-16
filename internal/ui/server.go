@@ -100,6 +100,9 @@ type ScheduleInfo struct {
 	Runs   []schedule.Run  `json:"runs"`
 	// Unsupported indica que el sistema no tiene un planificador conocido.
 	Unsupported bool `json:"unsupported,omitempty"`
+	// Notify describe dónde avisa cada ejecución (sin el secreto del
+	// webhook).
+	Notify string `json:"notify,omitempty"`
 }
 
 // Backend es lo que la consola necesita de Bastion. Lo implementa la CLI.

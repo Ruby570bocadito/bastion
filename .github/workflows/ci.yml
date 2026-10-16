@@ -70,16 +70,39 @@ jobs:
             and ([.ports[] | select(.port == 3306)][0].firewall_limit == "Tailscale y 192.168.1.0/24")
             and ([.ports[] | select(.port == 8080)][0].firewall_limit == "Tailscale")' fw.json
       # Análisis programado de verdad: temporizador de systemd en el runner,
-      # ejecución inmediata del servicio y registro de la ejecución.
+      # ejecución inmediata del servicio, registro de la ejecución y avisos
+      # (journald y un webhook local que guarda el primer POST que recibe).
       - name: Análisis programado (Linux, systemd)
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
+          hook() {
+            rm -f hook.json
+            python3 -c '
+          import http.server
+          class H(http.server.BaseHTTPRequestHandler):
+              def do_POST(self):
+                  open("hook.json", "wb").write(self.rfile.read(int(self.headers["Content-Length"])))
+                  self.send_response(204); self.end_headers()
+          s = http.server.HTTPServer(("127.0.0.1", 8099), H); s.timeout = 120; s.handle_request()' &
+            HOOK=$!
+            sleep 1
+          }
           sudo ./bin/bastion schedule enable --at 03:00 --unsafe-path --no-color
           systemctl list-timers bastion-scan.timer --all --no-pager
+          hook
+          sudo ./bin/bastion schedule notify --set http://127.0.0.1:8099/hook --format json --when always --no-color
+          wait $HOOK
+          jq -e '.schema == "bastion.notify/v1" and .test == true' hook.json
+          hook
           sudo systemctl start bastion-scan.service
+          wait $HOOK
+          jq -e '.schema == "bastion.notify/v1" and (.test | not) and .scan_score > 0 and (.level | IN("info", "warning"))' hook.json
           sudo ./bin/bastion schedule --no-color
-          sudo tail -n 1 /var/lib/bastion/schedule.log | jq -e '.scan_score > 0 and .surface_score > 0 and (.errors | not)'
+          sudo tail -n 1 /var/lib/bastion/schedule.log | jq -e '.scan_score > 0 and .surface_score > 0 and (.errors | not) and (.notify_errors | not)'
+          journalctl -t bastion --since '-15min' --no-pager | tail -n 3
+          journalctl -t bastion --since '-15min' --no-pager | grep -q 'Bastion ·'
+          sudo ./bin/bastion schedule notify --clear --no-color
           sudo ./bin/bastion schedule disable --no-color
           test ! -e /etc/systemd/system/bastion-scan.timer
       - name: Superficie de ataque (Windows)
@@ -168,8 +191,28 @@ jobs:
         shell: pwsh
         run: |
           $b = (Resolve-Path '.\bin\bastion.exe').Path
+          # Webhook local: un trabajo que devuelve el primer POST que recibe.
+          function Start-Hook {
+            $j = Start-Job {
+              $l = [System.Net.HttpListener]::new(); $l.Prefixes.Add('http://127.0.0.1:8099/'); $l.Start()
+              $c = $l.GetContext(); $body = [IO.StreamReader]::new($c.Request.InputStream).ReadToEnd()
+              $c.Response.StatusCode = 204; $c.Response.Close(); $l.Stop(); $body
+            }
+            Start-Sleep -Seconds 3
+            $j
+          }
+          function Receive-Hook($j) {
+            if (-not (Wait-Job $j -Timeout 120)) { throw 'el webhook local no recibió ningún aviso' }
+            Receive-Job $j | ConvertFrom-Json
+          }
           & $b schedule enable --at 03:00 --unsafe-path --no-color
           if ($LASTEXITCODE -ne 0) { throw 'schedule enable falló' }
+          $hook = Start-Hook
+          & $b schedule notify --set http://127.0.0.1:8099/hook --format json --when always --no-color
+          if ($LASTEXITCODE -ne 0) { throw 'schedule notify falló' }
+          $n = Receive-Hook $hook
+          if ($n.schema -ne 'bastion.notify/v1' -or -not $n.test) { throw "aviso de prueba inesperado: $($n | ConvertTo-Json -Compress)" }
+          $hook = Start-Hook
           $tp = '\Bastion\'; $tn = 'Escaneo diario'
           (Get-ScheduledTask -TaskPath $tp -TaskName $tn).Principal | Format-List UserId, LogonType, RunLevel | Out-String | Write-Host
           $before = (Get-ScheduledTaskInfo -TaskPath $tp -TaskName $tn).LastRunTime
@@ -184,7 +227,14 @@ jobs:
           if ($i.LastTaskResult -ne 0 -and $i.LastTaskResult -ne 3) { throw "la tarea terminó con el código $($i.LastTaskResult)" }
           & $b schedule --no-color
           $last = Get-Content (Join-Path $env:ProgramData 'Bastion\schedule.log') | Select-Object -Last 1 | ConvertFrom-Json
-          if ($last.scan_score -le 0 -or $last.errors) { throw "ejecución con errores: $($last | ConvertTo-Json -Compress)" }
+          if ($last.scan_score -le 0 -or $last.errors -or $last.notify_errors) { throw "ejecución con errores: $($last | ConvertTo-Json -Compress)" }
+          # El aviso de la tarea (como SYSTEM) llega al webhook y al Visor de eventos.
+          $n = Receive-Hook $hook
+          if ($n.test -or $n.scan_score -le 0 -or $n.level -notin 'info', 'warning') { throw "aviso de la tarea inesperado: $($n | ConvertTo-Json -Compress)" }
+          $ev = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'Bastion' } -MaxEvents 1
+          "Evento $($ev.Id): $($ev.Message)"
+          if ($ev.Id -notin 100, 200 -or $ev.Message -notmatch 'Bastion ·') { throw 'el aviso no está en el Visor de eventos' }
+          & $b schedule notify --clear --no-color
           & $b schedule disable --no-color
           if (Get-ScheduledTask -TaskPath $tp -TaskName $tn -ErrorAction SilentlyContinue) { throw 'la tarea sigue existiendo' }
       # bastion surface fix de verdad: una regla que abre un puerto a

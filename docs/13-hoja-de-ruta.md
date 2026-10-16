@@ -60,7 +60,7 @@
 - [ ] `bastion agent` (servicio de Windows / systemd), alta con token y mTLS.
 - [ ] `bastion-server` (Go + PostgreSQL), API REST y gRPC.
 - [ ] Consola web (React) con dashboard, activos, detalle, políticas, informes e historial.
-- [x] `schedule`: análisis diario programado (Programador de tareas, systemd o cron) con aviso de cambios en la exposición.
+- [x] `schedule`: análisis diario programado (Programador de tareas, systemd o cron) con aviso de cambios en la exposición: Visor de eventos o syslog y webhook (ntfy, Slack, Discord, Teams, JSON).
 - [ ] `guard` (desviaciones en tiempo real) y `observe` (auditar antes de aplicar).
 - [ ] Excepciones con caducidad; RBAC; SSO/OIDC; MFA; aprobación a cuatro ojos.
 - [ ] Paquetes nativos: MSI, `.deb` y `.rpm`.

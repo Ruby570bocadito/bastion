@@ -9,12 +9,14 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -34,6 +36,20 @@ type Config struct {
 		Repo        string `yaml:"repo"`
 		ReleasesURL string `yaml:"releases_url"`
 	} `yaml:"update"`
+	Notify Notify `yaml:"notify"`
+}
+
+// Notify configura los avisos del análisis programado.
+type Notify struct {
+	// Webhook recibe el aviso (ntfy, Slack, Discord, Teams o JSON). Su
+	// dirección suele llevar un secreto: el fichero solo lo leen los
+	// administradores.
+	Webhook string `yaml:"webhook,omitempty"`
+	// Format fuerza el formato; vacío, se deduce de la dirección.
+	Format string `yaml:"format,omitempty"`
+	// When es "changes" (por defecto: solo si algo empeora o falla) o
+	// "always" (también las ejecuciones sin cambios a peor).
+	When string `yaml:"when,omitempty"`
 }
 
 // ConfigDir es el directorio de configuración.
@@ -147,6 +163,14 @@ update:
   # Espejo interno de releases (redes corporativas o aisladas).
   # Debe servir <url>/latest/download/version.txt y <url>/download/<tag>/<fichero>.
   # releases_url: https://mirror.interno/bastion/releases
+
+# Avisos del análisis programado ("bastion schedule"). Cada ejecución queda en
+# el Visor de eventos (Windows) o en syslog (Linux); además, un webhook
+# opcional. Se configura con: bastion schedule notify --set <url>
+# notify:
+#   webhook: https://ntfy.sh/<tema-secreto>
+#   format: ntfy      # ntfy, slack, discord, teams o json (se deduce de la url)
+#   when: changes     # changes (solo si algo empeora o falla) o always
 `
 
 // InitResult resume lo que hizo Init.
@@ -189,4 +213,58 @@ func Init() (InitResult, error) {
 		return res, err
 	}
 	return res, nil
+}
+
+// SetNotify guarda la configuración de avisos en config.yaml. Solo cambia
+// la sección notify (la quita y la añade al final): el resto del fichero y
+// sus comentarios quedan igual. Con webhook vacío la quita.
+func SetNotify(n Notify) error {
+	path := File()
+	b, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		d := Default()
+		b = []byte(fmt.Sprintf(defaultFile, d.Reports.Dir, d.Rules.ExtraDirs[0]))
+	} else if err != nil {
+		return err
+	}
+	var cur Config
+	if err := yaml.Unmarshal(b, &cur); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	var out []string
+	in := false
+	for _, l := range strings.Split(strings.ReplaceAll(string(b), "\r\n", "\n"), "\n") {
+		switch {
+		case strings.HasPrefix(l, "notify:"):
+			in = true
+			continue
+		case in && (l == "" || l[0] == ' ' || l[0] == '\t'):
+			continue
+		}
+		in = false
+		out = append(out, l)
+	}
+	text := strings.TrimRight(strings.Join(out, "\n"), "\n") + "\n"
+	if n.Webhook != "" {
+		text += "\nnotify:\n"
+		for _, kv := range [][2]string{{"webhook", n.Webhook}, {"format", n.Format}, {"when", n.When}} {
+			if kv[1] != "" {
+				// Una cadena JSON es una cadena YAML válida entre comillas.
+				q, _ := json.Marshal(kv[1])
+				text += "  " + kv[0] + ": " + string(q) + "\n"
+			}
+		}
+	}
+	var check Config
+	if err := yaml.Unmarshal([]byte(text), &check); err != nil || check.Notify != n {
+		return fmt.Errorf("no se pudo actualizar %s sin estropearlo: edítalo a mano", path)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(text), 0o640); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }

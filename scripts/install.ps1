@@ -205,6 +205,13 @@ function Add-ToMachinePath([string]$Dir) {
 
 function Uninstall-Bastion([string]$InstallDir, [string]$DataDir) {
     Write-Step 'Desinstalando Bastion'
+    # El análisis programado y el origen del Visor de eventos.
+    $task = Get-ScheduledTask -TaskPath '\Bastion\' -TaskName 'Escaneo diario' -ErrorAction SilentlyContinue
+    if ($task) {
+        $task | Unregister-ScheduledTask -Confirm:$false
+        Write-Ok 'Quitado el análisis programado'
+    }
+    Remove-Item 'HKLM:\SYSTEM\CurrentControlSet\Services\EventLog\Application\Bastion' -Recurse -ErrorAction SilentlyContinue
     if (Test-Path $InstallDir) {
         Remove-Item -Recurse -Force $InstallDir
         Write-Ok "Eliminado $InstallDir"

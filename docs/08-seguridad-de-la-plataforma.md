@@ -52,6 +52,7 @@ Bastion se ejecuta como **SYSTEM/root** en equipos críticos. Para un atacante e
 - La tarea diaria se ejecuta como SYSTEM o root. `schedule enable` se niega si el ejecutable está en una carpeta que puede modificar un usuario sin privilegios: en Windows debe estar en Program Files (la carpeta de Windows no vale: tiene subcarpetas con escritura para todos, como Temp); en Linux, el fichero y todas las carpetas hasta `/` deben ser de root y sin escritura para el grupo ni otros.
 - La ruta del ejecutable y la hora llegan a PowerShell por variables de entorno, nunca dentro del script; la hora se valida antes (HH:MM).
 - La tarea solo hace lo que haría `bastion scan --save` y `bastion surface --save`: no aplica cambios.
+- **Avisos por webhook** (opcional, desactivados por defecto). Es la única conexión de salida de Bastion además de `bastion update`. Solo HTTPS (HTTP únicamente hacia el propio equipo o una IP privada); sin seguir redirecciones, que convertirían el POST en una petición a otro sitio; con 20 s de límite. El aviso lleva el resumen (equipo, puntuaciones, títulos de los cambios), nunca evidencias ni configuración. La dirección suele incluir el secreto (el tema de ntfy, el token de Slack): se guarda en `config.yaml`, que solo leen Administradores y SYSTEM (o root), y Bastion solo muestra el esquema y el servidor, también en los errores. `--set` no guarda la dirección hasta que el aviso de prueba llega.
 
 ### Permisos
 - Linux: `/etc/bastion` y `/var/lib/bastion` con `0750` (root). Informes con `0640`.

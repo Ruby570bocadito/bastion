@@ -17,6 +17,7 @@ import (
 	"github.com/Ruby570bocadito/bastion/internal/engine"
 	"github.com/Ruby570bocadito/bastion/internal/exceptions"
 	"github.com/Ruby570bocadito/bastion/internal/platform"
+	"github.com/Ruby570bocadito/bastion/internal/probes"
 	"github.com/Ruby570bocadito/bastion/internal/remediate"
 	"github.com/Ruby570bocadito/bastion/internal/report"
 	"github.com/Ruby570bocadito/bastion/internal/schedule"
@@ -207,6 +208,9 @@ func (b *uiBackend) Schedule(ctx context.Context) (*ui.ScheduleInfo, error) {
 		st.Detail = "no se pudo consultar la tarea: " + err.Error()
 	}
 	info.Status = st
+	if st.Mechanism != "" && probes.Privileged() {
+		info.Notify = notifyText(loadConfig().Notify)
+	}
 	return info, nil
 }
 

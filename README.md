@@ -72,6 +72,7 @@ bastion ui                          # consola en el navegador: tendencia, plan e
 bastion surface                     # qué puede tocar un atacante desde la red
 bastion surface fix --apply         # limitar a la red local lo abierto a cualquiera (Windows, con rollback)
 bastion schedule enable             # análisis diario: tendencia y aviso de cambios en la exposición
+bastion schedule notify --set URL   # avisos en el móvil o en un chat (ntfy, Slack, Discord, Teams)
 bastion scan -p win-workstation-l2  # otro perfil
 bastion scan --format json          # salida JSON (integraciones)
 bastion scan --min-score 80         # código de salida 2 si no llega (CI/CD)

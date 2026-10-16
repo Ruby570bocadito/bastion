@@ -13,10 +13,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Ruby570bocadito/bastion/internal/config"
+	"github.com/Ruby570bocadito/bastion/internal/engine"
+	"github.com/Ruby570bocadito/bastion/internal/notify"
 	"github.com/Ruby570bocadito/bastion/internal/platform"
 	"github.com/Ruby570bocadito/bastion/internal/probes"
 	"github.com/Ruby570bocadito/bastion/internal/report"
 	"github.com/Ruby570bocadito/bastion/internal/schedule"
+	"github.com/Ruby570bocadito/bastion/internal/surface"
 )
 
 func newScheduleCmd() *cobra.Command {
@@ -30,12 +33,14 @@ cron, si no hay systemd).
 Cada día guarda un escaneo y un análisis de superficie. Así "bastion ui"
 muestra la tendencia de la postura y "bastion surface" avisa de lo que ha
 cambiado: un programa recién instalado que abre un puerto, una regla del
-firewall modificada… Cada ejecución queda anotada en schedule.log; si algún
-control ha empeorado o la exposición ha crecido, la tarea termina con
-código 3.`,
+firewall modificada… Cada ejecución queda anotada en schedule.log y en el
+Visor de eventos (o syslog); si algún control ha empeorado o la exposición
+ha crecido, la tarea termina con código 3 y, si se ha configurado, avisa a
+un webhook (bastion schedule notify).`,
 		Example: `  bastion schedule enable              # cada día a las 09:00
   bastion schedule enable --at 13:30
   bastion schedule                     # estado y últimas ejecuciones
+  bastion schedule notify --set https://ntfy.sh/<tema>   # avisos en el móvil
   bastion schedule disable`,
 		RunE: func(cmd *cobra.Command, _ []string) error { return scheduleStatus() },
 	}
@@ -63,7 +68,7 @@ código 3.`,
 		Short: "Hacer ahora el análisis programado (es lo que ejecuta la tarea)",
 		RunE:  func(cmd *cobra.Command, _ []string) error { return scheduleRun() },
 	}
-	cmd.AddCommand(enable, disable, status, run)
+	cmd.AddCommand(enable, disable, status, run, newScheduleNotifyCmd())
 	return cmd
 }
 
@@ -109,6 +114,14 @@ func scheduleEnable(at string, unsafePath bool) error {
 	s := stdoutStyle()
 	fmt.Printf("\n  %s Análisis diario programado a las %s\n", s.Green(report.Sym("✓")), s.Bold(firstNonEmpty(st.At, at)))
 	printScheduleStatus(s, st)
+	cfg := loadConfig()
+	if err := notify.InstallLocal(); err != nil {
+		fmt.Printf("    %s %s\n", s.Yellow("!"), s.Yellow("No se pudo registrar el origen Bastion en el Visor de eventos: "+err.Error()))
+	}
+	fmt.Printf("    %s %s\n", s.Dim(pad12("Avisos")), notifyText(cfg.Notify))
+	if cfg.Notify.Webhook == "" {
+		fmt.Printf("    %s %s\n", s.Dim(pad12("")), s.Dim("Para recibirlos en el móvil o en un chat: bastion schedule notify --set <url>"))
+	}
 	fmt.Printf("    %s\n\n", s.Dim("Para probarlo ahora: bastion schedule run · los resultados se ven en bastion ui"))
 	return nil
 }
@@ -166,6 +179,9 @@ func scheduleStatus() error {
 	case st.Enabled:
 		fmt.Printf("  %s Análisis diario a las %s\n", s.Green(report.Sym("✓")), s.Bold(st.At))
 		printScheduleStatus(s, st)
+		if probes.Privileged() {
+			fmt.Printf("    %s %s\n", s.Dim(pad12("Avisos")), notifyText(loadConfig().Notify))
+		}
 	default:
 		fmt.Printf("  %s Tarea programada pero desactivada\n", s.Yellow("!"))
 		printScheduleStatus(s, st)
@@ -197,6 +213,10 @@ func scheduleStatus() error {
 			tb.Row(r.Time.Local().Format("2006-01-02 15:04"), fmt.Sprintf("%d/100", r.ScanScore), fmt.Sprintf("%d/100", r.SurfaceScore), changes)
 		}
 		tb.Write(os.Stdout)
+		if last := runs[len(runs)-1]; len(last.NotifyErrors) > 0 {
+			fmt.Printf("\n  %s El último aviso no llegó: %s\n    %s\n", s.Yellow("!"), strings.Join(last.NotifyErrors, "; "),
+				s.Dim("Para probarlo: bastion schedule notify"))
+		}
 	}
 	fmt.Println()
 	return nil
@@ -215,6 +235,10 @@ func scheduleRun() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	run := schedule.Run{Time: time.Now().UTC()}
+	host, _ := os.Hostname()
+	var regressions []engine.RuleChange
+	var exposure []surface.Change
+	scanOK, surfaceOK := false, false
 
 	if rep, err := scanReport(ctx, cfg, "", nil, nil, nil); err != nil {
 		run.Errors = append(run.Errors, "escaneo: "+err.Error())
@@ -223,9 +247,11 @@ func scheduleRun() error {
 		if _, _, _, _, err := saveReport(cfg, rep); err != nil {
 			run.Errors = append(run.Errors, err.Error())
 		} else {
+			scanOK = true
 			run.ScanScore = rep.Score.Value
 			if rep.Changes != nil {
-				run.Regressions = len(rep.Changes.Regressions)
+				regressions = rep.Changes.Regressions
+				run.Regressions = len(regressions)
 			}
 		}
 	}
@@ -239,19 +265,28 @@ func scheduleRun() error {
 			if !userDir {
 				_ = config.GrantUserRead(dir)
 			}
+			surfaceOK = true
 			run.SurfaceScore = srep.Score
+			if srep.Host.Hostname != "" {
+				host = srep.Host.Hostname
+			}
 			if srep.Changes != nil {
 				for _, c := range srep.Changes.Items {
 					if c.Bad() {
-						run.NewExposure++
+						exposure = append(exposure, c)
 					}
 				}
+				run.NewExposure = len(exposure)
 			}
 		}
 	}
+	run.NotifyErrors = deliver(ctx, cfg.Notify, scheduleEvent(host, run, scanOK, surfaceOK, regressions, exposure))
 	logErr := schedule.AppendRun(schedule.LogPath(config.DataDir()), run)
 	fmt.Printf("postura %d/100 · %d controles empeorados · exposición %d/100 · %d cambios que aumentan la exposición\n",
 		run.ScanScore, run.Regressions, run.SurfaceScore, run.NewExposure)
+	for _, e := range run.NotifyErrors {
+		fmt.Fprintln(os.Stderr, "aviso no enviado:", e)
+	}
 	switch {
 	case len(run.Errors) > 0:
 		return &ExitError{Code: 1, Msg: strings.Join(run.Errors, "; ")}

@@ -10,7 +10,7 @@
 | `bastion scan` | Auditar el equipo (solo lectura) |
 | `bastion surface [--all] [--format json] [-o informe.html] [--save] [--fail-on SEV] [--fail-on-new]` | Superficie de ataque: puertos expuestos con su proceso, servicios de riesgo, recursos compartidos y administradores (ver abajo) |
 | `bastion surface fix [ID...] [--apply] [--include-remote]` | Limitar a la red local las reglas del Firewall de Windows que abren puertos a cualquiera, con instantánea, verificación y rollback (simulación sin `--apply`) |
-| `bastion schedule [enable [--at HH:MM] \| disable \| run]` | Análisis diario programado (escaneo y superficie guardados) con el Programador de tareas o systemd; sin argumentos, el estado y las últimas ejecuciones (ver abajo) |
+| `bastion schedule [enable [--at HH:MM] \| disable \| run \| notify]` | Análisis diario programado (escaneo y superficie guardados) con el Programador de tareas o systemd, con avisos en el Visor de eventos o syslog y, si se configura, en un webhook (ntfy, Slack, Discord, Teams); sin argumentos, el estado y las últimas ejecuciones (ver abajo) |
 | `bastion ui [--port N] [--no-open]` | Consola local en el navegador: postura, tendencia, plan, historial y excepciones (ver abajo) |
 | `bastion profiles [--all]` | Perfiles disponibles y número de reglas |
 | `bastion rules list [--all] [-p perfil]` | Reglas aplicables (o todas) |
@@ -146,12 +146,25 @@ Ejecútalo como administrador o root: sin privilegios no se ve el proceso de otr
 sudo bastion schedule enable            # cada día a las 09:00 (Windows: como administrador, sin sudo)
 sudo bastion schedule enable --at 13:30
 bastion schedule                        # estado y últimas ejecuciones
+sudo bastion schedule notify --set https://ntfy.sh/<tema>   # avisos en el móvil o en un chat
 sudo bastion schedule disable           # quita la tarea; los informes se conservan
 ```
 
 Crea una tarea en el planificador del sistema: el Programador de tareas en Windows (`\Bastion\Escaneo diario`, como SYSTEM) y un temporizador de systemd en Linux (`bastion-scan.timer`), o una entrada en `/etc/cron.d/bastion` si no hay systemd. Si el equipo está apagado a esa hora, se hace al encenderlo; en portátiles también se ejecuta con batería. La hora es local y no se desplaza con el horario de verano.
 
 Cada ejecución (`bastion schedule run`) guarda un escaneo y un análisis de superficie comparado con el anterior y lo anota en `schedule.log`, en la carpeta de datos. Así `bastion ui` dibuja la tendencia de la postura, y `bastion surface` y la pestaña Superficie avisan de lo que ha cambiado. Si algún control ha empeorado o la exposición ha crecido, la tarea termina con código 3 (en Windows aparece como último resultado de la tarea) y `bastion schedule` lo muestra en sus últimas ejecuciones.
+
+**Avisos.** Cada ejecución queda en el registro del sistema: en Windows, en el Visor de eventos (*Registros de Windows › Aplicación*, origen **Bastion**: evento 100 si no hay cambios a peor, 200 —advertencia— si la postura o la exposición han empeorado y 300 —error— si el análisis ha fallado); en Linux, en syslog (`journalctl -t bastion`). Un SIEM o un reenvío de eventos lo recogen sin más. Para enterarte sin mirar, añade un webhook:
+
+```bash
+sudo bastion schedule notify --set https://ntfy.sh/bastion-casa-7f3k9   # ntfy: notificaciones en el móvil, sin cuenta
+sudo bastion schedule notify --set https://hooks.slack.com/services/…   # Slack (también Discord y Teams)
+sudo bastion schedule notify --set https://… --when always               # avisar también sin cambios a peor
+sudo bastion schedule notify                                             # enviar un aviso de prueba
+sudo bastion schedule notify --clear
+```
+
+`--set` envía primero un aviso de prueba y solo guarda la dirección (en la sección `notify` de `config.yaml`) si llega. El formato se deduce de la dirección (ntfy, Slack, Discord, Teams —flujos de *Workflows* o conectores de webhook entrante— y, para cualquier otra, JSON con el esquema `bastion.notify/v1`); `--format` lo fuerza. Por defecto solo se avisa al webhook cuando algo empeora o falla. El aviso lleva el equipo, las puntuaciones y los títulos de los cambios, nunca evidencias. Con ntfy, el tema funciona como contraseña: elige uno difícil de adivinar. Si un aviso no llega, `bastion schedule` lo indica en sus últimas ejecuciones.
 
 Como la tarea se ejecuta como SYSTEM o root, `enable` se niega si el ejecutable está en una carpeta que otros usuarios pueden modificar (Descargas, el escritorio, una carpeta de `/home`…): quien pudiera sustituirlo obtendría esos privilegios. El instalador deja Bastion en `Program Files` o `/usr/local/bin`, que son seguras. `--unsafe-path` lo permite igualmente, solo para laboratorios.
 

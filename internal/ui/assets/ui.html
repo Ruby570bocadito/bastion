@@ -845,6 +845,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
       body.push(el("p", null, [el("strong", { text: st.enabled ? "Diario a las " + st.at : "Programado pero desactivado" }),
         " · " + st.mechanism + (st.next_run ? " · próxima ejecución: " + st.next_run : "")]));
       if (st.detail) body.push(el("p", { class: "note", text: st.detail }));
+      if (x.notify) body.push(el("p", { class: "note", text: "Avisos: " + x.notify + "." }));
     }
     var runs = (x.runs || []).slice().reverse();
     if (runs.length) {
@@ -858,6 +859,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
         if (r.new_exposure) worse.push(plural(r.new_exposure, "cambio que aumenta la exposición", "cambios que aumentan la exposición"));
         var res = r.errors && r.errors.length ? el("span", { style: "color:var(--critical)", text: "error: " + r.errors.join("; ") }) :
           worse.length ? el("span", { style: "color:var(--critical)", text: worse.join(", ") }) : el("span", { class: "sub", text: "sin empeorar" });
+        if (r.notify_errors && r.notify_errors.length) res = el("span", null, [res, el("div", { class: "sub", text: "aviso no enviado: " + r.notify_errors.join("; ") })]);
         b.appendChild(el("tr", null, [el("td", { text: fmtDate(r.time) }), el("td", { class: "num", text: r.scan_score + "/100" }),
           el("td", { class: "num", text: r.surface_score + "/100" }), el("td", null, [res])]));
       });

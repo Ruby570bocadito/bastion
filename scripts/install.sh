@@ -236,6 +236,17 @@ ensure_sudo_path() {
 
 uninstall() {
   step "Desinstalando Bastion"
+  # El análisis programado (temporizador de systemd o cron).
+  if [ -f /etc/systemd/system/bastion-scan.timer ]; then
+    systemctl disable --now bastion-scan.timer >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/bastion-scan.timer /etc/systemd/system/bastion-scan.service
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    ok "Quitado el análisis programado"
+  fi
+  if [ -f /etc/cron.d/bastion ]; then
+    rm -f /etc/cron.d/bastion
+    ok "Quitado el análisis programado"
+  fi
   if [ -L /usr/bin/bastion ] && [ "$(readlink /usr/bin/bastion)" = "$BIN" ]; then
     rm -f /usr/bin/bastion
   fi

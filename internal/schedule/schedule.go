@@ -51,6 +51,9 @@ type Run struct {
 	Regressions int      `json:"regressions"`
 	NewExposure int      `json:"new_exposure"`
 	Errors      []string `json:"errors,omitempty"`
+	// NotifyErrors son los avisos que no se pudieron dar (Visor de eventos
+	// o syslog, webhook). No cambian el resultado de la ejecución.
+	NotifyErrors []string `json:"notify_errors,omitempty"`
 }
 
 // maxLog es el número de ejecuciones que se conservan en schedule.log.

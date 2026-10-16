@@ -156,3 +156,5 @@ curl -fsSL https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/script
 ```powershell
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Ruby570bocadito/bastion/main/scripts/install.ps1))) -Uninstall [-Purge]
 ```
+
+Quita el binario, el `PATH` y el análisis programado (la tarea `\Bastion\Escaneo diario` y el origen Bastion del Visor de eventos, o el temporizador de systemd o la entrada de cron). La configuración y los informes se conservan salvo con `--purge` / `-Purge`.
