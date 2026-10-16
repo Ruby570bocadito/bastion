@@ -48,6 +48,7 @@
 - [x] `harden` con plan, diff, instantánea con registro previo, verificación y rollback automático; `history` y `rollback`.
 - [x] *Dead-man switch* para el acceso remoto (proceso independiente que sobrevive al corte de la sesión).
 - [x] Consciencia de GPO (heurística por ruta de directiva). 🔜 RSoP e Intune precisos.
+- [x] `surface fix`: limitar a la red local las reglas del Firewall de Windows que abren puertos a cualquiera, con instantánea, verificación, rollback y dead-man switch. 🔜 Linux (ufw, firewalld).
 - [x] Olas por riesgo de rotura (`--wave 1|2|3`).
 - [x] Ciclo real `harden → verificar → rollback` en CI sobre Ubuntu y Windows Server.
 - [ ] *Health checks* personalizados tras aplicar.

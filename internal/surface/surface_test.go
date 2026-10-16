@@ -630,6 +630,7 @@ func TestRealMachine(t *testing.T) {
 	const rafag = "S-1-5-21-1236394060-1900707475-1329702642-1001"
 	reg := map[string]string{
 		"RemoteDesktop-UserMode-In-TCP":                  `v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=6|Profile=Private|LPort=3389|App=%SystemRoot%\system32\svchost.exe|Svc=termservice|Name=Escritorio remoto - Modo usuario (TCP de entrada)|`,
+		"RemoteDesktop-UserMode-In-UDP":                  `v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=17|Profile=Private|LPort=3389|App=%SystemRoot%\system32\svchost.exe|Svc=termservice|Name=Escritorio remoto - Modo usuario (UDP de entrada)|`,
 		"FPS-NB_Name-In-UDP":                             `v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=17|Profile=Private|LPort=137|RA4=LocalSubnet|RA6=LocalSubnet|App=System|Name=Compartir archivos e impresoras (nombre NB de entrada)|`,
 		"FPS-NB_Session-In-TCP":                          `v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=6|Profile=Private|LPort=139|RA4=LocalSubnet|RA6=LocalSubnet|App=System|Name=Compartir archivos e impresoras (sesión NB de entrada)|`,
 		"WFDPRINT-DAFWSD-In-Active-UDP":                  `v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=17|App=System|Name=Solo controlador de WFD (UDP de entrada)|TTK=WFDKmDriver|`,
@@ -656,7 +657,9 @@ func TestRealMachine(t *testing.T) {
 	}}
 	lan := "192.168.1.131"
 	inv := Inventory{Firewall: fw, Listeners: []Listener{
-		{Proto: "tcp", Address: "0.0.0.0", Port: 3389, Scope: ScopeNetwork, Process: "svchost.exe", Services: []string{"TermService"}},
+		{Proto: "tcp", Address: "0.0.0.0", Port: 3389, Scope: ScopeNetwork, PID: 8704, Process: "svchost.exe", Services: []string{"TermService"}},
+		{Proto: "udp", Address: "0.0.0.0", Port: 3389, Scope: ScopeNetwork, PID: 8704, Process: "svchost.exe", Services: []string{"TermService"}},
+		{Proto: "tcp", Address: "0.0.0.0", Port: 443, Scope: ScopeNetwork, PID: 4764, Process: "svchost.exe", Services: []string{"iphlpsvc"}},
 		{Proto: "udp", Address: lan, Port: 137, Scope: ScopeNetwork, PID: 4, Process: "System"},
 		{Proto: "udp", Address: lan, Port: 138, Scope: ScopeNetwork, PID: 4, Process: "System"},
 		{Proto: "tcp", Address: lan, Port: 139, Scope: ScopeNetwork, PID: 4, Process: "System"},
@@ -685,8 +688,14 @@ func TestRealMachine(t *testing.T) {
 
 	// RDP: abierto por una regla del almacén local → comando exacto.
 	rdp := byID["SURF-PORT-3389"]
-	if !strings.Contains(rdp.Fix, "Set-NetFirewallRule -Name 'RemoteDesktop-UserMode-In-TCP' -RemoteAddress LocalSubnet") {
-		t.Errorf("RDP debe dar el comando con el nombre interno: %s", rdp.Fix)
+	if !strings.Contains(rdp.Fix, "Set-NetFirewallRule -Name 'RemoteDesktop-UserMode-In-TCP','RemoteDesktop-UserMode-In-UDP' -RemoteAddress LocalSubnet") ||
+		len(rdp.FirewallRules) != 2 {
+		t.Errorf("RDP debe dar el comando con las reglas TCP y UDP: %s %v", rdp.Fix, rdp.FirewallRules)
+	}
+	for _, p := range rep.Ports {
+		if p.Port == 443 && p.Known != "IP-HTTPS (túnel IPv6 de Windows)" {
+			t.Errorf("443 de iphlpsvc: %q", p.Known)
+		}
 	}
 
 	// Programas abiertos a cualquiera: NinjaTrader y AutoClaw (el

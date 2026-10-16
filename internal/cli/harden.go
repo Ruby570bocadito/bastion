@@ -473,7 +473,11 @@ func newHistoryCmd() *cobra.Command {
 						ok++
 					}
 				}
-				tb.Row(m.ID, m.CreatedAt.Local().Format("2006-01-02 15:04"), m.Profile, strconv.Itoa(m.Wave), names[m.Status], fmt.Sprintf("%d de %d", ok, len(m.Rules)))
+				wave := strconv.Itoa(m.Wave)
+				if m.Wave == 0 {
+					wave = "—" // bastion surface fix no va por olas
+				}
+				tb.Row(m.ID, m.CreatedAt.Local().Format("2006-01-02 15:04"), m.Profile, wave, names[m.Status], fmt.Sprintf("%d de %d", ok, len(m.Rules)))
 			}
 			tb.Write(os.Stdout)
 			return nil

@@ -227,6 +227,17 @@ var Specs = map[string]Spec{
 		}
 		return safeText(p, "value", "separator")
 	}},
+	// Limita a la red local una regla del Firewall de Windows por su nombre
+	// interno (lo usa "bastion surface fix", no las reglas del catálogo).
+	"firewall.remote_address": {OS: "windows", Required: []string{"rule", "remote"}, Validate: func(p probes.Params) error {
+		if p.String("remote") != "LocalSubnet" {
+			return fmt.Errorf("remote solo admite LocalSubnet")
+		}
+		if r := p.String("rule"); strings.TrimSpace(r) == "" || len(r) > 1024 {
+			return fmt.Errorf("rule debe ser el nombre interno de una regla del firewall")
+		}
+		return safeText(p, "rule")
+	}},
 	"sudoers.defaults": {OS: "linux", Required: []string{"option"}, Validate: func(p probes.Params) error {
 		if !SudoersOptions[p.String("option")] {
 			return fmt.Errorf("opción %q no permitida", p.String("option"))

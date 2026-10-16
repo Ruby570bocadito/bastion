@@ -1,0 +1,103 @@
+//go:build windows
+
+package remediate
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/Ruby570bocadito/bastion/internal/probes"
+)
+
+func init() { Register(firewallRemote{}) }
+
+// ---- firewall.remote_address ------------------------------------------------------
+
+// firewallRemote limita las direcciones remotas de una regla del Firewall
+// de Windows. El nombre de la regla y las direcciones llegan a PowerShell
+// por variables de entorno: nunca forman parte del script, así que no hay
+// forma de inyectar código con un nombre de regla manipulado.
+type firewallRemote struct{}
+
+func (firewallRemote) Type() string { return "firewall.remote_address" }
+
+// reFwAddr valida cada dirección remota guardada en una instantánea antes de
+// restaurarla: IP, subred, rango o palabra clave (Any, LocalSubnet…).
+var reFwAddr = regexp.MustCompile(`^[A-Za-z0-9.:/-]+$`)
+
+// fwRule localiza la regla exacta en el almacén local (los corchetes y
+// asteriscos del nombre no se toman como comodines).
+const fwRule = `[Console]::OutputEncoding=[Text.Encoding]::UTF8; ` +
+	`$r = @(Get-NetFirewallRule -PolicyStore PersistentStore -Name ([WildcardPattern]::Escape($env:BASTION_FW_RULE))); ` +
+	`if ($r.Count -ne 1) { throw "la regla no existe en el almacén local o no es única ($($r.Count))" }; `
+
+func runFwPS(ctx context.Context, script string, env ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	exe := probes.System32(`WindowsPowerShell\v1.0\powershell.exe`)
+	cmd := exec.CommandContext(ctx, exe, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; "+script)
+	cmd.Env = append(os.Environ(), env...)
+	b, err := cmd.CombinedOutput()
+	out := string(b)
+	if !utf8.Valid(b) {
+		out = probes.DecodeText(b)
+	}
+	if err != nil {
+		return out, fmt.Errorf("%s: %v: %s", filepath.Base(exe), err, strings.TrimSpace(out))
+	}
+	return out, nil
+}
+
+func (firewallRemote) Capture(ctx context.Context, p probes.Params) (State, error) {
+	out, err := runFwPS(ctx, fwRule+`$a = $r[0] | Get-NetFirewallAddressFilter; `+
+		`@{remote=[string]::Join(',', @($a.RemoteAddress)); display=[string]$r[0].DisplayName} | ConvertTo-Json -Compress`,
+		"BASTION_FW_RULE="+p.String("rule"))
+	if err != nil {
+		return nil, err
+	}
+	var v struct{ Remote, Display string }
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if err := json.Unmarshal([]byte(strings.TrimSpace(lines[len(lines)-1])), &v); err != nil || v.Remote == "" {
+		return nil, fmt.Errorf("respuesta inesperada de Get-NetFirewallAddressFilter: %s", strings.TrimSpace(out))
+	}
+	if strings.EqualFold(v.Remote, p.String("remote")) {
+		return skipState("la regla «" + v.Display + "» ya está limitada a " + v.Remote), nil
+	}
+	return State{"remote": v.Remote, "display": v.Display}, nil
+}
+
+func (firewallRemote) Describe(p probes.Params, before State) string {
+	name := textOf(before["display"])
+	if name == "—" || name == "" {
+		name = p.String("rule")
+	}
+	return fmt.Sprintf("regla «%s»: direcciones remotas %s → %s", name, textOf(before["remote"]), p.String("remote"))
+}
+
+func (firewallRemote) Apply(ctx context.Context, p probes.Params) error {
+	return setFwRemote(ctx, p.String("rule"), p.String("remote"))
+}
+
+func (firewallRemote) Restore(ctx context.Context, p probes.Params, before State) error {
+	remote, _ := before["remote"].(string)
+	for _, a := range strings.Split(remote, ",") {
+		if !reFwAddr.MatchString(strings.TrimSpace(a)) {
+			return fmt.Errorf("dirección remota no válida en la instantánea: %q", a)
+		}
+	}
+	return setFwRemote(ctx, p.String("rule"), remote)
+}
+
+func setFwRemote(ctx context.Context, rule, remote string) error {
+	_, err := runFwPS(ctx, fwRule+`$r[0] | Set-NetFirewallRule -RemoteAddress ($env:BASTION_FW_REMOTE -split ',')`,
+		"BASTION_FW_RULE="+rule, "BASTION_FW_REMOTE="+remote)
+	return err
+}

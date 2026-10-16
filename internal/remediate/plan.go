@@ -91,30 +91,44 @@ func BuildPlan(ctx context.Context, results []engine.Result, o Options) []*Item 
 			it.Status, it.Reason = ItemGPO, "equipo unido a dominio y valor de directiva: corrígelo en la GPO (o usa --force-local)"
 			continue
 		}
-		it.Status = ItemPlanned
-		skipped := 0
-		for _, a := range acts {
-			rem, ok := Get(a.Type)
-			if !ok {
-				it.Status, it.Reason = ItemUnsupported, "la acción "+a.Type+" no está disponible en esta plataforma"
-				break
-			}
-			p := probes.Params(a.Params)
-			before, err := rem.Capture(ctx, p)
-			if err != nil {
-				it.Status, it.Reason = ItemCaptureError, "no se pudo leer el estado previo: "+err.Error()
-				break
-			}
-			if Skipped(before) {
-				skipped++
-			}
-			it.Steps = append(it.Steps, &Step{Action: a, Rem: rem, Before: before, Desc: rem.Describe(p, before)})
-		}
-		if it.Status == ItemPlanned && skipped == len(acts) {
-			it.Status, it.Reason = ItemNothing, "no hay nada que cambiar en este equipo"
-		}
+		planSteps(ctx, it)
 	}
 	return items
+}
+
+// PlanRule prepara un elemento con las acciones de una regla que no sale de
+// un escaneo (p. ej. las que construye "bastion surface fix"): captura el
+// estado previo de cada acción (solo lectura).
+func PlanRule(ctx context.Context, r *rule.Rule) *Item {
+	it := &Item{Rule: r}
+	planSteps(ctx, it)
+	return it
+}
+
+func planSteps(ctx context.Context, it *Item) {
+	acts := it.Rule.Remediation.Actions
+	it.Status = ItemPlanned
+	skipped := 0
+	for _, a := range acts {
+		rem, ok := Get(a.Type)
+		if !ok {
+			it.Status, it.Reason = ItemUnsupported, "la acción "+a.Type+" no está disponible en esta plataforma"
+			return
+		}
+		p := probes.Params(a.Params)
+		before, err := rem.Capture(ctx, p)
+		if err != nil {
+			it.Status, it.Reason = ItemCaptureError, "no se pudo leer el estado previo: "+err.Error()
+			return
+		}
+		if Skipped(before) {
+			skipped++
+		}
+		it.Steps = append(it.Steps, &Step{Action: a, Rem: rem, Before: before, Desc: rem.Describe(p, before)})
+	}
+	if skipped == len(acts) {
+		it.Status, it.Reason = ItemNothing, "no hay nada que cambiar en este equipo"
+	}
 }
 
 var riskNames = map[string]string{"none": "ninguno", "low": "bajo", "medium": "medio", "high": "alto"}

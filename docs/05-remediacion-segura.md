@@ -99,6 +99,7 @@ Requiere administrador (Windows) o root (Linux).
 | `file.mode` | `path` (o lista), `mode`, `owner`, `group` (o lista) | `chmod` / `chown` | Permisos y propietario anteriores |
 | `file.kv_set` | `path` (bajo /etc), `key`, `value`, `separator` | Sustituye la clave activa o la añade | Contenido anterior completo del fichero |
 | `sudoers.defaults` | `option` (lista blanca) | `/etc/sudoers.d/00-bastion` (0440), **validado con `visudo -c`** | Fichero anterior |
+| `firewall.remote_address` (Windows) | `rule` (nombre interno), `remote` (solo `LocalSubnet`) | `Set-NetFirewallRule` sobre la regla exacta del almacén local; el nombre llega a PowerShell por una variable de entorno, nunca dentro del script. Lo usa `bastion surface fix` | Direcciones remotas anteriores (validadas) |
 
 Principio: en Linux se usan **ficheros drop-in** propios en lugar de editar los originales (salvo `login.defs`, que no admite drop-ins). El rollback es limpio y no choca con las actualizaciones de paquetes.
 

@@ -148,6 +148,41 @@ jobs:
           "Postura: $before -> $after -> $restored"
           if ($after -le $before) { throw 'harden no mejoró la postura' }
           if ($restored -ne $before) { throw "rollback no restauró la postura ($restored distinto de $before)" }
+      # bastion surface fix de verdad: una regla que abre un puerto a
+      # cualquiera, con un programa escuchando detrás; se limita a la red
+      # local y el rollback la deja como estaba.
+      - name: Ciclo surface fix → rollback (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $b = '.\bin\bastion.exe'
+          $profiles = Get-NetFirewallProfile | Select-Object Name, Enabled, DefaultInboundAction
+          $profiles | Format-Table | Out-String | Write-Host
+          New-NetFirewallRule -Name 'Bastion-CI-Test' -DisplayName 'Bastion CI' -Direction Inbound -Protocol TCP -LocalPort 48765 -Action Allow | Out-Null
+          $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, 48765)
+          $listener.Start()
+          try {
+            # La evaluación necesita el firewall activo y bloqueando la entrada.
+            Set-NetFirewallProfile -All -Enabled True -DefaultInboundAction Block
+            $r = & $b surface --format json | ConvertFrom-Json
+            $f = $r.findings | Where-Object { $_.id -eq 'SURF-APPS-OPEN' }
+            if (-not $f -or $f.firewall_rules -notcontains 'Bastion-CI-Test') { throw "la regla de prueba no aparece en SURF-APPS-OPEN: $($r.findings | ConvertTo-Json -Depth 4)" }
+            & $b surface fix SURF-APPS-OPEN --no-color
+            & $b surface fix SURF-APPS-OPEN --apply --yes --no-color
+            if ($LASTEXITCODE -ne 0) { throw 'surface fix falló' }
+            $after = (Get-NetFirewallRule -Name 'Bastion-CI-Test' | Get-NetFirewallAddressFilter).RemoteAddress
+            if ($after -ne 'LocalSubnet') { throw "la regla no quedó limitada: $after" }
+            & $b history --no-color
+            & $b rollback --yes --no-color
+            if ($LASTEXITCODE -ne 0) { throw 'rollback falló' }
+            $restored = (Get-NetFirewallRule -Name 'Bastion-CI-Test' | Get-NetFirewallAddressFilter).RemoteAddress
+            "RemoteAddress: Any -> $after -> $restored"
+            if ($restored -ne 'Any') { throw "rollback no restauró la regla: $restored" }
+          } finally {
+            $listener.Stop()
+            Remove-NetFirewallRule -Name 'Bastion-CI-Test' -ErrorAction SilentlyContinue
+            foreach ($p in $profiles) { Set-NetFirewallProfile -Name $p.Name -Enabled $p.Enabled -DefaultInboundAction $p.DefaultInboundAction }
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

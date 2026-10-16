@@ -70,6 +70,7 @@ bastion scan                        # auditar con el perfil por defecto
 bastion scan --save --open          # guardar y abrir el informe HTML
 bastion ui                          # consola en el navegador: tendencia, plan e historial
 bastion surface                     # qué puede tocar un atacante desde la red
+bastion surface fix --apply         # limitar a la red local lo abierto a cualquiera (Windows, con rollback)
 bastion scan -p win-workstation-l2  # otro perfil
 bastion scan --format json          # salida JSON (integraciones)
 bastion scan --min-score 80         # código de salida 2 si no llega (CI/CD)

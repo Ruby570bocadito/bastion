@@ -236,6 +236,8 @@ func TestValidateAction(t *testing.T) {
 		{Type: "sshd.set", Params: map[string]any{"key": "PermitRootLogin", "value": "no"}},
 		{Type: "file.mode", Params: map[string]any{"path": "/etc/shadow", "mode": "0640", "group": []any{"shadow", "root"}}},
 		{Type: "sudoers.defaults", Params: map[string]any{"option": "use_pty"}},
+		{Type: "firewall.remote_address", Params: map[string]any{"rule": `TCP Query User{AAB2B01C-3855-4816-88B1-0F4AB4DC07A0}C:\program files\ninjatrader 8\bin\ninjatrader.exe`, "remote": "LocalSubnet"}},
+		{Type: "firewall.remote_address", Params: map[string]any{"rule": "RemoteDesktop-UserMode-In-TCP", "remote": "LocalSubnet"}},
 	}
 	for _, a := range ok {
 		if err := ValidateAction(a); err != nil {
@@ -253,10 +255,25 @@ func TestValidateAction(t *testing.T) {
 		{Type: "sysctl.set", Params: map[string]any{"key": "../../etc/passwd", "value": 1}},
 		{Type: "file.kv_set", Params: map[string]any{"path": "/root/.bashrc", "key": "X", "value": "y"}},
 		{Type: "sudoers.defaults", Params: map[string]any{"option": "!authenticate"}},
+		{Type: "firewall.remote_address", Params: map[string]any{"rule": "RemoteDesktop-UserMode-In-TCP", "remote": "Any"}},
+		{Type: "firewall.remote_address", Params: map[string]any{"rule": "x\n'; Remove-Item C:\\", "remote": "LocalSubnet"}},
+		{Type: "firewall.remote_address", Params: map[string]any{"rule": " ", "remote": "LocalSubnet"}},
 	}
 	for _, a := range bad {
 		if err := ValidateAction(a); err == nil {
 			t.Errorf("%s %v debería rechazarse", a.Type, a.Params)
 		}
+	}
+}
+
+func TestPlanRule(t *testing.T) {
+	memSet("plan.k", "a")
+	it := PlanRule(context.Background(), memRule("SURF-X", "plan.k", "b", "low", "", act("plan.k", "b", "")))
+	if it.Status != ItemPlanned || len(it.Steps) != 1 || it.Steps[0].Before["value"] != "a" {
+		t.Errorf("elemento: %+v", it)
+	}
+	it = PlanRule(context.Background(), memRule("SURF-Y", "plan.k", "b", "low", "", rule.Action{Type: "no.existe"}))
+	if it.Status != ItemUnsupported {
+		t.Errorf("acción desconocida: %+v", it)
 	}
 }

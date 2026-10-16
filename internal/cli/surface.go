@@ -34,12 +34,14 @@ func newSurfaceCmd() *cobra.Command {
   - recursos compartidos (SMB, NFS, Samba) abiertos a todos;
   - miembros con privilegios de administración.
 
-Calcula una puntuación de exposición de 0 a 100. Es de SOLO LECTURA.
+Calcula una puntuación de exposición de 0 a 100. Es de SOLO LECTURA; para
+corregir lo que abren las reglas del firewall, "bastion surface fix".
 Ejecuta como administrador o root para ver el proceso de cada puerto.`,
 		Example: `  bastion surface
   bastion surface --all                 # incluir lo que solo escucha en localhost
   bastion surface --format json > superficie.json
-  bastion surface --fail-on high        # código 2 si hay hallazgos altos o críticos (CI/CD)`,
+  bastion surface --fail-on high        # código 2 si hay hallazgos altos o críticos (CI/CD)
+  bastion surface fix                   # plan para limitar a la red local lo abierto a cualquiera`,
 		RunE: func(cmd *cobra.Command, _ []string) error { return runSurface(format, output, failOn, all) },
 	}
 	fl := cmd.Flags()
@@ -47,6 +49,7 @@ Ejecuta como administrador o root para ver el proceso de cada puerto.`,
 	fl.StringVarP(&output, "output", "o", "", "guardar el análisis en un fichero .json")
 	fl.StringVar(&failOn, "fail-on", "", "salir con código 2 si hay hallazgos de esta severidad o mayor: critical | high | medium | low")
 	fl.BoolVarP(&all, "all", "a", false, "mostrar también los servicios que solo escuchan en el propio equipo")
+	cmd.AddCommand(newSurfaceFixCmd())
 	return cmd
 }
 

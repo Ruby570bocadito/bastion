@@ -113,6 +113,10 @@ type Finding struct {
 	Detail   string        `json:"detail"`
 	Fix      string        `json:"fix"`
 	Subject  string        `json:"subject"` // 445/tcp, \\SHARE, /etc/exports…
+	// FirewallRules son los nombres internos de las reglas del Firewall de
+	// Windows que lo abren a cualquiera: "bastion surface fix" las limita a
+	// la red local.
+	FirewallRules []string `json:"firewall_rules,omitempty"`
 }
 
 // Report es el resultado completo de "bastion surface".
@@ -281,7 +285,12 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		ids      []string // reglas que los abren, para el comando que las limita
 		noIDs    bool     // algún puerto abierto sin reglas conocidas
 		limited  bool
+		port     int
+		pids     []int
 	}
+	// Reglas que abren cada puerto y proceso, para unir al hallazgo de un
+	// puerto TCP las del mismo puerto en UDP (RDP usa los dos).
+	openIDs := map[string][]string{}
 	var order []string
 	found := map[string]*acc{}
 	// Programas (no servicios del sistema) con puertos sin catalogar que el
@@ -301,6 +310,8 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 			p.Known = k.service
 		case p.Proto == "tcp" && p.Port >= 49152 && rpcProcs[strings.ToLower(p.Process)]:
 			p.Known = "RPC dinámico (Windows)"
+		case p.Proto == "tcp" && p.Port == 443 && containsFold(p.Services, "iphlpsvc"):
+			p.Known = "IP-HTTPS (túnel IPv6 de Windows)"
 		default:
 			p.Known = label(p.Proto, p.Port)
 		}
@@ -318,6 +329,9 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		rep.Reachable++
 		if p.Firewall == FirewallLimited {
 			rep.Limited++
+		}
+		if p.Firewall == FirewallOpen && len(p.access.IDs) > 0 {
+			openIDs[fmt.Sprintf("%d/%d", p.Port, p.PID)] = append(openIDs[fmt.Sprintf("%d/%d", p.Port, p.PID)], p.access.IDs...)
 		}
 		if p.Firewall == FirewallOpen && p.Known == "" && userApp(*p) {
 			ap := apps[p.Process]
@@ -345,10 +359,11 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		}
 		a := found[key]
 		if a == nil {
-			a = &acc{k: kk, id: id, limited: true}
+			a = &acc{k: kk, id: id, limited: true, port: p.Port}
 			found[key] = a
 			order = append(order, key)
 		}
+		a.pids = append(a.pids, p.PID)
 		if p.Firewall == FirewallLimited {
 			for _, x := range p.access.Limits {
 				a.limits = appendOnce(a.limits, x)
@@ -411,7 +426,15 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 			f.Title = fmt.Sprintf("%s accesible solo %s (%s)", a.k.service, accessFrom(limit), shortWho(a.who))
 			f.Fix = "Ya solo se llega " + accessFrom(limit) + ": revisa quién tiene acceso a esa red. Además: " + a.k.fix
 		} else if len(a.ids) > 0 && !a.noIDs {
+			if a.k.group == "" {
+				for _, pid := range a.pids {
+					for _, id := range openIDs[fmt.Sprintf("%d/%d", a.port, pid)] {
+						a.ids = appendOnce(a.ids, id)
+					}
+				}
+			}
 			f.Fix += " " + limitCmd(a.ids)
+			f.FirewallRules = a.ids
 		}
 		rep.Findings = append(rep.Findings, f)
 	}
@@ -465,6 +488,7 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		}
 		if len(ids) > 0 && !noIDs {
 			f.Fix += " " + limitCmd(ids)
+			f.FirewallRules = ids
 		}
 		rep.Findings = append(rep.Findings, f)
 	}
