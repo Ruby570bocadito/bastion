@@ -10,6 +10,7 @@
 | `bastion scan` | Auditar el equipo (solo lectura) |
 | `bastion surface [--all] [--format json] [-o informe.html] [--save] [--fail-on SEV] [--fail-on-new]` | Superficie de ataque: puertos expuestos con su proceso, servicios de riesgo, recursos compartidos y administradores (ver abajo) |
 | `bastion surface fix [ID...] [--apply] [--include-remote]` | Limitar a la red local las reglas del Firewall de Windows que abren puertos a cualquiera, con instantánea, verificación y rollback (simulación sin `--apply`) |
+| `bastion schedule [enable [--at HH:MM] \| disable \| run]` | Análisis diario programado (escaneo y superficie guardados) con el Programador de tareas o systemd; sin argumentos, el estado y las últimas ejecuciones (ver abajo) |
 | `bastion ui [--port N] [--no-open]` | Consola local en el navegador: postura, tendencia, plan, historial y excepciones (ver abajo) |
 | `bastion profiles [--all]` | Perfiles disponibles y número de reglas |
 | `bastion rules list [--all] [-p perfil]` | Reglas aplicables (o todas) |
@@ -134,6 +135,21 @@ Ejecútalo como administrador o root: sin privilegios no se ve el proceso de otr
 | `-f, --format console\|json` | Formato de la salida (`bastion.surface/v1`) |
 | `-o fichero.json` | Guardar el análisis |
 | `--fail-on critical\|high\|medium\|low` | Código de salida 2 si hay hallazgos de esa severidad o mayor |
+
+## Análisis programado: `bastion schedule`
+
+```bash
+sudo bastion schedule enable            # cada día a las 09:00 (Windows: como administrador, sin sudo)
+sudo bastion schedule enable --at 13:30
+bastion schedule                        # estado y últimas ejecuciones
+sudo bastion schedule disable           # quita la tarea; los informes se conservan
+```
+
+Crea una tarea en el planificador del sistema: el Programador de tareas en Windows (`\Bastion\Escaneo diario`, como SYSTEM) y un temporizador de systemd en Linux (`bastion-scan.timer`), o una entrada en `/etc/cron.d/bastion` si no hay systemd. Si el equipo está apagado a esa hora, se hace al encenderlo.
+
+Cada ejecución (`bastion schedule run`) guarda un escaneo y un análisis de superficie comparado con el anterior y lo anota en `schedule.log`, en la carpeta de datos. Así `bastion ui` dibuja la tendencia de la postura, y `bastion surface` y la pestaña Superficie avisan de lo que ha cambiado. Si la exposición ha crecido, la tarea termina con código 3 (en Windows aparece como último resultado de la tarea).
+
+Como la tarea se ejecuta como SYSTEM o root, `enable` se niega si el ejecutable está en una carpeta que otros usuarios pueden modificar (Descargas, el escritorio, una carpeta de `/home`…): quien pudiera sustituirlo obtendría esos privilegios. El instalador deja Bastion en `Program Files` o `/usr/local/bin`, que son seguras. `--unsafe-path` lo permite igualmente, solo para laboratorios.
 
 ## Consola local: `bastion ui`
 

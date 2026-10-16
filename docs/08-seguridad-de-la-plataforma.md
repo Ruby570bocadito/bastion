@@ -48,6 +48,11 @@ Bastion se ejecuta como **SYSTEM/root** en equipos críticos. Para un atacante e
 - CSP con nonce y `frame-ancestors 'none'`, `nosniff`, `no-referrer`, `no-store`, COOP/CORP; datos insertados con `textContent`.
 - Solo lee y escanea: aplicar o deshacer cambios y editar excepciones sigue exigiendo la terminal. Detalle en [ADR-0008](adr/0008-consola-local.md).
 
+### Análisis programado (`schedule`)
+- La tarea diaria se ejecuta como SYSTEM o root. `schedule enable` se niega si el ejecutable está en una carpeta que puede modificar un usuario sin privilegios: en Windows debe estar en Program Files o en la carpeta de Windows; en Linux, el fichero y todas las carpetas hasta `/` deben ser de root y sin escritura para el grupo ni otros.
+- La ruta del ejecutable y la hora llegan a PowerShell por variables de entorno, nunca dentro del script; la hora se valida antes (HH:MM).
+- La tarea solo hace lo que haría `bastion scan --save` y `bastion surface --save`: no aplica cambios.
+
 ### Permisos
 - Linux: `/etc/bastion` y `/var/lib/bastion` con `0750` (root). Informes con `0640`.
 - Windows: `%ProgramData%\Bastion` sin herencia, acceso total solo para Administradores (`S-1-5-32-544`) y SYSTEM (`S-1-5-18`), por SID para que funcione en cualquier idioma. El directorio `reports` concede además **lectura** al usuario que ejecutó el escaneo: con UAC, su navegador corre sin elevar y no podría abrir el informe.

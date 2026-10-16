@@ -69,6 +69,19 @@ jobs:
             and ([.ports[] | select(.port == 22)][0].firewall == "open")
             and ([.ports[] | select(.port == 3306)][0].firewall_limit == "Tailscale y 192.168.1.0/24")
             and ([.ports[] | select(.port == 8080)][0].firewall_limit == "Tailscale")' fw.json
+      # Análisis programado de verdad: temporizador de systemd en el runner,
+      # ejecución inmediata del servicio y registro de la ejecución.
+      - name: Análisis programado (Linux, systemd)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          sudo ./bin/bastion schedule enable --at 03:00 --unsafe-path --no-color
+          systemctl list-timers bastion-scan.timer --all --no-pager
+          sudo systemctl start bastion-scan.service
+          sudo ./bin/bastion schedule --no-color
+          sudo tail -n 1 /var/lib/bastion/schedule.log | jq -e '.scan_score > 0 and .surface_score > 0 and (.errors | not)'
+          sudo ./bin/bastion schedule disable --no-color
+          test ! -e /etc/systemd/system/bastion-scan.timer
       - name: Superficie de ataque (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -148,6 +161,32 @@ jobs:
           "Postura: $before -> $after -> $restored"
           if ($after -le $before) { throw 'harden no mejoró la postura' }
           if ($restored -ne $before) { throw "rollback no restauró la postura ($restored distinto de $before)" }
+      # Análisis programado de verdad: tarea del Programador de tareas como
+      # SYSTEM, ejecutada al momento, con su registro.
+      - name: Análisis programado (Windows, Programador de tareas)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $b = (Resolve-Path '.\bin\bastion.exe').Path
+          & $b schedule enable --at 03:00 --unsafe-path --no-color
+          if ($LASTEXITCODE -ne 0) { throw 'schedule enable falló' }
+          $tp = '\Bastion\'; $tn = 'Escaneo diario'
+          (Get-ScheduledTask -TaskPath $tp -TaskName $tn).Principal | Format-List UserId, LogonType, RunLevel | Out-String | Write-Host
+          $before = (Get-ScheduledTaskInfo -TaskPath $tp -TaskName $tn).LastRunTime
+          Start-ScheduledTask -TaskPath $tp -TaskName $tn
+          $deadline = (Get-Date).AddMinutes(8)
+          do {
+            Start-Sleep -Seconds 5
+            $i = Get-ScheduledTaskInfo -TaskPath $tp -TaskName $tn
+            $state = (Get-ScheduledTask -TaskPath $tp -TaskName $tn).State
+          } while (($state -eq 'Running' -or $i.LastRunTime -eq $before) -and (Get-Date) -lt $deadline)
+          "Estado: $state · última ejecución: $($i.LastRunTime) · resultado: $($i.LastTaskResult)"
+          if ($i.LastTaskResult -ne 0 -and $i.LastTaskResult -ne 3) { throw "la tarea terminó con el código $($i.LastTaskResult)" }
+          & $b schedule --no-color
+          $last = Get-Content (Join-Path $env:ProgramData 'Bastion\schedule.log') | Select-Object -Last 1 | ConvertFrom-Json
+          if ($last.scan_score -le 0 -or $last.errors) { throw "ejecución con errores: $($last | ConvertTo-Json -Compress)" }
+          & $b schedule disable --no-color
+          if (Get-ScheduledTask -TaskPath $tp -TaskName $tn -ErrorAction SilentlyContinue) { throw 'la tarea sigue existiendo' }
       # bastion surface fix de verdad: una regla que abre un puerto a
       # cualquiera, con un programa escuchando detrás; se limita a la red
       # local y el rollback la deja como estaba.
