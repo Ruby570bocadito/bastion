@@ -197,3 +197,28 @@ func TestScanChangesConsole(t *testing.T) {
 		t.Errorf("el informe HTML debe llevar los cambios: %v", err)
 	}
 }
+
+// Los análisis de «pc» no deben mezclarse con los de «pc-a» (mismo prefijo).
+func TestSurfaceHistoryPerHost(t *testing.T) {
+	dir := t.TempDir()
+	t0 := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
+	for _, r := range []*surface.Report{
+		{Schema: surface.Schema, Host: platform.Info{Hostname: "pc"}, FinishedAt: t0, Score: 90},
+		{Schema: surface.Schema, Host: platform.Info{Hostname: "pc-a"}, FinishedAt: t0.Add(time.Hour), Score: 50},
+		{Schema: surface.Schema, Host: platform.Info{Hostname: "pc-a"}, FinishedAt: t0.Add(2 * time.Hour), Score: 40},
+	} {
+		if _, _, err := SaveSurface(dir, r, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prev, err := LatestSurface(dir, "pc")
+	if err != nil || prev == nil || prev.Score != 90 {
+		t.Fatalf("el último de «pc» es el suyo: %+v %v", prev, err)
+	}
+	if files := surfaceFiles(dir, "pc-a", ".json"); len(files) != 1 {
+		t.Errorf("la retención de «pc-a» no toca los de «pc»: %v", files)
+	}
+	if files := surfaceFiles(dir, "pc", ".json"); len(files) != 1 {
+		t.Errorf("guardar los de «pc-a» no borra los de «pc»: %v", files)
+	}
+}

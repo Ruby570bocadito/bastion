@@ -368,12 +368,14 @@ var psQueries = map[string]struct{ desc, script string }{
 	// procesos que el malware usa para ejecutarse. Sin privilegios Windows
 	// las oculta («N/A: Must be an administrator…»): solo como administrador.
 	"defender_exclusions": {"Get-MpPreference (exclusiones)",
-		`try { $p = Get-MpPreference; $risky = New-Object System.Collections.ArrayList; ` +
-			`foreach ($x in @($p.ExclusionPath)) { if ($x -and ($x -match '^[A-Za-z]:\\?$' -or $x -match '\\(temp|tmp|downloads|descargas|users\\public|appdata\\local\\temp)(\\|$)' -or $x -match '^%(temp|tmp|userprofile|appdata|localappdata)%\\?$' -or $x -match '^[A-Za-z]:\\(users|windows|programdata)\\?$')) { [void]$risky.Add('ruta ' + $x) } }; ` +
-			`foreach ($x in @($p.ExclusionExtension)) { if ($x -and $x.TrimStart('.') -match '^(exe|dll|ps1|bat|cmd|vbs|js|hta|scr|msi|lnk)$') { [void]$risky.Add('extensión ' + $x) } }; ` +
+		`try { $p = Get-MpPreference; $all = @(@($p.ExclusionPath) + @($p.ExclusionExtension) + @($p.ExclusionProcess) | Where-Object { $_ }); ` +
+			// Con HideExclusionsFromLocalAdmins ni un administrador las ve.
+			`if ($all | Where-Object { [string]$_ -like 'N/A*' }) { @{__na='defender_hidden'} | ConvertTo-Json -Compress; return }; ` +
+			`$risky = New-Object System.Collections.ArrayList; ` +
+			`foreach ($x in @($p.ExclusionPath)) { if ($x -and ($x -match '^[A-Za-z]:\\?$' -or $x -match '^\*|^[A-Za-z]:\\\*' -or $x -match '\\(temp|tmp|downloads|descargas|users\\public|appdata\\local\\temp)(\\|$)' -or $x -match '\\appdata(\\(roaming|local|locallow))?\\?$' -or $x -match '^%(temp|tmp|userprofile|appdata|localappdata)%\\?$' -or $x -match '^[A-Za-z]:\\(users|windows|programdata)\\?$')) { [void]$risky.Add('ruta ' + $x) } }; ` +
+			`foreach ($x in @($p.ExclusionExtension)) { if ($x -and $x.TrimStart('.') -match '^(\*|exe|dll|ps1|bat|cmd|vbs|js|hta|scr|msi|lnk)$') { [void]$risky.Add('extensión ' + $x) } }; ` +
 			`foreach ($x in @($p.ExclusionProcess)) { if ($x -and [IO.Path]::GetFileName($x) -match '^(powershell|pwsh|cmd|wscript|cscript|mshta|rundll32|regsvr32|msiexec|certutil|bitsadmin)\.exe$') { [void]$risky.Add('proceso ' + $x) } }; ` +
-			`$n = @(@($p.ExclusionPath) + @($p.ExclusionExtension) + @($p.ExclusionProcess) | Where-Object { $_ }).Count; ` +
-			`@{Total=$n; Risky=[string]::Join('; ', $risky)} | ConvertTo-Json -Compress } catch { @{__na='defender'} | ConvertTo-Json -Compress }`},
+			`@{Total=$all.Count; Risky=[string]::Join('; ', $risky)} | ConvertTo-Json -Compress } catch { @{__na='defender'} | ConvertTo-Json -Compress }`},
 	"defender_prefs": {"Get-MpPreference",
 		`try { Get-MpPreference | Select-Object MAPSReporting,PUAProtection,EnableNetworkProtection,DisableRealtimeMonitoring,SubmitSamplesConsent,DisableScriptScanning | ConvertTo-Json -Compress } catch { @{__na='defender'} | ConvertTo-Json -Compress }`},
 	"defender_asr": {"Get-MpPreference (reglas ASR)",
@@ -403,9 +405,10 @@ var psQueries = map[string]struct{ desc, script string }{
 }
 
 var psNotApplicable = map[string]string{
-	"defender":    "Microsoft Defender no está disponible o no está activo (¿antivirus de terceros?)",
-	"bitlocker":   "BitLocker no está disponible en esta edición de Windows",
-	"deviceguard": "la información de Device Guard/VBS no está disponible",
+	"defender":        "Microsoft Defender no está disponible o no está activo (¿antivirus de terceros?)",
+	"defender_hidden": "una directiva oculta las exclusiones de Defender incluso a los administradores (HideExclusionsFromLocalAdmins)",
+	"bitlocker":       "BitLocker no está disponible en esta edición de Windows",
+	"deviceguard":     "la información de Device Guard/VBS no está disponible",
 }
 
 type psProbe struct{}

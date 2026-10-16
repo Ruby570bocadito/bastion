@@ -49,7 +49,7 @@ Bastion se ejecuta como **SYSTEM/root** en equipos críticos. Para un atacante e
 - Solo lee y escanea: aplicar o deshacer cambios y editar excepciones sigue exigiendo la terminal. Detalle en [ADR-0008](adr/0008-consola-local.md).
 
 ### Análisis programado (`schedule`)
-- La tarea diaria se ejecuta como SYSTEM o root. `schedule enable` se niega si el ejecutable está en una carpeta que puede modificar un usuario sin privilegios: en Windows debe estar en Program Files o en la carpeta de Windows; en Linux, el fichero y todas las carpetas hasta `/` deben ser de root y sin escritura para el grupo ni otros.
+- La tarea diaria se ejecuta como SYSTEM o root. `schedule enable` se niega si el ejecutable está en una carpeta que puede modificar un usuario sin privilegios: en Windows debe estar en Program Files (la carpeta de Windows no vale: tiene subcarpetas con escritura para todos, como Temp); en Linux, el fichero y todas las carpetas hasta `/` deben ser de root y sin escritura para el grupo ni otros.
 - La ruta del ejecutable y la hora llegan a PowerShell por variables de entorno, nunca dentro del script; la hora se valida antes (HH:MM).
 - La tarea solo hace lo que haría `bastion scan --save` y `bastion surface --save`: no aplica cambios.
 

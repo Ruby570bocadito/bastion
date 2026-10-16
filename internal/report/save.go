@@ -173,7 +173,9 @@ func LoadSaved(dir, id string) (*engine.Report, error) {
 // más recientes. Devuelve (html, json).
 func SaveSurface(dir string, rep *surface.Report, keep int) (string, string, error) {
 	host := unsafeName.ReplaceAllString(rep.Host.Hostname, "_")
-	base := filepath.Join(dir, fmt.Sprintf("surface-%s-%s", host, rep.FinishedAt.Local().Format("20060102-150405")))
+	// Hora UTC en el nombre: el orden de los ficheros es el de los análisis
+	// aunque el portátil cambie de zona horaria.
+	base := filepath.Join(dir, fmt.Sprintf("surface-%s-%s", host, rep.FinishedAt.UTC().Format("20060102-150405")))
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", "", err
 	}
@@ -193,8 +195,7 @@ func SaveSurface(dir string, rep *surface.Report, keep int) (string, string, err
 	}
 	if keep > 0 {
 		for _, ext := range []string{".html", ".json"} {
-			files, _ := filepath.Glob(filepath.Join(dir, "surface-"+host+"-*"+ext))
-			sort.Strings(files)
+			files := surfaceFiles(dir, rep.Host.Hostname, ext)
 			if len(files) > keep {
 				for _, f := range files[:len(files)-keep] {
 					os.Remove(f)
@@ -205,14 +206,34 @@ func SaveSurface(dir string, rep *surface.Report, keep int) (string, string, err
 	return base + ".html", base + ".json", nil
 }
 
+// surfaceFiles devuelve los análisis de superficie de host (solo de ese
+// equipo: «pc» no recoge los de «pc-a»), del más antiguo al último.
+func surfaceFiles(dir, host, ext string) []string {
+	re := regexp.MustCompile(`^surface-` + regexp.QuoteMeta(unsafeName.ReplaceAllString(host, "_")) + `-[0-9]{8}-[0-9]{6}` + regexp.QuoteMeta(ext) + `$`)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() && re.MatchString(e.Name()) {
+			out = append(out, filepath.Join(dir, e.Name()))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // LatestSurface devuelve el último análisis de superficie guardado de host
 // (nil si no hay ninguno).
 func LatestSurface(dir, host string) (*surface.Report, error) {
-	files, err := filepath.Glob(filepath.Join(dir, "surface-"+unsafeName.ReplaceAllString(host, "_")+"-*.json"))
-	if err != nil || len(files) == 0 {
-		return nil, err
+	files := surfaceFiles(dir, host, ".json")
+	if len(files) == 0 {
+		if _, err := os.ReadDir(dir); err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+		return nil, nil
 	}
-	sort.Strings(files)
 	b, err := os.ReadFile(files[len(files)-1])
 	if err != nil {
 		return nil, err
@@ -223,6 +244,9 @@ func LatestSurface(dir, host string) (*surface.Report, error) {
 	}
 	if rep.Schema != surface.Schema {
 		return nil, fmt.Errorf("%s: formato %q desconocido", filepath.Base(files[len(files)-1]), rep.Schema)
+	}
+	if !strings.EqualFold(rep.Host.Hostname, host) {
+		return nil, nil // otro equipo con un nombre que se escribe igual en el fichero
 	}
 	return &rep, nil
 }

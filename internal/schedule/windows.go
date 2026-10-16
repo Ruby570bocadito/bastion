@@ -50,8 +50,12 @@ func runPS(ctx context.Context, script string, env ...string) (string, error) {
 
 func (taskScheduler) Enable(ctx context.Context, exe, at string) (Status, error) {
 	_, err := runPS(ctx, `$a = New-ScheduledTaskAction -Execute $env:BASTION_EXE -Argument 'schedule run'; `+
-		`$t = New-ScheduledTaskTrigger -Daily -At $env:BASTION_AT; `+
-		`$s = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 1); `+
+		// Hora local sin desfase horario: con él, la tarea se desplaza una
+		// hora tras cada cambio de horario de verano.
+		`$t = New-ScheduledTaskTrigger -Daily -At $env:BASTION_AT; $t.StartBoundary = (Get-Date $env:BASTION_AT).ToString('s'); `+
+		// También con batería: los portátiles son los que más se mueven
+		// de red.
+		`$s = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 1); `+
 		// SYSTEM por su SID y, si este Windows no lo admite ahí, por su
 		// nombre (que no se traduce).
 		`$reg = { param($u) Register-ScheduledTask -TaskPath $tp -TaskName $tn -Action $a -Trigger $t -Settings $s `+
@@ -78,14 +82,14 @@ func (taskScheduler) Get(ctx context.Context) (Status, error) {
 		`@{state=[string]$t.State; at=$at; exe=[string]$t.Actions[0].Execute; args=[string]$t.Actions[0].Arguments; `+
 		`next=$(if ($i.NextRunTime) { $i.NextRunTime.ToString('yyyy-MM-dd HH:mm') } else { '' }); `+
 		`last=$(if ($i.LastRunTime -and $i.LastRunTime.Year -gt 2000) { $i.LastRunTime.ToString('yyyy-MM-dd HH:mm') } else { '' }); `+
-		`result=[int]$i.LastTaskResult} | ConvertTo-Json -Compress`)
+		`result=[int64]$i.LastTaskResult} | ConvertTo-Json -Compress`)
 	if err != nil {
 		return Status{}, err
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	var v struct {
 		State, At, Exe, Args, Next, Last string
-		Result                           int
+		Result                           int64
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(lines[len(lines)-1])), &v); err != nil {
 		return Status{}, fmt.Errorf("respuesta inesperada del Programador de tareas: %s", strings.TrimSpace(out))
@@ -96,7 +100,13 @@ func (taskScheduler) Get(ctx context.Context) (Status, error) {
 	st := Status{Enabled: !strings.EqualFold(v.State, "Disabled"), Mechanism: `Programador de tareas (` + taskPath + taskName + `)`,
 		At: v.At, Command: `"` + v.Exe + `" ` + v.Args, NextRun: v.Next}
 	if v.Last != "" {
-		st.Detail = fmt.Sprintf("última ejecución %s, código %d", v.Last, v.Result)
+		// Los fallos de la tarea son HRESULT (0x80070002: no encuentra el
+		// ejecutable); los códigos de Bastion (0, 1, 3) se ven en decimal.
+		code := fmt.Sprintf("%d", v.Result)
+		if v.Result > 255 {
+			code = fmt.Sprintf("0x%08X", uint32(v.Result))
+		}
+		st.Detail = fmt.Sprintf("última ejecución %s, código %s", v.Last, code)
 	}
 	return st, nil
 }

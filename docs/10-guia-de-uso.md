@@ -149,7 +149,7 @@ bastion schedule                        # estado y últimas ejecuciones
 sudo bastion schedule disable           # quita la tarea; los informes se conservan
 ```
 
-Crea una tarea en el planificador del sistema: el Programador de tareas en Windows (`\Bastion\Escaneo diario`, como SYSTEM) y un temporizador de systemd en Linux (`bastion-scan.timer`), o una entrada en `/etc/cron.d/bastion` si no hay systemd. Si el equipo está apagado a esa hora, se hace al encenderlo.
+Crea una tarea en el planificador del sistema: el Programador de tareas en Windows (`\Bastion\Escaneo diario`, como SYSTEM) y un temporizador de systemd en Linux (`bastion-scan.timer`), o una entrada en `/etc/cron.d/bastion` si no hay systemd. Si el equipo está apagado a esa hora, se hace al encenderlo; en portátiles también se ejecuta con batería. La hora es local y no se desplaza con el horario de verano.
 
 Cada ejecución (`bastion schedule run`) guarda un escaneo y un análisis de superficie comparado con el anterior y lo anota en `schedule.log`, en la carpeta de datos. Así `bastion ui` dibuja la tendencia de la postura, y `bastion surface` y la pestaña Superficie avisan de lo que ha cambiado. Si algún control ha empeorado o la exposición ha crecido, la tarea termina con código 3 (en Windows aparece como último resultado de la tarea) y `bastion schedule` lo muestra en sus últimas ejecuciones.
 

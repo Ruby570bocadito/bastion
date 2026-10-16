@@ -68,3 +68,24 @@ func TestDiff(t *testing.T) {
 		t.Errorf("sin cambios: %+v", same.Items)
 	}
 }
+
+func TestDiffGroupedFindings(t *testing.T) {
+	f := func(id, subject, title string) Finding {
+		return Finding{ID: id, Severity: rule.SevLow, Subject: subject, Title: title}
+	}
+	prev := &Report{Findings: []Finding{
+		f("SURF-NETBIOS", "137/udp, 138/udp, 139/tcp", "NetBIOS…"),
+		f("SURF-APPS-OPEN", "4530/tcp, 8766/tcp, 57621/tcp", "3 programas…"),
+		f("SURF-FW-ALLOWALL", "firewall", "La regla de firewall «Vieja» permite toda la entrada (perfil Privado)"),
+	}}
+	cur := &Report{Findings: []Finding{
+		f("SURF-NETBIOS", "137/udp, 138/udp", "NetBIOS…"),         // se ha filtrado 139: no es nuevo
+		f("SURF-APPS-OPEN", "4530/tcp, 8766/tcp", "2 programas…"), // se ha cerrado Spotify: no es nuevo
+		f("SURF-FW-ALLOWALL", "firewall", "La regla de firewall «Vieja» permite toda la entrada (perfil Privado)"),
+		f("SURF-FW-ALLOWALL", "firewall", "La regla de firewall «Nueva» permite toda la entrada (perfil Público)"),
+	}}
+	ch := Diff(prev, cur)
+	if len(ch.Items) != 1 || ch.Items[0].Kind != ChangeFinding || !strings.Contains(ch.Items[0].Title, "«Nueva»") {
+		t.Errorf("solo la nueva regla que lo permite todo es un hallazgo nuevo: %+v", ch.Items)
+	}
+}

@@ -10,16 +10,17 @@ import (
 )
 
 // SafeExecutable comprueba que el ejecutable que lanzará la tarea como
-// SYSTEM esté en una carpeta que solo pueden modificar los administradores
-// (Program Files o la carpeta de Windows). Desde Descargas o el escritorio,
-// cualquier usuario podría sustituirlo y obtener privilegios de SYSTEM.
+// SYSTEM esté en Program Files, que solo pueden modificar los
+// administradores. Desde Descargas o el escritorio, cualquier usuario
+// podría sustituirlo y obtener privilegios de SYSTEM. La carpeta de Windows
+// no vale: tiene subcarpetas con escritura para todos (Temp, Tasks…).
 func SafeExecutable(exe string) error {
 	p, err := filepath.Abs(exe)
 	if err != nil {
 		return err
 	}
 	low := strings.ToLower(p)
-	for _, env := range []string{"ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "SystemRoot"} {
+	for _, env := range []string{"ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"} {
 		dir := os.Getenv(env)
 		if dir == "" {
 			continue

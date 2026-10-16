@@ -466,7 +466,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
       .then(function () { S.surfaceLoading = false; busy(false); render(); });
   }
   function loadSchedule() {
-    api("/api/schedule").then(function (x) { S.schedule = x; render(); }).catch(function (e) { S.schedule = { status: {}, runs: [] }; toast(e.message); });
+    api("/api/schedule").then(function (x) { S.schedule = x; render(); }).catch(function (e) { S.schedule = { status: { detail: e.message }, runs: [] }; render(); toast(e.message); });
   }
   function loadChanges() {
     api("/api/changes").then(function (c) { S.changes = c; render(); }).catch(function (e) { S.changes = []; toast(e.message); });
@@ -836,6 +836,8 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
     var st = x.status || {}, body = [];
     if (x.unsupported) {
       body.push(el("p", { class: "empty", text: "Este sistema no tiene un planificador compatible." }));
+    } else if (!st.mechanism && st.detail) {
+      body.push(el("p", { style: "color:var(--critical)", text: st.detail }));
     } else if (!st.mechanism) {
       body.push(el("p", { text: "No hay análisis programado. Con uno diario, el historial se llena solo y Bastion avisa de los controles que empeoran y de los puertos que se abren." }));
       body.push(cmdBox("bastion schedule enable"));

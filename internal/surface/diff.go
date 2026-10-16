@@ -103,12 +103,24 @@ func exposedPorts(r *Report) map[string]Port {
 	return out
 }
 
-// findingMap indexa los hallazgos por ID y asunto: SURF-SHARE-… puede
-// repetirse con recursos distintos.
+// findingMap indexa los hallazgos por lo que los identifica de forma
+// estable. Los de un puerto o un recurso compartido, por ID y asunto. Los
+// que agrupan varios puertos o programas (NetBIOS, programas abiertos) o
+// varias reglas (reglas de usuario), solo por ID: su asunto cambia al
+// cerrar uno de ellos y no es un hallazgo nuevo; lo que cambia en sus
+// puertos ya lo cuentan los cambios de puertos. Cada regla que lo permite
+// todo es un hallazgo propio, distinguido por su título.
 func findingMap(r *Report) map[string]Finding {
 	out := map[string]Finding{}
 	for _, f := range r.Findings {
-		out[f.ID+"|"+f.Subject] = f
+		key := f.ID + "|" + f.Subject
+		switch f.ID {
+		case "SURF-NETBIOS", "SURF-APPS-OPEN", "SURF-FW-USERALLOWALL":
+			key = f.ID
+		case "SURF-FW-ALLOWALL":
+			key = f.ID + "|" + f.Title
+		}
+		out[key] = f
 	}
 	return out
 }
