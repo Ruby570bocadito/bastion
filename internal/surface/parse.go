@@ -158,6 +158,27 @@ func parseTasklist(out string) map[int]procInfo {
 	return m
 }
 
+// parseTasklistUsers interpreta "tasklist /v /fo csv /nh": devuelve el
+// usuario de cada PID (séptima columna). "N/A" o su traducción, vacío.
+func parseTasklistUsers(out string) map[int]string {
+	m := map[int]string{}
+	r := csv.NewReader(strings.NewReader(out))
+	r.FieldsPerRecord = -1
+	records, _ := r.ReadAll()
+	for _, rec := range records {
+		if len(rec) < 7 {
+			continue
+		}
+		pid, err := strconv.Atoi(strings.TrimSpace(rec[1]))
+		user := strings.TrimSpace(rec[6])
+		if err != nil || user == "" || strings.Contains(user, "/") {
+			continue
+		}
+		m[pid] = user
+	}
+	return m
+}
+
 // parseExports interpreta /etc/exports: "ruta cliente(opciones) cliente…".
 func parseExports(content string) []Share {
 	var out []Share

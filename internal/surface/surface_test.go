@@ -382,6 +382,66 @@ func TestStoreAppAndAllowAllRules(t *testing.T) {
 	}
 }
 
+func TestUserOwnedRules(t *testing.T) {
+	const rafag = "S-1-5-21-1236394060-1900707475-1329702642-1001"
+	fw := &Firewall{
+		Profiles: []FirewallProfile{
+			{Name: "Dominio", Bit: 1, Enabled: true, BlockInbound: true},
+			{Name: "Privado", Bit: 2, Enabled: true, BlockInbound: true, Active: true},
+			{Name: "Público", Bit: 4, Enabled: true, BlockInbound: true, Active: true},
+		},
+		// Las reglas reales del equipo de la prueba: sin programa ni paquete, pero de un usuario.
+		Rules: []FirewallRule{
+			{Name: "XBOX", Allow: true, Protocol: 256, Profiles: 3, Local: "*", Remote: "*", UserOwner: rafag},
+			{Name: "Xbox", Allow: true, Protocol: 256, Profiles: 3, Local: "*", Remote: "*", UserOwner: rafag},
+		},
+	}
+	all := []string{"0.0.0.0", "::"}
+	cases := []struct {
+		name  string
+		p     Port
+		state string
+	}{
+		{"RDP (servicio del sistema)", Port{Proto: "tcp", Port: 3389, Addresses: all, Process: "svchost.exe", Services: []string{"TermService"}, UserSID: "S-1-5-20"}, FirewallFiltered},
+		{"SMB (System)", Port{Proto: "tcp", Port: 445, Addresses: all, Process: "System", UserSID: "S-1-5-18"}, FirewallFiltered},
+		{"NinjaTrader del usuario", Port{Proto: "tcp", Port: 4530, Addresses: all, Process: "NinjaTrader.exe", UserSID: rafag}, FirewallOpen},
+		{"programa de otro usuario", Port{Proto: "tcp", Port: 8080, Addresses: all, Process: "app.exe", UserSID: "S-1-5-21-9-9-9-1002"}, FirewallFiltered},
+		{"tailscaled (servicio, sin usuario conocido)", Port{Proto: "udp", Port: 41641, Addresses: all, Process: "tailscaled.exe", Services: []string{"Tailscale"}}, FirewallFiltered},
+		{"programa sin usuario conocido", Port{Proto: "tcp", Port: 8766, Addresses: all, Process: "AutoClaw.exe"}, FirewallOpen},
+	}
+	for _, c := range cases {
+		if a := fw.Evaluate(c.p); a.State != c.state {
+			t.Errorf("%s: %s (%s), quiero %s", c.name, a.State, a.Why, c.state)
+		}
+	}
+	rep := Analyze(Inventory{Firewall: fw}, platform.Info{}, "test", time.Now())
+	if len(rep.Findings) != 1 {
+		t.Fatalf("hallazgos: %+v", rep.Findings)
+	}
+	f := rep.Findings[0]
+	if f.ID != "SURF-FW-USERALLOWALL" || f.Severity != rule.SevMedium || !strings.Contains(f.Title, "«XBOX» y «Xbox» permiten") ||
+		!strings.Contains(f.Title, "Dominio y Privado") || !strings.Contains(f.Fix, "-DisplayName 'XBOX' -Direction Inbound") {
+		t.Errorf("hallazgo de reglas de usuario: %+v", f)
+	}
+	if !strings.Contains(f.Fix, "'XBOX'") || strings.Contains(f.Fix, "'Xbox'") {
+		t.Errorf("los nombres que solo cambian en mayúsculas se listan una vez: %s", f.Fix)
+	}
+}
+
+func TestParseTasklistUsers(t *testing.T) {
+	out := `"svchost.exe","1760","Services","0","12.345 KB","Unknown","NT AUTHORITY\NETWORK SERVICE","0:00:01","N/D"
+"NinjaTrader.exe","14132","Console","1","512.000 KB","Running","RBY\rafag","0:10:00","NinjaTrader"
+"System","4","Services","0","152 KB","Unknown","N/D","0:20:00","N/D"
+`
+	u := parseTasklistUsers(out)
+	if u[1760] != `NT AUTHORITY\NETWORK SERVICE` || u[14132] != `RBY\rafag` {
+		t.Errorf("usuarios: %v", u)
+	}
+	if _, ok := u[4]; ok {
+		t.Error("N/D no es un usuario")
+	}
+}
+
 func TestParseAddrs(t *testing.T) {
 	set := parseAddrs("100.127.45.81/255.255.255.255,fd7a:115c:a1e0::/48,10.0.0.1-10.0.0.9")
 	for ip, want := range map[string]bool{"100.127.45.81": true, "100.127.45.82": false, "fd7a:115c:a1e0::1": true, "10.0.0.5": true, "10.0.0.10": false} {

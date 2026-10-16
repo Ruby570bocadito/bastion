@@ -175,6 +175,44 @@ func (fw *Firewall) AllowAll() []FirewallRule {
 	return out
 }
 
+// UserAllowAll devuelve las reglas que lo permiten todo pero solo para los
+// procesos de un usuario (LocalUserOwner), en algún perfil activo.
+func (fw *Firewall) UserAllowAll() []FirewallRule {
+	active := 0
+	for _, p := range fw.Active() {
+		if p.Enabled && p.BlockInbound {
+			active |= p.Bit
+		}
+	}
+	var out []FirewallRule
+	for _, r := range fw.Rules {
+		if !r.Allow || r.UserOwner == "" || r.Package != "" || r.Profiles&active == 0 {
+			continue
+		}
+		anyPort := strings.TrimSpace(r.LocalPorts) == "" || strings.TrimSpace(r.LocalPorts) == "*"
+		if r.Protocol == 256 && anyPort && strings.TrimSpace(r.App) == "" && strings.TrimSpace(r.Service) == "" &&
+			anyAddr(r.Local) && anyAddr(r.Remote) && r.Interfaces == "" && anyIfType(r.IfTypes) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// psNameList escribe los nombres de las reglas como lista de PowerShell.
+func psNameList(rules []FirewallRule) string {
+	var names []string
+	seen := map[string]bool{}
+	for _, r := range rules {
+		k := strings.ToLower(r.Name)
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		names = append(names, "'"+strings.ReplaceAll(r.Name, "'", "''")+"'")
+	}
+	return strings.Join(names, ",")
+}
+
 // ProfileNames devuelve los nombres de los perfiles de la máscara.
 func ProfileNames(mask int) string {
 	var out []string
@@ -217,8 +255,17 @@ func (r *FirewallRule) matches(p Port, profile int) bool {
 	if r.Package != "" {
 		return false
 	}
-	if r.UserOwner != "" && systemProcs[strings.ToLower(p.Process)] {
-		return false
+	if r.UserOwner != "" {
+		// Solo cubre los procesos de ese usuario. Si se conoce el usuario
+		// del proceso se compara el SID; si no, se excluyen los servicios.
+		switch {
+		case p.UserSID != "":
+			if !strings.EqualFold(p.UserSID, r.UserOwner) {
+				return false
+			}
+		case systemProcs[strings.ToLower(p.Process)] || len(p.Services) > 0:
+			return false
+		}
 	}
 	switch {
 	case r.Protocol == 256:

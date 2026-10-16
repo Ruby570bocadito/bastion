@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"time"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/Ruby570bocadito/bastion/internal/probes"
 )
 
@@ -36,6 +38,28 @@ func Collect(ctx context.Context) (Inventory, error) {
 		}
 	} else {
 		inv.Notes = append(inv.Notes, "No se pudo asociar cada puerto con su proceso (tasklist): "+err.Error())
+	}
+	// Usuario de cada proceso: las reglas del firewall con propietario
+	// (LocalUserOwner) solo se aplican a los procesos de ese usuario.
+	if tl, err := run(ctx, probes.System32("tasklist.exe"), "/v", "/fo", "csv", "/nh"); err == nil {
+		users := parseTasklistUsers(tl)
+		sids := map[string]string{}
+		for i := range inv.Listeners {
+			l := &inv.Listeners[i]
+			u, ok := users[l.PID]
+			if !ok {
+				continue
+			}
+			l.User = u
+			sid, ok := sids[u]
+			if !ok {
+				if s, _, _, err := windows.LookupSID("", u); err == nil {
+					sid = s.String()
+				}
+				sids[u] = sid
+			}
+			l.UserSID = sid
+		}
 	}
 
 	if data, err := probes.QueryPS(ctx, "smb_shares"); err == nil {
@@ -77,5 +101,5 @@ func run(ctx context.Context, name string, args ...string) (string, error) {
 	if err := cmd.Run(); err != nil {
 		return "", err
 	}
-	return out.String(), nil
+	return probes.DecodeText(out.Bytes()), nil
 }

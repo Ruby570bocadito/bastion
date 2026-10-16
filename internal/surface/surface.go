@@ -40,6 +40,9 @@ type Listener struct {
 	// Ephemeral marca los sockets UDP en puertos dinámicos: son los de un
 	// cliente (consultas DNS, descubrimiento…), no servicios a la escucha.
 	Ephemeral bool `json:"ephemeral,omitempty"`
+	// User es la cuenta con la que corre el proceso (y su SID, en Windows).
+	User    string `json:"user,omitempty"`
+	UserSID string `json:"user_sid,omitempty"`
 }
 
 // Port agrupa los sockets del mismo puerto, protocolo y proceso (IPv4, IPv6
@@ -54,6 +57,8 @@ type Port struct {
 	Services  []string `json:"services,omitempty"`
 	Known     string   `json:"known,omitempty"`
 	Ephemeral bool     `json:"ephemeral,omitempty"`
+	User      string   `json:"user,omitempty"`
+	UserSID   string   `json:"user_sid,omitempty"`
 	// Firewall: "open" (desde cualquier dirección), "limited" (solo desde
 	// ciertas redes o interfaces, ver FirewallLimit), "filtered" (lo bloquea)
 	// o vacío si no se ha podido evaluar.
@@ -318,6 +323,26 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 	}
 	rep.Findings = append(rep.Findings, shareFindings(inv.Shares)...)
 	if inv.Firewall != nil {
+		if rules := inv.Firewall.UserAllowAll(); len(rules) > 0 {
+			var names []string
+			profiles := 0
+			for _, r := range rules {
+				names = appendOnce(names, "«"+r.Name+"»")
+				profiles |= r.Profiles
+			}
+			verb := "permite"
+			if len(names) > 1 {
+				verb = "permiten"
+			}
+			rep.Findings = append(rep.Findings, Finding{
+				ID: "SURF-FW-USERALLOWALL", Severity: rule.SevMedium, Subject: strings.Join(names, ", "),
+				Title: fmt.Sprintf("%s %s toda la entrada a los programas de un usuario (perfil %s)", joinHuman(names), verb, ProfileNames(profiles&7)),
+				Detail: "Cualquier programa que ejecute ese usuario, incluido uno malicioso, puede aceptar conexiones de cualquier puerto desde esas redes. " +
+					"Los servicios del sistema no quedan cubiertos. Estas reglas suelen crearlas apps como la de Xbox para el juego en red.",
+				Fix: fmt.Sprintf("Si no las necesitas, desactívalas: Get-NetFirewallRule -DisplayName %s -Direction Inbound | Disable-NetFirewallRule "+
+					"(se pueden volver a activar con Enable-NetFirewallRule).", psNameList(rules)),
+			})
+		}
 		for _, r := range inv.Firewall.AllowAll() {
 			rep.Findings = append(rep.Findings, Finding{
 				ID: "SURF-FW-ALLOWALL", Severity: rule.SevHigh, Subject: "«" + r.Name + "»",
@@ -387,7 +412,7 @@ func groupPorts(ls []Listener) []Port {
 			i = len(out)
 			idx[key] = i
 			out = append(out, Port{Proto: l.Proto, Port: l.Port, Scope: l.Scope, PID: l.PID, Process: l.Process,
-				Services: l.Services, Ephemeral: l.Ephemeral})
+				Services: l.Services, Ephemeral: l.Ephemeral, User: l.User, UserSID: l.UserSID})
 		}
 		p := &out[i]
 		p.Addresses = appendOnce(p.Addresses, l.Address)
