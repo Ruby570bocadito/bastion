@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -20,7 +21,8 @@ import (
 )
 
 func newSurfaceCmd() *cobra.Command {
-	var format, output, failOn string
+	var format, failOn string
+	var outputs []string
 	var all bool
 	cmd := &cobra.Command{
 		Use:   "surface",
@@ -40,13 +42,14 @@ Ejecuta como administrador o root para ver el proceso de cada puerto.`,
 		Example: `  bastion surface
   bastion surface --all                 # incluir lo que solo escucha en localhost
   bastion surface --format json > superficie.json
+  bastion surface -o superficie.html    # informe autocontenido para compartir o imprimir
   bastion surface --fail-on high        # código 2 si hay hallazgos altos o críticos (CI/CD)
   bastion surface fix                   # plan para limitar a la red local lo abierto a cualquiera`,
-		RunE: func(cmd *cobra.Command, _ []string) error { return runSurface(format, output, failOn, all) },
+		RunE: func(cmd *cobra.Command, _ []string) error { return runSurface(format, outputs, failOn, all) },
 	}
 	fl := cmd.Flags()
 	fl.StringVarP(&format, "format", "f", "console", "salida estándar: console | json")
-	fl.StringVarP(&output, "output", "o", "", "guardar el análisis en un fichero .json")
+	fl.StringSliceVarP(&outputs, "output", "o", nil, "guardar el análisis en ficheros .html (informe para compartir) o .json; se puede repetir")
 	fl.StringVar(&failOn, "fail-on", "", "salir con código 2 si hay hallazgos de esta severidad o mayor: critical | high | medium | low")
 	fl.BoolVarP(&all, "all", "a", false, "mostrar también los servicios que solo escuchan en el propio equipo")
 	cmd.AddCommand(newSurfaceFixCmd())
@@ -62,7 +65,7 @@ func analyzeSurface(ctx context.Context) (*surface.Report, error) {
 	return surface.Analyze(inv, platform.Detect(), version.Version, time.Now()), nil
 }
 
-func runSurface(format, output, failOn string, all bool) error {
+func runSurface(format string, outputs []string, failOn string, all bool) error {
 	if format != "console" && format != "json" {
 		return fmt.Errorf("--format debe ser console o json")
 	}
@@ -88,15 +91,23 @@ func runSurface(format, output, failOn string, all bool) error {
 	} else {
 		report.SurfaceConsole(os.Stdout, rep, all, stdoutStyle())
 	}
-	if output != "" {
-		if strings.ToLower(filepath.Ext(output)) != ".json" {
-			return fmt.Errorf("-o solo admite .json")
+	for _, output := range outputs {
+		var buf bytes.Buffer
+		switch strings.ToLower(filepath.Ext(output)) {
+		case ".json":
+			b, err := json.MarshalIndent(rep, "", "  ")
+			if err != nil {
+				return err
+			}
+			buf.Write(append(b, '\n'))
+		case ".html", ".htm":
+			if err := report.SurfaceHTML(&buf, rep); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("-o admite .html o .json (%s)", output)
 		}
-		b, err := json.MarshalIndent(rep, "", "  ")
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(output, append(b, '\n'), 0o640); err != nil {
+		if err := os.WriteFile(output, buf.Bytes(), 0o640); err != nil {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "  %s Análisis guardado: %s\n", report.Sym("→"), output)

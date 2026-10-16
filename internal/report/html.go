@@ -9,6 +9,7 @@ import (
 	"io"
 
 	"github.com/Ruby570bocadito/bastion/internal/engine"
+	"github.com/Ruby570bocadito/bastion/internal/surface"
 )
 
 //go:embed assets/report.html
@@ -37,4 +38,37 @@ func HTML(w io.Writer, rep *engine.Report) error {
 	out = bytes.Replace(out, []byte("__BASTION_DATA__"), data, 1)
 	_, err = w.Write(out)
 	return err
+}
+
+//go:embed assets/surface.html
+var surfaceTemplate []byte
+
+// SurfaceHTML genera el informe autocontenido de "bastion surface", con las
+// mismas garantías que HTML: datos como JSON escapado, insertados con
+// textContent y una CSP con nonce. Comparte los estilos del informe de
+// escaneo (se toman de su plantilla), así que los dos se ven igual.
+func SurfaceHTML(w io.Writer, rep *surface.Report) error {
+	data, err := json.Marshal(rep)
+	if err != nil {
+		return err
+	}
+	nonce := make([]byte, 18)
+	if _, err := rand.Read(nonce); err != nil {
+		return err
+	}
+	out := bytes.Replace(surfaceTemplate, []byte("__STYLE__"), sharedStyle(), 1)
+	out = bytes.ReplaceAll(out, []byte("__NONCE__"), []byte(base64.RawURLEncoding.EncodeToString(nonce)))
+	out = bytes.Replace(out, []byte("__BASTION_DATA__"), data, 1)
+	_, err = w.Write(out)
+	return err
+}
+
+// sharedStyle devuelve el CSS del informe de escaneo.
+func sharedStyle() []byte {
+	start := bytes.Index(htmlTemplate, []byte("<style>"))
+	end := bytes.Index(htmlTemplate, []byte("</style>"))
+	if start < 0 || end < start {
+		return nil
+	}
+	return bytes.TrimSpace(htmlTemplate[start+len("<style>") : end])
 }

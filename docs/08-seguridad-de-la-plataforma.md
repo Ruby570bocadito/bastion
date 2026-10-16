@@ -9,7 +9,7 @@ Bastion se ejecuta como **SYSTEM/root** en equipos críticos. Para un atacante e
 | Bastion como herramienta de ejecución remota (C2) | Servidor comprometido que envía comandos | **No existe** la capacidad de ejecutar comandos arbitrarios ([ADR-0004](adr/0004-sin-ejecucion-arbitraria.md)) |
 | Paquete de reglas malicioso | Regla que intenta ejecutar código | Reglas declarativas; los probes usan comandos fijos; `ps` solo admite una lista blanca |
 | Secuestro de binarios | `PATH` manipulado para suplantar `secedit` o `powershell` | Rutas absolutas `%SystemRoot%\System32\...` en Windows |
-| Actualización manipulada | Mirror comprometido o MITM | HTTPS + verificación SHA-256 obligatoria (🔜 firma cosign/minisign) |
+| Actualización manipulada | Mirror comprometido o MITM | HTTPS + verificación SHA-256 obligatoria; atestación de procedencia SLSA verificable con `gh attestation verify` (🔜 verificación en el propio `update`) |
 | XSS en el informe | Valor hostil leído del sistema (p. ej. una línea de `sudoers`) | JSON escapado, `textContent`, CSP con nonce |
 | Lectura de datos sensibles | Informes y configuración legibles por cualquiera | Directorios con permisos restringidos a root / Administradores+SYSTEM |
 | Denegación de servicio del escaneo | Fichero enorme o probe colgado | Límite de 4 MiB por fichero, timeout de 60 s por comando, `recover` por regla |
@@ -58,13 +58,14 @@ Bastion se ejecuta como **SYSTEM/root** en equipos críticos. Para un atacante e
 ### Desarrollo seguro
 - CI con `go vet` y tests en Linux y Windows (con detector de carreras en Linux), ShellCheck y PSScriptAnalyzer.
 - Releases reproducibles con GoReleaser y SBOM (Syft).
+- Atestación de procedencia SLSA de cada archivo publicado (`actions/attest-build-provenance`), firmada con la identidad OIDC del workflow en Sigstore: prueba qué workflow, commit y etiqueta lo construyeron.
 - Sin CGO: binario estático con la mínima superficie.
 
 ## Controles planificados (🔜)
 
 | Fase | Control |
 |---|---|
-| 1 | Firma de releases con cosign (keyless, OIDC de GitHub) y verificación en instalador y `update` |
+| 1 | Verificar la atestación de procedencia en el instalador y en `update` (hoy se verifica a mano con `gh attestation verify`) |
 | 1 | Authenticode para `bastion.exe` (evita SmartScreen y mejora la confianza del EDR) |
 | 2 | Paquetes de reglas firmados; lista de claves de confianza para reglas propias |
 | 2 | Instantáneas con hash y ACL; log local de cambios encadenado por hash |

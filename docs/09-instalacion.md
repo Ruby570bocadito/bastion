@@ -75,6 +75,18 @@ Qué hace: activa TLS 1.2 (Windows PowerShell 5.1), detecta la arquitectura (AMD
 
 Compatible con Windows PowerShell 5.1 y PowerShell 7. Los mensajes evitan símbolos que la consola clásica no puede mostrar.
 
+## Verificar de dónde viene una descarga
+
+Además del SHA-256 que comprueban el instalador y `bastion update`, cada archivo publicado lleva una atestación de procedencia SLSA firmada en Sigstore con la identidad del workflow de GitHub que lo construyó. Con la CLI de GitHub se comprueba que salió de este repositorio, de su workflow de releases y de una etiqueta concreta:
+
+```bash
+gh attestation verify bastion_linux_amd64.tar.gz --repo Ruby570bocadito/bastion
+```
+
+```powershell
+gh attestation verify bastion_windows_amd64.zip --repo Ruby570bocadito/bastion
+```
+
 ## Despliegue masivo
 
 | Entorno | Cómo |

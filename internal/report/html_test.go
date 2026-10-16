@@ -9,6 +9,7 @@ import (
 
 	"github.com/Ruby570bocadito/bastion/internal/engine"
 	"github.com/Ruby570bocadito/bastion/internal/platform"
+	"github.com/Ruby570bocadito/bastion/internal/surface"
 	"github.com/Ruby570bocadito/bastion/pkg/rule"
 )
 
@@ -99,5 +100,40 @@ func TestTableIgnoresColorCodes(t *testing.T) {
 	want := "PUERTO     PROCESO\n22/tcp     sshd\n27036/udp  steam.exe\n"
 	if plain != want {
 		t.Errorf("tabla:\n%q\nquiero:\n%q", plain, want)
+	}
+}
+
+// El informe de superficie muestra nombres de procesos, reglas y recursos
+// compartidos del equipo: tampoco pueden inyectar HTML.
+func TestSurfaceHTMLNeutralizesHostileData(t *testing.T) {
+	hostile := `</script><script>alert(1)</script><img src=x onerror=alert(2)>`
+	rep := &surface.Report{Schema: surface.Schema, Score: 72, Grade: "C", Exposed: 1, Reachable: 1,
+		Ports: []surface.Port{{Proto: "tcp", Port: 8080, Addresses: []string{"0.0.0.0"}, Scope: surface.ScopeNetwork, Process: hostile,
+			Firewall: surface.FirewallOpen, FirewallWhy: "lo permite la regla «" + hostile + "»"}},
+		Findings:  []surface.Finding{{ID: "SURF-APPS-OPEN", Severity: rule.SevLow, Title: hostile, Subject: "8080/tcp", FirewallRules: []string{hostile}}},
+		Inventory: surface.Inventory{Shares: []surface.Share{{Kind: "smb", Name: hostile}}, Firewall: &surface.Firewall{Profiles: []surface.FirewallProfile{}}},
+	}
+	var buf bytes.Buffer
+	if err := SurfaceHTML(&buf, rep); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "<script>alert") || strings.Contains(out, "<img src=x") {
+		t.Fatal("el informe contiene HTML sin escapar procedente de los datos")
+	}
+	for _, mark := range []string{"__BASTION_DATA__", "__NONCE__", "__STYLE__"} {
+		if strings.Contains(out, mark) {
+			t.Fatalf("queda el marcador %s", mark)
+		}
+	}
+	if !strings.Contains(out, "--page:") || !strings.Contains(out, ".ptable") {
+		t.Error("faltan los estilos compartidos o los propios")
+	}
+	m := regexp.MustCompile(`script-src 'nonce-([A-Za-z0-9_-]{16,})'`).FindStringSubmatch(out)
+	if m == nil || !strings.Contains(out, `<script nonce="`+m[1]+`">`) {
+		t.Fatal("la CSP y el script no comparten un nonce válido")
+	}
+	if strings.Contains(out, "innerHTML") || strings.Contains(out, "insertAdjacentHTML") {
+		t.Error("el informe no debe insertar HTML")
 	}
 }

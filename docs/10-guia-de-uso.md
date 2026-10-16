@@ -8,7 +8,7 @@
 |---|---|
 | `bastion info [--json]` | Plataforma, rol, etiquetas, perfil por defecto, probes disponibles y rutas |
 | `bastion scan` | Auditar el equipo (solo lectura) |
-| `bastion surface [--all] [--format json] [--fail-on SEV]` | Superficie de ataque: puertos expuestos con su proceso, servicios de riesgo, recursos compartidos y administradores (ver abajo) |
+| `bastion surface [--all] [--format json] [-o informe.html] [--fail-on SEV]` | Superficie de ataque: puertos expuestos con su proceso, servicios de riesgo, recursos compartidos y administradores (ver abajo) |
 | `bastion surface fix [ID...] [--apply] [--include-remote]` | Limitar a la red local las reglas del Firewall de Windows que abren puertos a cualquiera, con instantánea, verificación y rollback (simulación sin `--apply`) |
 | `bastion ui [--port N] [--no-open]` | Consola local en el navegador: postura, tendencia, plan, historial y excepciones (ver abajo) |
 | `bastion profiles [--all]` | Perfiles disponibles y número de reglas |
@@ -90,6 +90,7 @@ sudo bastion surface                  # hallazgos y puertos expuestos en la red
 sudo bastion surface --all            # también lo que solo escucha en el propio equipo
 bastion surface --format json > superficie.json
 bastion surface --fail-on high        # código 2 si hay hallazgos altos o críticos
+bastion surface -o superficie.html    # informe autocontenido para compartir o imprimir (también .json)
 bastion surface fix                   # plan para limitar a la red local lo abierto a cualquiera
 ```
 

@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write      # firmar la procedencia con la identidad OIDC del workflow (Sigstore)
+  attestations: write  # publicar las atestaciones en el repositorio
 
 jobs:
   release:
@@ -28,3 +30,13 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Procedencia SLSA de cada archivo publicado: prueba que lo construyó
+      # este workflow a partir de esta etiqueta del repositorio. Se comprueba
+      # con «gh attestation verify <archivo> --repo Ruby570bocadito/bastion».
+      - name: Atestación de procedencia (SLSA)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
