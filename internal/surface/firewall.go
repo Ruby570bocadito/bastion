@@ -38,6 +38,11 @@ type FirewallRule struct {
 	Remote     string // direcciones remotas permitidas ("*" = cualquiera)
 	Interfaces string // interfaces concretas (vacío = todas)
 	IfTypes    string // tipos de interfaz: All, Lan, Wireless, RemoteAccess
+	// Package es el SID del paquete de una app de la Microsoft Store
+	// (AppContainer): la regla solo se aplica a esa app, aunque no indique
+	// programa. UserOwner limita la regla a los procesos de ese usuario.
+	Package   string
+	UserOwner string
 }
 
 // Firewall es la política de entrada efectiva del Firewall de Windows.
@@ -146,6 +151,41 @@ func accessFrom(label string) string {
 	return "desde " + label
 }
 
+// AllowAll devuelve las reglas de entrada que lo permiten todo (cualquier
+// protocolo, puerto, programa y dirección) en algún perfil activo: equivalen
+// a desactivar el firewall en esas redes.
+func (fw *Firewall) AllowAll() []FirewallRule {
+	active := 0
+	for _, p := range fw.Active() {
+		if p.Enabled && p.BlockInbound {
+			active |= p.Bit
+		}
+	}
+	var out []FirewallRule
+	for _, r := range fw.Rules {
+		if !r.Allow || r.Profiles&active == 0 || r.Package != "" || r.UserOwner != "" {
+			continue
+		}
+		anyPort := strings.TrimSpace(r.LocalPorts) == "" || strings.TrimSpace(r.LocalPorts) == "*"
+		if r.Protocol == 256 && anyPort && strings.TrimSpace(r.App) == "" && strings.TrimSpace(r.Service) == "" &&
+			anyAddr(r.Local) && anyAddr(r.Remote) && r.Interfaces == "" && anyIfType(r.IfTypes) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// ProfileNames devuelve los nombres de los perfiles de la máscara.
+func ProfileNames(mask int) string {
+	var out []string
+	for _, b := range []int{1, 2, 4} {
+		if mask&b != 0 {
+			out = append(out, profileNames[b])
+		}
+	}
+	return joinHuman(out)
+}
+
 // fullBlock devuelve una regla de bloqueo que se aplica al puerto sin
 // restricciones de dirección. Las de bloqueo parcial no se tienen en cuenta
 // (se peca de considerar el puerto accesible, nunca al revés).
@@ -162,9 +202,22 @@ func (fw *Firewall) fullBlock(p Port, profile int) *FirewallRule {
 	return nil
 }
 
+// systemProcs son procesos que nunca corren como un usuario interactivo ni
+// dentro de un AppContainer.
+var systemProcs = map[string]bool{"system": true, "svchost.exe": true, "lsass.exe": true, "services.exe": true,
+	"wininit.exe": true, "spoolsv.exe": true}
+
 // matches comprueba perfil, protocolo, puerto, programa y servicio.
 func (r *FirewallRule) matches(p Port, profile int) bool {
 	if r.Profiles&profile == 0 {
+		return false
+	}
+	// Las reglas de apps de la Store solo afectan a su AppContainer: no
+	// abren puertos de programas normales ni de servicios del sistema.
+	if r.Package != "" {
+		return false
+	}
+	if r.UserOwner != "" && systemProcs[strings.ToLower(p.Process)] {
 		return false
 	}
 	switch {

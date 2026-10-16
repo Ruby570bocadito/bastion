@@ -101,7 +101,7 @@ Agrupa los sockets por servicio (el mismo puerto en IPv4 e IPv6 es una fila) con
 | **limitado** | Solo lo permiten reglas restringidas: a la red local (`LocalSubnet`), a ciertas direcciones remotas, a una interfaz o a las IP de una VPN. Por ejemplo, la regla «Tailscale-In» que crea Tailscale abre todos los puertos, pero solo para el tráfico que llega por Tailscale | Un nivel menos de severidad, diciendo desde dónde |
 | **filtrado** | Ninguna regla lo permite o una de bloqueo lo impide | No |
 
-Cada hallazgo nombra la regla que lo permite para poder comprobarlo. En Linux todavía no se evalúan las reglas (ufw, firewalld, nftables).
+Cada hallazgo nombra la regla que lo permite para poder comprobarlo. Las reglas de apps de la Microsoft Store (sin programa, ligadas al paquete de la app) solo se aplican a esa app, y las de un usuario concreto no cubren servicios del sistema. Una regla que lo permite **todo** (cualquier protocolo, puerto, programa y dirección) en un perfil activo es un hallazgo **alto** por sí misma: equivale a desactivar el firewall en esa red. En Linux todavía no se evalúan las reglas (ufw, firewalld, nftables).
 
 Los sockets UDP en puertos dinámicos (49152-65535 en Windows; `ip_local_port_range` en Linux) son de clientes, como las consultas DNS: se muestran como **cliente** solo con `--all` y no cuentan como servicios. Los puertos TCP dinámicos de `lsass`, `services`, `spoolsv`… se etiquetan como **RPC dinámico**. NetBIOS (137-139) cuenta como un único hallazgo.
 

@@ -317,6 +317,19 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		rep.Findings = append(rep.Findings, f)
 	}
 	rep.Findings = append(rep.Findings, shareFindings(inv.Shares)...)
+	if inv.Firewall != nil {
+		for _, r := range inv.Firewall.AllowAll() {
+			rep.Findings = append(rep.Findings, Finding{
+				ID: "SURF-FW-ALLOWALL", Severity: rule.SevHigh, Subject: "«" + r.Name + "»",
+				Title: fmt.Sprintf("La regla de firewall «%s» permite toda la entrada (perfil %s)", r.Name, ProfileNames(r.Profiles)),
+				Detail: "Admite cualquier protocolo y puerto, para cualquier programa y desde cualquier dirección: en esas redes " +
+					"equivale a tener el firewall desactivado, y cualquier servicio que escuche queda accesible.",
+				Fix: fmt.Sprintf("Si no sabes de dónde viene, desactívala y comprueba que todo sigue funcionando: "+
+					"Get-NetFirewallRule -DisplayName '%s' | Disable-NetFirewallRule. Si un programa la necesita, "+
+					"sustitúyela por una regla limitada a ese programa y sus puertos.", strings.ReplaceAll(r.Name, "'", "''")),
+			})
+		}
+	}
 	sort.SliceStable(rep.Findings, func(i, j int) bool {
 		if rep.Findings[i].Severity.Rank() != rep.Findings[j].Severity.Rank() {
 			return rep.Findings[i].Severity.Rank() < rep.Findings[j].Severity.Rank()

@@ -338,6 +338,50 @@ func TestFirewallEvaluate(t *testing.T) {
 	}
 }
 
+func TestStoreAppAndAllowAllRules(t *testing.T) {
+	profiles := []FirewallProfile{
+		{Name: "Dominio", Bit: 1, Enabled: true, BlockInbound: true},
+		{Name: "Privado", Bit: 2, Enabled: true, BlockInbound: true, Active: true},
+		{Name: "Público", Bit: 4, Enabled: true, BlockInbound: true, Active: true},
+	}
+	rdp := Port{Proto: "tcp", Port: 3389, Addresses: []string{"0.0.0.0"}, Process: "svchost.exe", Services: []string{"TermService"}}
+	chrome := Port{Proto: "udp", Port: 5353, Addresses: []string{"0.0.0.0"}, Process: "chrome.exe"}
+
+	// Regla de una app de la Store: sin programa, pero solo para su AppContainer.
+	fw := &Firewall{Profiles: profiles, Rules: []FirewallRule{
+		{Name: "XBOX", Allow: true, Protocol: 256, Profiles: 2, Package: "S-1-15-2-1234-5678"},
+		{Name: "Regla de usuario", Allow: true, Protocol: 17, LocalPorts: "5353", Profiles: 2, UserOwner: "S-1-5-21-1-2-3-1001"},
+	}}
+	if a := fw.Evaluate(rdp); a.State != FirewallFiltered {
+		t.Errorf("una regla de app de la Store no abre RDP: %+v", a)
+	}
+	if a := fw.Evaluate(Port{Proto: "udp", Port: 5353, Addresses: []string{"0.0.0.0"}, Process: "svchost.exe", Services: []string{"Dnscache"}}); a.State != FirewallFiltered {
+		t.Errorf("una regla de usuario no cubre un servicio del sistema: %+v", a)
+	}
+	if a := fw.Evaluate(chrome); a.State != FirewallOpen {
+		t.Errorf("una regla de usuario sí cubre sus programas: %+v", a)
+	}
+	if n := len(fw.AllowAll()); n != 0 {
+		t.Errorf("las reglas de apps no cuentan como «permitir todo»: %d", n)
+	}
+
+	// Una regla de verdad sin límites: lo abre todo y es un hallazgo por sí misma.
+	fw.Rules = append(fw.Rules, FirewallRule{Name: "Todo abierto", Allow: true, Protocol: 256, LocalPorts: "*", Profiles: 2, Local: "*", Remote: "*"})
+	if a := fw.Evaluate(rdp); a.State != FirewallOpen || !strings.Contains(a.Why, "Todo abierto") {
+		t.Errorf("con una regla sin límites RDP queda abierto: %+v", a)
+	}
+	rep := Analyze(Inventory{Firewall: fw}, platform.Info{}, "test", time.Now())
+	if len(rep.Findings) != 1 || rep.Findings[0].ID != "SURF-FW-ALLOWALL" || rep.Findings[0].Severity != rule.SevHigh ||
+		!strings.Contains(rep.Findings[0].Fix, "Disable-NetFirewallRule") || !strings.Contains(rep.Findings[0].Title, "Privado") {
+		t.Errorf("hallazgo de regla «permitir todo»: %+v", rep.Findings)
+	}
+	// En un perfil que no está activo no es un hallazgo.
+	fw.Rules[2].Profiles = 1
+	if n := len(fw.AllowAll()); n != 0 {
+		t.Errorf("perfil Dominio inactivo: %d", n)
+	}
+}
+
 func TestParseAddrs(t *testing.T) {
 	set := parseAddrs("100.127.45.81/255.255.255.255,fd7a:115c:a1e0::/48,10.0.0.1-10.0.0.9")
 	for ip, want := range map[string]bool{"100.127.45.81": true, "100.127.45.82": false, "fd7a:115c:a1e0::1": true, "10.0.0.5": true, "10.0.0.10": false} {
