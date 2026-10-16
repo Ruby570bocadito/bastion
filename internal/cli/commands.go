@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -370,8 +371,12 @@ func newProfilesCmd() *cobra.Command {
 
 // ---- update ------------------------------------------------------------------
 
+// reTag valida una versión pedida con --version (v0.3.2, 0.3.2, v1.0.0-rc.1).
+var reTag = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$`)
+
 func newUpdateCmd() *cobra.Command {
 	var check, force, pause bool
+	var wanted string
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Actualizar Bastion (y su paquete de reglas) a la última versión",
@@ -401,17 +406,31 @@ BASTION_REPO / BASTION_RELEASES_URL para usar un espejo interno).`,
 			s := stdoutStyle()
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
-			fmt.Printf("  Comprobando %s …\n", src.Base())
-			latest, err := src.Latest(ctx)
-			if err != nil {
-				return fmt.Errorf("no se pudo consultar la última versión: %w", err)
-			}
 			current := version.Version
-			newer := selfupdate.Newer(latest, current)
-			fmt.Printf("  Versión instalada: %s · última publicada: %s\n", current, latest)
-			if !newer && !force {
-				fmt.Printf("  %s Bastion está actualizado.\n", s.Green(report.Sym("✓")))
-				return nil
+			var latest string
+			if wanted != "" {
+				// Versión concreta: no depende de "latest" (que GitHub cachea
+				// unos minutos tras publicar) y permite volver atrás.
+				if !reTag.MatchString(wanted) {
+					return fmt.Errorf("--version %q no es una versión válida (ejemplo: v0.3.2)", wanted)
+				}
+				latest = "v" + strings.TrimPrefix(wanted, "v")
+				fmt.Printf("  Versión instalada: %s · versión pedida: %s\n", current, latest)
+				if strings.TrimPrefix(latest, "v") == strings.TrimPrefix(current, "v") && !force {
+					fmt.Printf("  %s Ya tienes esa versión.\n", s.Green(report.Sym("✓")))
+					return nil
+				}
+			} else {
+				fmt.Printf("  Comprobando %s …\n", src.Base())
+				latest, err = src.Latest(ctx)
+				if err != nil {
+					return fmt.Errorf("no se pudo consultar la última versión: %w", err)
+				}
+				fmt.Printf("  Versión instalada: %s · última publicada: %s\n", current, latest)
+				if !selfupdate.Newer(latest, current) && !force {
+					fmt.Printf("  %s Bastion está actualizado.\n", s.Green(report.Sym("✓")))
+					return nil
+				}
 			}
 			if check {
 				fmt.Printf("  %s Hay una versión nueva. Ejecuta: bastion update\n", s.Yellow(report.Sym("↑")))
@@ -427,6 +446,9 @@ BASTION_REPO / BASTION_RELEASES_URL para usar un espejo interno).`,
 				args := []string{"update", "--pause"}
 				if force {
 					args = append(args, "--force")
+				}
+				if wanted != "" {
+					args = append(args, "--version", latest)
 				}
 				fmt.Printf("  %s %s solo lo puede modificar un administrador.\n", s.Yellow("!"), dir)
 				fmt.Println("    Se abre una ventana de administrador para terminar la actualización (acepta el aviso de Windows).")
@@ -448,6 +470,7 @@ BASTION_REPO / BASTION_RELEASES_URL para usar un espejo interno).`,
 	}
 	cmd.Flags().BoolVar(&check, "check", false, "solo comprobar si hay una versión nueva")
 	cmd.Flags().BoolVar(&force, "force", false, "reinstalar aunque no haya versión nueva")
+	cmd.Flags().StringVar(&wanted, "version", "", "instalar una versión concreta (p. ej. v0.3.2), también anterior")
 	cmd.Flags().BoolVar(&pause, "pause", false, "esperar a Intro al terminar (ventana abierta por la elevación)")
 	_ = cmd.Flags().MarkHidden("pause")
 	return cmd

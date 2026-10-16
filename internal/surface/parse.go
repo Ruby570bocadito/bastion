@@ -393,7 +393,8 @@ func parsePSFirewall(data map[string]any) *Firewall {
 			continue
 		}
 		fw.Rules = append(fw.Rules, FirewallRule{Name: str(m["N"]), Allow: num(m["A"]) == 1, Protocol: int(num(m["P"])),
-			LocalPorts: str(m["L"]), App: str(m["App"]), Service: str(m["S"]), Profiles: int(num(m["Pr"])), Remote: str(m["R"])})
+			LocalPorts: str(m["L"]), App: str(m["App"]), Service: str(m["S"]), Profiles: int(num(m["Pr"])),
+			Local: str(m["LA"]), Remote: str(m["R"]), Interfaces: str(m["I"]), IfTypes: str(m["IT"])})
 	}
 	fw.InboundRules = len(fw.Rules)
 	if len(fw.Profiles) == 0 {

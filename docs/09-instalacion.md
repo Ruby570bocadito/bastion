@@ -112,11 +112,14 @@ Sin ningún servidor: copia el archivo y su `checksums.txt` y usa `--local` / `-
 ## Actualizar
 
 ```bash
-sudo bastion update            # descarga, verifica y reemplaza
-sudo bastion update --check    # solo comprobar
+sudo bastion update                    # descarga, verifica y reemplaza
+sudo bastion update --check            # solo comprobar
+sudo bastion update --version v0.3.2   # una versión concreta (también para volver atrás)
 ```
 
 Las reglas oficiales van dentro del binario: al actualizar Bastion se actualizan también las reglas.
+
+Justo después de publicar una versión, GitHub puede seguir anunciando la anterior como "última" durante unos minutos (caché). `--version` no depende de eso.
 
 En Windows, `C:\Program Files\Bastion` solo lo puede modificar un administrador. Si ejecutas `bastion update` en una ventana normal, Bastion lo detecta antes de descargar nada y abre una ventana de administrador (aviso de UAC) que termina la actualización y espera a que pulses Intro. En Linux, sin root, te pide repetir con `sudo`.
 

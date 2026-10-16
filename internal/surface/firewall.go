@@ -1,9 +1,18 @@
 package surface
 
 import (
+	"bytes"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
+)
+
+// Estados de un puerto frente al firewall.
+const (
+	FirewallOpen     = "open"     // se puede llegar desde cualquier dirección
+	FirewallLimited  = "limited"  // solo desde ciertas redes, direcciones o interfaces
+	FirewallFiltered = "filtered" // lo bloquea el firewall
 )
 
 // FirewallProfile es un perfil del Firewall de Windows (Dominio, Privado o
@@ -25,7 +34,10 @@ type FirewallRule struct {
 	App        string // ruta del programa (vacía = cualquiera)
 	Service    string // nombre del servicio, "*" (cualquier servicio) o vacío
 	Profiles   int    // máscara de perfiles
+	Local      string // direcciones locales (destino) a las que se aplica ("*" = todas)
 	Remote     string // direcciones remotas permitidas ("*" = cualquiera)
+	Interfaces string // interfaces concretas (vacío = todas)
+	IfTypes    string // tipos de interfaz: All, Lan, Wireless, RemoteAccess
 }
 
 // Firewall es la política de entrada efectiva del Firewall de Windows.
@@ -34,6 +46,16 @@ type Firewall struct {
 	Rules    []FirewallRule    `json:"-"`
 	// InboundRules es el número de reglas de entrada habilitadas.
 	InboundRules int `json:"inbound_rules"`
+}
+
+// Access es el resultado de evaluar un puerto.
+type Access struct {
+	State string // FirewallOpen | FirewallLimited | FirewallFiltered
+	// Limit resume desde dónde se llega cuando está limitado ("Tailscale",
+	// "red local", "desde 10.0.0.0/8"…).
+	Limit string
+	// Why explica la decisión (reglas y perfil) para poder comprobarla.
+	Why string
 }
 
 var profileNames = map[int]string{1: "Dominio", 2: "Privado", 4: "Público"}
@@ -52,62 +74,280 @@ func (fw *Firewall) Active() []FirewallProfile {
 	return out
 }
 
-// Evaluate decide si se puede llegar al puerto desde la red con la
-// política actual, como lo hace el Firewall de Windows: en cada perfil
-// activo, una regla de bloqueo gana a una de permiso; sin regla, manda la
-// acción por defecto. why explica la decisión (regla o perfil).
-func (fw *Firewall) Evaluate(p Port) (open bool, why string) {
-	var blockedBy []string
+// Evaluate decide desde dónde se puede llegar al puerto con la política
+// actual, como lo hace el Firewall de Windows: en cada perfil activo, una
+// regla de bloqueo gana a una de permiso y, sin regla, manda la acción por
+// defecto. Una regla de permiso puede estar limitada a ciertas direcciones
+// locales (p. ej. «Tailscale-In», solo hacia la IP de Tailscale), remotas
+// (LocalSubnet) o interfaces: entonces el puerto queda "limitado".
+func (fw *Firewall) Evaluate(p Port) Access {
+	var limits, limitRules, blocked []string
 	for _, prof := range fw.Active() {
 		if !prof.Enabled {
-			return true, "desactivado en el perfil " + prof.Name
+			return Access{State: FirewallOpen, Why: "firewall desactivado en el perfil " + prof.Name}
 		}
-		if r := fw.match(p, prof.Bit, false); r != nil {
-			blockedBy = append(blockedBy, fmt.Sprintf("regla de bloqueo «%s»", r.Name))
+		if r := fw.fullBlock(p, prof.Bit); r != nil {
+			blocked = append(blocked, fmt.Sprintf("regla de bloqueo «%s»", r.Name))
 			continue
 		}
 		if !prof.BlockInbound {
-			return true, "el perfil " + prof.Name + " permite la entrada por defecto"
+			return Access{State: FirewallOpen, Why: "el perfil " + prof.Name + " permite la entrada por defecto"}
 		}
-		if r := fw.match(p, prof.Bit, true); r != nil {
-			why := fmt.Sprintf("lo permite la regla «%s» (perfil %s", r.Name, prof.Name)
-			if r.Remote != "" && r.Remote != "*" {
-				why += ", solo desde " + r.Remote
+		for i := range fw.Rules {
+			r := &fw.Rules[i]
+			if !r.Allow || !r.matches(p, prof.Bit) {
+				continue
 			}
-			return true, why + ")"
+			limit, applies := r.limit(p)
+			if !applies {
+				continue
+			}
+			if limit == "" {
+				return Access{State: FirewallOpen, Why: fmt.Sprintf("lo permite la regla «%s» (perfil %s)", r.Name, prof.Name)}
+			}
+			limits = appendOnce(limits, limit)
+			limitRules = appendOnce(limitRules, fmt.Sprintf("«%s»", r.Name))
 		}
 	}
-	if len(blockedBy) > 0 {
-		return false, strings.Join(blockedBy, ", ")
+	if len(limits) > 0 {
+		label := joinHuman(limits)
+		word := "regla"
+		if len(limitRules) > 1 {
+			word = "reglas"
+		}
+		return Access{State: FirewallLimited, Limit: label,
+			Why: fmt.Sprintf("solo %s (%s %s)", accessFrom(label), word, joinHuman(limitRules))}
+	}
+	if len(blocked) > 0 {
+		return Access{State: FirewallFiltered, Why: strings.Join(blocked, ", ")}
 	}
 	names := make([]string, 0, 3)
 	for _, prof := range fw.Active() {
 		names = append(names, prof.Name)
 	}
-	return false, "ninguna regla lo permite en el perfil " + strings.Join(names, ", ")
+	return Access{State: FirewallFiltered, Why: "ninguna regla lo permite en el perfil " + strings.Join(names, ", ")}
 }
 
-// match devuelve la primera regla (de permiso o de bloqueo) que se aplica
-// al puerto en el perfil indicado.
-func (fw *Firewall) match(p Port, profile int, allow bool) *FirewallRule {
+// joinHuman une una lista como en español: "A", "A y B", "A, B y C".
+func joinHuman(xs []string) string {
+	switch len(xs) {
+	case 0:
+		return ""
+	case 1:
+		return xs[0]
+	}
+	return strings.Join(xs[:len(xs)-1], ", ") + " y " + xs[len(xs)-1]
+}
+
+func accessFrom(label string) string {
+	if strings.HasPrefix(label, "desde ") || strings.HasPrefix(label, "hacia ") || strings.HasPrefix(label, "en ") {
+		return label
+	}
+	return "desde " + label
+}
+
+// fullBlock devuelve una regla de bloqueo que se aplica al puerto sin
+// restricciones de dirección. Las de bloqueo parcial no se tienen en cuenta
+// (se peca de considerar el puerto accesible, nunca al revés).
+func (fw *Firewall) fullBlock(p Port, profile int) *FirewallRule {
 	for i := range fw.Rules {
 		r := &fw.Rules[i]
-		if r.Allow != allow || r.Profiles&profile == 0 {
+		if r.Allow || !r.matches(p, profile) {
 			continue
 		}
-		switch {
-		case r.Protocol == 256:
-		case r.Protocol == 6 && p.Proto == "tcp":
-		case r.Protocol == 17 && p.Proto == "udp":
-		default:
-			continue
+		if anyAddr(r.Local) && anyAddr(r.Remote) && r.Interfaces == "" && anyIfType(r.IfTypes) {
+			return r
 		}
-		if !matchPorts(r.LocalPorts, p) || !matchApp(r.App, p.Process) || !matchService(r.Service, p.Services) {
-			continue
-		}
-		return r
 	}
 	return nil
+}
+
+// matches comprueba perfil, protocolo, puerto, programa y servicio.
+func (r *FirewallRule) matches(p Port, profile int) bool {
+	if r.Profiles&profile == 0 {
+		return false
+	}
+	switch {
+	case r.Protocol == 256:
+	case r.Protocol == 6 && p.Proto == "tcp":
+	case r.Protocol == 17 && p.Proto == "udp":
+	default:
+		return false
+	}
+	return matchPorts(r.LocalPorts, p) && matchApp(r.App, p.Process) && matchService(r.Service, p.Services)
+}
+
+// limit devuelve la restricción de la regla para este puerto ("" si no la
+// tiene) y si la regla llega a aplicarse: una regla limitada a direcciones
+// locales no cubre un puerto que solo escucha en otras.
+func (r *FirewallRule) limit(p Port) (string, bool) {
+	var parts []string
+	if !anyAddr(r.Local) {
+		local := parseAddrs(r.Local)
+		if specific := specificAddrs(p.Addresses); len(specific) > 0 && !local.containsAny(specific) {
+			return "", false
+		}
+		parts = append(parts, local.describe(true))
+	}
+	if !anyAddr(r.Remote) {
+		parts = append(parts, parseAddrs(r.Remote).describe(false))
+	}
+	if r.Interfaces != "" {
+		parts = append(parts, "en la interfaz "+r.Interfaces)
+	} else if !anyIfType(r.IfTypes) {
+		parts = append(parts, "en "+ifTypesLabel(r.IfTypes))
+	}
+	return strings.Join(parts, ", "), true
+}
+
+func anyAddr(s string) bool {
+	s = strings.TrimSpace(s)
+	return s == "" || s == "*"
+}
+
+func anyIfType(s string) bool {
+	s = strings.TrimSpace(strings.ToLower(s))
+	return s == "" || s == "all"
+}
+
+func ifTypesLabel(s string) string {
+	names := map[string]string{"lan": "red cableada", "wireless": "wifi", "remoteaccess": "conexiones VPN o de acceso remoto"}
+	var out []string
+	for _, t := range strings.Split(s, ",") {
+		t = strings.TrimSpace(t)
+		if n, ok := names[strings.ToLower(t)]; ok {
+			out = append(out, n)
+		} else if t != "" {
+			out = append(out, t)
+		}
+	}
+	return strings.Join(out, " y ")
+}
+
+// specificAddrs devuelve las direcciones de escucha que no son comodines.
+// Si el puerto escucha en todas (0.0.0.0, ::), devuelve nil.
+func specificAddrs(addrs []string) []net.IP {
+	var out []net.IP
+	for _, a := range addrs {
+		a = strings.Trim(a, "[]")
+		if i := strings.IndexByte(a, '%'); i >= 0 {
+			a = a[:i]
+		}
+		ip := net.ParseIP(a)
+		if ip == nil || ip.IsUnspecified() {
+			return nil
+		}
+		out = append(out, ip)
+	}
+	return out
+}
+
+// addrSet es una lista de direcciones de una regla del firewall: IPs,
+// subredes (CIDR o con máscara), rangos y palabras clave (LocalSubnet…).
+type addrSet struct {
+	nets     []*net.IPNet
+	ranges   [][2]net.IP
+	keywords []string
+	raw      []string
+}
+
+func parseAddrs(s string) addrSet {
+	var set addrSet
+	for _, tok := range strings.Split(s, ",") {
+		tok = strings.TrimSpace(tok)
+		if tok == "" || tok == "*" {
+			continue
+		}
+		set.raw = append(set.raw, tok)
+		if lo, hi, ok := strings.Cut(tok, "-"); ok {
+			a, b := net.ParseIP(lo), net.ParseIP(hi)
+			if a != nil && b != nil {
+				set.ranges = append(set.ranges, [2]net.IP{a, b})
+				continue
+			}
+		}
+		if ip, mask, ok := strings.Cut(tok, "/"); ok {
+			if _, n, err := net.ParseCIDR(tok); err == nil {
+				set.nets = append(set.nets, n)
+				continue
+			}
+			if base, m := net.ParseIP(ip), net.ParseIP(mask); base != nil && m != nil && m.To4() != nil {
+				mm := net.IPMask(m.To4())
+				set.nets = append(set.nets, &net.IPNet{IP: base.Mask(mm), Mask: mm})
+				continue
+			}
+		}
+		if ip := net.ParseIP(tok); ip != nil {
+			bits := 128
+			if ip.To4() != nil {
+				ip, bits = ip.To4(), 32
+			}
+			set.nets = append(set.nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+			continue
+		}
+		set.keywords = append(set.keywords, tok)
+	}
+	return set
+}
+
+func (s addrSet) contains(ip net.IP) bool {
+	if len(s.keywords) > 0 {
+		return true // LocalSubnet, DHCP…: no se puede saber, se asume que sí
+	}
+	for _, n := range s.nets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	for _, r := range s.ranges {
+		a, b, x := r[0].To16(), r[1].To16(), ip.To16()
+		if bytes.Compare(x, a) >= 0 && bytes.Compare(x, b) <= 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (s addrSet) containsAny(ips []net.IP) bool {
+	for _, ip := range ips {
+		if s.contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+var (
+	_, tailscale4, _ = net.ParseCIDR("100.64.0.0/10")
+	_, tailscale6, _ = net.ParseCIDR("fd7a:115c:a1e0::/48")
+)
+
+// describe resume la lista para mostrarla: "Tailscale", "red local" o las
+// direcciones. local indica si son direcciones de destino del equipo.
+func (s addrSet) describe(local bool) string {
+	if len(s.raw) == 0 {
+		return ""
+	}
+	ts := len(s.keywords) == 0 && len(s.ranges) == 0
+	for _, n := range s.nets {
+		if !(tailscale4.Contains(n.IP) || tailscale6.Contains(n.IP)) {
+			ts = false
+		}
+	}
+	if ts {
+		return "Tailscale"
+	}
+	if len(s.keywords) == 1 && len(s.raw) == 1 && strings.EqualFold(s.keywords[0], "LocalSubnet") {
+		return "la red local"
+	}
+	list := strings.Join(s.raw, ", ")
+	if len(s.raw) > 3 {
+		list = strings.Join(s.raw[:3], ", ") + "…"
+	}
+	if local {
+		return "hacia " + list
+	}
+	return "desde " + list
 }
 
 // matchPorts interpreta la lista de puertos locales de una regla.

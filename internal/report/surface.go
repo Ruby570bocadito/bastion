@@ -30,7 +30,9 @@ func SurfaceConsole(w io.Writer, rep *surface.Report, all bool, s Style) {
 	}
 	reach := fmt.Sprintf("%d en la red", rep.Exposed)
 	if rep.Firewall != nil {
-		reach += fmt.Sprintf(" · %s", s.Bold(fmt.Sprintf("%d accesibles a través del firewall", rep.Reachable)))
+		open := rep.Reachable - rep.Limited
+		reach += " · " + s.Bold(plural(open, "abierto", "abiertos")+" a cualquiera") +
+			" · " + plural(rep.Limited, "limitado", "limitados") + " a ciertas redes · " + plural(rep.Exposed-rep.Reachable, "filtrado", "filtrados")
 	} else {
 		reach = s.Bold(reach)
 	}
@@ -115,9 +117,11 @@ func SurfaceConsole(w io.Writer, rep *surface.Report, all bool, s Style) {
 		row := []any{fmt.Sprintf("%d/%s", p.Port, p.Proto), truncate(strings.Join(p.Addresses, ", "), 28), scope}
 		if rep.Firewall != nil {
 			switch p.Firewall {
-			case "open":
+			case surface.FirewallOpen:
 				row = append(row, Styled("abierto", s.Red))
-			case "filtered":
+			case surface.FirewallLimited:
+				row = append(row, Styled(truncate("limitado: "+p.FirewallLimit, 30), s.Yellow))
+			case surface.FirewallFiltered:
 				row = append(row, Styled("filtrado", s.Green))
 			default:
 				row = append(row, Styled("—", s.Dim))

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"net"
+
 	"github.com/Ruby570bocadito/bastion/internal/platform"
 	"github.com/Ruby570bocadito/bastion/pkg/rule"
 )
@@ -266,58 +268,91 @@ func TestFirewallEvaluate(t *testing.T) {
 		Profiles: []FirewallProfile{
 			{Name: "Dominio", Bit: 1, Enabled: true, BlockInbound: true},
 			{Name: "Privado", Bit: 2, Enabled: true, BlockInbound: true, Active: true},
-			{Name: "Público", Bit: 4, Enabled: true, BlockInbound: true},
+			{Name: "Público", Bit: 4, Enabled: true, BlockInbound: true, Active: true},
 		},
 		Rules: []FirewallRule{
-			{Name: "Escritorio remoto - Modo de usuario (TCP de entrada)", Allow: true, Protocol: 6, LocalPorts: "3389",
-				App: `%SystemRoot%\system32\svchost.exe`, Service: "termservice", Profiles: 0x7fffffff, Remote: "*"},
-			{Name: "Compartir archivos e impresoras (SMB de entrada)", Allow: true, Protocol: 6, LocalPorts: "445", App: "System", Profiles: 4, Remote: "LocalSubnet"},
+			// Como la crea Tailscale: cualquier puerto, pero solo hacia las IP de Tailscale.
+			{Name: "Tailscale-In", Allow: true, Protocol: 256, Profiles: 3, Local: "100.127.45.81,fd7a:115c:a1e0::bf01:2dbf", Remote: "*"},
+			{Name: "OpenSSH SSH Server (sshd)", Allow: true, Protocol: 6, LocalPorts: "22", Profiles: 0x7fffffff, Local: "*", Remote: "*"},
+			{Name: "Compartir archivos e impresoras (SMB de entrada)", Allow: true, Protocol: 6, LocalPorts: "445", App: "System", Profiles: 2, Remote: "LocalSubnet"},
+			{Name: "Detección de redes (SSDP de entrada)", Allow: true, Protocol: 17, LocalPorts: "1900", Service: "SSDPSRV", Profiles: 2, Remote: "LocalSubnet"},
 			{Name: "Steam", Allow: true, Protocol: 256, App: `C:\Program Files (x86)\Steam\steam.exe`, Profiles: 2, Remote: "*"},
-			{Name: "Bloquear Steam UDP", Allow: false, Protocol: 17, LocalPorts: "27036", Profiles: 2},
-			{Name: "RPC dinámico", Allow: true, Protocol: 6, LocalPorts: "RPC", Service: "*", Profiles: 2},
-			{Name: "Rango", Allow: true, Protocol: 17, LocalPorts: "47998-48010", Profiles: 2},
+			{Name: "Bloquear Steam UDP", Allow: false, Protocol: 17, LocalPorts: "27036", Profiles: 6},
+			{Name: "Sunshine (cable)", Allow: true, Protocol: 6, LocalPorts: "47984-48010", Profiles: 6, IfTypes: "Lan"},
+			{Name: "Admin desde 10.0.0.0/8", Allow: true, Protocol: 6, LocalPorts: "5985", Profiles: 2, Remote: "10.0.0.0/255.0.0.0"},
 		},
 	}
+	all := []string{"0.0.0.0", "::"}
 	cases := []struct {
-		p    Port
-		open bool
-		why  string
+		name  string
+		p     Port
+		state string
+		limit string
 	}{
-		{Port{Proto: "tcp", Port: 3389, Process: "svchost.exe", Services: []string{"TermService"}}, true, "Escritorio remoto"},
-		{Port{Proto: "tcp", Port: 3389, Process: "otro.exe"}, false, "ninguna regla"},
-		{Port{Proto: "tcp", Port: 445, Process: "System"}, false, "perfil Privado"}, // la regla solo es del perfil Público
-		{Port{Proto: "tcp", Port: 27036, Process: "steam.exe"}, true, "Steam"},
-		{Port{Proto: "udp", Port: 27036, Process: "steam.exe"}, false, "regla de bloqueo"},
-		{Port{Proto: "tcp", Port: 49666, Process: "svchost.exe", Services: []string{"Schedule"}}, true, "RPC dinámico"},
-		{Port{Proto: "tcp", Port: 49665, Process: "wininit.exe"}, false, ""}, // sin servicio: no casa con Service "*"
-		{Port{Proto: "udp", Port: 48000, Process: "sunshine.exe"}, true, "Rango"},
-		{Port{Proto: "tcp", Port: 48000, Process: "sunshine.exe"}, false, ""},
+		{"RDP solo por Tailscale", Port{Proto: "tcp", Port: 3389, Addresses: all, Process: "svchost.exe", Services: []string{"TermService"}}, FirewallLimited, "Tailscale"},
+		{"SSH abierto (una regla sin límites gana)", Port{Proto: "tcp", Port: 22, Addresses: all, Process: "sshd.exe"}, FirewallOpen, ""},
+		{"SMB: Tailscale y red local", Port{Proto: "tcp", Port: 445, Addresses: all, Process: "System"}, FirewallLimited, "Tailscale y la red local"},
+		{"NetBIOS en la IP de la LAN: Tailscale-In no lo cubre", Port{Proto: "udp", Port: 137, Addresses: []string{"192.168.1.131"}, Process: "System"}, FirewallFiltered, ""},
+		{"tailscaled en su IP", Port{Proto: "tcp", Port: 52722, Addresses: []string{"100.127.45.81"}, Process: "tailscaled.exe"}, FirewallLimited, "Tailscale"},
+		{"Steam TCP abierto", Port{Proto: "tcp", Port: 27036, Addresses: []string{"0.0.0.0"}, Process: "steam.exe"}, FirewallOpen, ""},
+		{"Steam UDP bloqueado", Port{Proto: "udp", Port: 27036, Addresses: []string{"0.0.0.0"}, Process: "steam.exe"}, FirewallFiltered, ""},
+		{"Sunshine por cable y por Tailscale", Port{Proto: "tcp", Port: 47989, Addresses: []string{"0.0.0.0"}, Process: "sunshine.exe"}, FirewallLimited, "Tailscale y en red cableada"},
+		{"WinRM solo desde una subred", Port{Proto: "tcp", Port: 5985, Addresses: []string{"0.0.0.0"}, Process: "System"}, FirewallLimited, "Tailscale y desde 10.0.0.0/255.0.0.0"},
 	}
 	for _, c := range cases {
-		open, why := fw.Evaluate(c.p)
-		if open != c.open || !strings.Contains(why, c.why) {
-			t.Errorf("%d/%s %s → %v %q, quiero %v (%q)", c.p.Port, c.p.Proto, c.p.Process, open, why, c.open, c.why)
+		a := fw.Evaluate(c.p)
+		if a.State != c.state || a.Limit != c.limit {
+			t.Errorf("%s: %s %q (%s), quiero %s %q", c.name, a.State, a.Limit, a.Why, c.state, c.limit)
 		}
 	}
-	// Una regla limitada a direcciones remotas lo dice; un perfil desactivado lo abre todo.
-	fw.Profiles[2].Active, fw.Profiles[1].Active = true, false
-	if open, why := fw.Evaluate(Port{Proto: "tcp", Port: 445, Process: "System"}); !open || !strings.Contains(why, "solo desde LocalSubnet") {
-		t.Errorf("SMB en red pública: %v %q", open, why)
+	if a := fw.Evaluate(cases[0].p); !strings.Contains(a.Why, "Tailscale-In") || !strings.HasPrefix(a.Why, "solo desde Tailscale") {
+		t.Errorf("la explicación debe nombrar la regla: %q", a.Why)
 	}
+	if a := fw.Evaluate(cases[1].p); !strings.Contains(a.Why, "OpenSSH") {
+		t.Errorf("SSH: %q", a.Why)
+	}
+	// Un perfil desactivado lo abre todo.
 	fw.Profiles[2].Enabled = false
-	if open, why := fw.Evaluate(Port{Proto: "tcp", Port: 9999}); !open || !strings.Contains(why, "desactivado") {
-		t.Errorf("firewall desactivado: %v %q", open, why)
+	if a := fw.Evaluate(Port{Proto: "tcp", Port: 9999, Addresses: all}); a.State != FirewallOpen || !strings.Contains(a.Why, "desactivado") {
+		t.Errorf("firewall desactivado: %+v", a)
 	}
+	fw.Profiles[2].Enabled = true
 
-	// Con el firewall evaluado, lo filtrado no genera hallazgos ni resta.
+	// En el análisis: lo filtrado no cuenta, lo limitado baja un nivel.
 	inv := Inventory{Firewall: fw, Listeners: []Listener{
 		{Proto: "tcp", Address: "0.0.0.0", Port: 3389, Scope: ScopeNetwork, Process: "svchost.exe", Services: []string{"TermService"}},
+		{Proto: "tcp", Address: "::", Port: 3389, Scope: ScopeNetwork, Process: "svchost.exe", Services: []string{"TermService"}},
+		{Proto: "udp", Address: "192.168.1.131", Port: 137, Scope: ScopeNetwork, PID: 4, Process: "System"},
+		{Proto: "udp", Address: "0.0.0.0", Port: 5353, Scope: ScopeNetwork, Process: "chrome.exe"},
 	}}
-	fw.Profiles[2].Enabled = true
-	fw.Rules[0].Allow = false // ahora es una regla de bloqueo
 	rep := Analyze(inv, platform.Info{}, "test", time.Now())
-	if len(rep.Findings) != 0 || rep.Reachable != 0 || rep.Exposed != 1 || rep.Ports[0].Firewall != "filtered" {
-		t.Errorf("RDP filtrado: %+v %+v", rep.Findings, rep.Ports)
+	if rep.Exposed != 3 || rep.Reachable != 2 || rep.Limited != 2 {
+		t.Errorf("expuestos %d (3), accesibles %d (2), limitados %d (2)", rep.Exposed, rep.Reachable, rep.Limited)
+	}
+	// RDP alto → medio por estar limitado a Tailscale; mDNS bajo → informativo (sin hallazgo); NetBIOS filtrado.
+	if len(rep.Findings) != 1 || rep.Findings[0].Severity != rule.SevMedium || !strings.Contains(rep.Findings[0].Title, "solo desde Tailscale") {
+		t.Fatalf("hallazgos: %+v", rep.Findings)
+	}
+	if rep.Score != 93 {
+		t.Errorf("puntuación %d, quiero 93", rep.Score)
+	}
+}
+
+func TestParseAddrs(t *testing.T) {
+	set := parseAddrs("100.127.45.81/255.255.255.255,fd7a:115c:a1e0::/48,10.0.0.1-10.0.0.9")
+	for ip, want := range map[string]bool{"100.127.45.81": true, "100.127.45.82": false, "fd7a:115c:a1e0::1": true, "10.0.0.5": true, "10.0.0.10": false} {
+		if got := set.contains(net.ParseIP(ip)); got != want {
+			t.Errorf("%s: %v, quiero %v", ip, got, want)
+		}
+	}
+	if d := parseAddrs("100.127.45.81,fd7a:115c:a1e0::bf01:2dbf").describe(true); d != "Tailscale" {
+		t.Errorf("describe Tailscale: %q", d)
+	}
+	if d := parseAddrs("LocalSubnet").describe(false); d != "la red local" {
+		t.Errorf("describe LocalSubnet: %q", d)
+	}
+	if !parseAddrs("LocalSubnet").contains(net.ParseIP("1.2.3.4")) {
+		t.Error("una palabra clave se asume que contiene la dirección")
 	}
 }
 
@@ -327,10 +362,10 @@ func TestParsePSFirewall(t *testing.T) {
 			map[string]any{"Bit": 1.0, "Enabled": true, "BlockInbound": true, "Active": false},
 			map[string]any{"Bit": 2.0, "Enabled": true, "BlockInbound": true, "Active": true},
 		},
-		"rules": map[string]any{"N": "Escritorio remoto", "A": 1.0, "P": 6.0, "L": "3389", "App": "", "S": "", "Pr": 2147483647.0, "R": "*"},
+		"rules": map[string]any{"N": "Tailscale-In", "A": 1.0, "P": 256.0, "L": "*", "App": "", "S": "", "Pr": 3.0, "LA": "100.127.45.81", "R": "*", "I": "", "IT": "All"},
 	}
 	fw := parsePSFirewall(data)
-	if fw == nil || len(fw.Profiles) != 2 || fw.Profiles[1].Name != "Privado" || !fw.Profiles[1].Active || fw.InboundRules != 1 || !fw.Rules[0].Allow {
+	if fw == nil || len(fw.Profiles) != 2 || fw.Profiles[1].Name != "Privado" || !fw.Profiles[1].Active || fw.InboundRules != 1 || !fw.Rules[0].Allow || fw.Rules[0].Local != "100.127.45.81" {
 		t.Errorf("firewall: %+v", fw)
 	}
 	if parsePSFirewall(map[string]any{}) != nil {

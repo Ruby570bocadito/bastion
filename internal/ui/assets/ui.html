@@ -726,7 +726,8 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
       el("div", { class: "hero-figure" }, [el("span", { class: "num", text: String(sf.score) }), el("span", { class: "of", text: "/ 100" }),
         el("span", { class: "grade", text: sf.grade, style: "color:" + color })]),
       el("div", { class: "meter" }, [el("i", { style: "width:" + sf.score + "%;background:" + color })]),
-      el("p", { text: sf.exposed + " servicios escuchan en la red" + (sf.firewall ? " y el firewall deja pasar " + sf.reachable : "") +
+      el("p", { text: sf.exposed + " servicios escuchan en la red" + (sf.firewall ? ": " + (sf.reachable - (sf.limited || 0)) + " abiertos a cualquiera, " +
+        (sf.limited || 0) + " limitados a ciertas redes y " + (sf.exposed - sf.reachable) + " filtrados por el firewall" : "") +
         ". Cada hallazgo resta según su severidad (crítico 30, alto 15, medio 7, bajo 3)." + (sf.firewall ? "" : " En este sistema todavía no se evalúa el firewall.") })])]);
     var kpis = el("div", { class: "kpis" });
     [["critical", "Críticos"], ["high", "Altos"], ["medium", "Medios"], ["low", "Bajos"]].forEach(function (k) {
@@ -755,6 +756,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
       var cells = [el("td", { class: "mono", text: p.port + "/" + p.proto }), el("td", { class: "mono", text: (p.addresses || []).join(", ") }), el("td", null, [scope])];
       if (sf.firewall) {
         cells.push(el("td", { title: p.firewall_why || "" }, [p.firewall === "open" ? el("span", { style: "color:var(--critical);font-weight:600", text: "abierto" }) :
+          p.firewall === "limited" ? el("span", { style: "color:var(--serious);font-weight:600", text: "limitado: " + (p.firewall_limit || "") }) :
           p.firewall === "filtered" ? el("span", { style: "color:var(--good-text);font-weight:600", text: "filtrado" }) : el("span", { class: "sub", text: "—" }),
           p.firewall_why ? el("div", { class: "sub", text: p.firewall_why }) : null]));
       }

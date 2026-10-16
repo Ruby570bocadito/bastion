@@ -54,10 +54,12 @@ type Port struct {
 	Services  []string `json:"services,omitempty"`
 	Known     string   `json:"known,omitempty"`
 	Ephemeral bool     `json:"ephemeral,omitempty"`
-	// Firewall: "open" (se puede llegar desde la red), "filtered" (lo
-	// bloquea el firewall) o vacío si no se ha podido evaluar.
-	Firewall    string `json:"firewall,omitempty"`
-	FirewallWhy string `json:"firewall_why,omitempty"`
+	// Firewall: "open" (desde cualquier dirección), "limited" (solo desde
+	// ciertas redes o interfaces, ver FirewallLimit), "filtered" (lo bloquea)
+	// o vacío si no se ha podido evaluar.
+	Firewall      string `json:"firewall,omitempty"`
+	FirewallLimit string `json:"firewall_limit,omitempty"`
+	FirewallWhy   string `json:"firewall_why,omitempty"`
 }
 
 // ShareAccess es un permiso de un recurso compartido.
@@ -117,9 +119,11 @@ type Report struct {
 	Grade      string        `json:"grade"`
 	// Exposed son los servicios (puertos agrupados) que escuchan en la red;
 	// Reachable, los que además no bloquea el firewall (o todos, si no se
-	// ha podido evaluar).
+	// ha podido evaluar), y Limited, cuántos de esos solo desde ciertas
+	// redes o interfaces.
 	Exposed   int    `json:"exposed"`
 	Reachable int    `json:"reachable"`
+	Limited   int    `json:"limited"`
 	Ports     []Port `json:"ports"`
 	Inventory
 	Findings []Finding `json:"findings"`
@@ -230,6 +234,8 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		subjects []string
 		who      []string
 		why      string
+		limits   []string // si todos los puertos del hallazgo están limitados
+		limited  bool
 	}
 	var order []string
 	found := map[string]*acc{}
@@ -247,16 +253,16 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		}
 		rep.Exposed++
 		if inv.Firewall != nil {
-			open, why := inv.Firewall.Evaluate(*p)
-			p.Firewall, p.FirewallWhy = "filtered", why
-			if open {
-				p.Firewall = "open"
-			}
+			a := inv.Firewall.Evaluate(*p)
+			p.Firewall, p.FirewallLimit, p.FirewallWhy = a.State, a.Limit, a.Why
 		}
-		if p.Firewall == "filtered" {
+		if p.Firewall == FirewallFiltered {
 			continue
 		}
 		rep.Reachable++
+		if p.Firewall == FirewallLimited {
+			rep.Limited++
+		}
 		if !ok || k.sev == rule.SevInfo {
 			continue
 		}
@@ -267,9 +273,14 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		}
 		a := found[key]
 		if a == nil {
-			a = &acc{k: kk, id: id, why: p.FirewallWhy}
+			a = &acc{k: kk, id: id, why: p.FirewallWhy, limited: true}
 			found[key] = a
 			order = append(order, key)
+		}
+		if p.Firewall == FirewallLimited {
+			a.limits = appendOnce(a.limits, p.FirewallLimit)
+		} else {
+			a.limited, a.why = false, p.FirewallWhy
 		}
 		a.subjects = appendOnce(a.subjects, subject)
 		who := p.Process
@@ -287,11 +298,23 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		if a.why != "" {
 			detail += " Firewall: " + a.why + "."
 		}
-		rep.Findings = append(rep.Findings, Finding{
+		f := Finding{
 			ID: a.id, Severity: a.k.sev, Subject: strings.Join(a.subjects, ", "),
 			Title:  fmt.Sprintf("%s accesible desde la red (%s)", a.k.service, strings.Join(a.who, "; ")),
 			Detail: detail, Fix: a.k.fix,
-		})
+		}
+		if a.limited {
+			// Solo se llega desde ciertas redes (VPN, red local…): el riesgo
+			// es menor y depende de quién esté en ellas.
+			f.Severity = lower(a.k.sev)
+			if f.Severity == rule.SevInfo {
+				continue
+			}
+			limit := joinHuman(a.limits)
+			f.Title = fmt.Sprintf("%s accesible solo %s (%s)", a.k.service, accessFrom(limit), strings.Join(a.who, "; "))
+			f.Fix = "Ya solo se llega " + accessFrom(limit) + ": revisa quién tiene acceso a esa red. Además: " + a.k.fix
+		}
+		rep.Findings = append(rep.Findings, f)
 	}
 	rep.Findings = append(rep.Findings, shareFindings(inv.Shares)...)
 	sort.SliceStable(rep.Findings, func(i, j int) bool {
@@ -325,6 +348,19 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 	rep.Score = score
 	rep.Grade = grade(score)
 	return rep
+}
+
+// lower baja un nivel la severidad.
+func lower(s rule.Severity) rule.Severity {
+	switch s {
+	case rule.SevCritical:
+		return rule.SevHigh
+	case rule.SevHigh:
+		return rule.SevMedium
+	case rule.SevMedium:
+		return rule.SevLow
+	}
+	return rule.SevInfo
 }
 
 // groupPorts une los sockets del mismo protocolo, puerto y proceso.
