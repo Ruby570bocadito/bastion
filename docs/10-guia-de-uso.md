@@ -8,7 +8,7 @@
 |---|---|
 | `bastion info [--json]` | Plataforma, rol, etiquetas, perfil por defecto, probes disponibles y rutas |
 | `bastion scan` | Auditar el equipo (solo lectura) |
-| `bastion surface [--all] [--format json] [-o informe.html] [--fail-on SEV]` | Superficie de ataque: puertos expuestos con su proceso, servicios de riesgo, recursos compartidos y administradores (ver abajo) |
+| `bastion surface [--all] [--format json] [-o informe.html] [--save] [--fail-on SEV] [--fail-on-new]` | Superficie de ataque: puertos expuestos con su proceso, servicios de riesgo, recursos compartidos y administradores (ver abajo) |
 | `bastion surface fix [ID...] [--apply] [--include-remote]` | Limitar a la red local las reglas del Firewall de Windows que abren puertos a cualquiera, con instantánea, verificación y rollback (simulación sin `--apply`) |
 | `bastion ui [--port N] [--no-open]` | Consola local en el navegador: postura, tendencia, plan, historial y excepciones (ver abajo) |
 | `bastion profiles [--all]` | Perfiles disponibles y número de reglas |
@@ -91,6 +91,8 @@ sudo bastion surface --all            # también lo que solo escucha en el propi
 bastion surface --format json > superficie.json
 bastion surface --fail-on high        # código 2 si hay hallazgos altos o críticos
 bastion surface -o superficie.html    # informe autocontenido para compartir o imprimir (también .json)
+bastion surface --save                # guardarlo; el siguiente análisis muestra qué ha cambiado
+bastion surface --save --fail-on-new  # código 3 si la exposición ha crecido (tareas programadas)
 bastion surface fix                   # plan para limitar a la red local lo abierto a cualquiera
 ```
 
@@ -111,6 +113,14 @@ Cada hallazgo nombra la regla que lo permite para poder comprobarlo. Las reglas 
 Como las reglas se leen del almacén local del registro, Bastion conoce su nombre interno, y la solución trae el comando exacto para limitar a la red local las reglas que abren un puerto, por ejemplo `Set-NetFirewallRule -Name 'RemoteDesktop-UserMode-In-TCP' -RemoteAddress LocalSubnet` (se deshace con `-RemoteAddress Any`). Sin ese nombre (reglas de directivas de grupo o leídas con COM) se describe la regla por su nombre visible.
 
 **Firewall de Linux.** Con root, Bastion lee el firewall del kernel: `nft -j list ruleset` para las tablas de nftables e `iptables-save`/`ip6tables-save` para las de iptables (también las de iptables-nft, que nft muestra sin el detalle de `multiport`, `conntrack` o `addrtype`). ufw y firewalld no tienen reglas propias: generan las de nftables o iptables, así que se evalúan igual, y las reglas se nombran por su comentario (los `dapp_OpenSSH` de ufw) o por su cadena y posición (`«ufw-user-input #2»`, `«input #6»`). Para cada puerto se recorren las cadenas del gancho *input* como lo haría una conexión nueva: se saltan las reglas de conexiones establecidas, de la interfaz `lo` y de difusión o multidifusión; los saltos (`jump`, `goto`) se siguen; una regla limitada a ciertos orígenes, a una interfaz (`tailscale0` cuenta como Tailscale) o a ciertos destinos deja el puerto **limitado**; y un bloqueo con condiciones que no se pueden evaluar no cuenta, para no dar nunca por filtrado lo que podría estar abierto. Los puertos que publica Docker (`docker-proxy`) se consideran abiertos: entran con DNAT y no pasan por la cadena *input*. Sin root no se puede leer el firewall y la salida lo advierte.
+
+**Cambios entre análisis.** Con `--save`, el análisis se guarda (HTML y JSON, con el prefijo `surface-` junto a los informes de escaneo y la misma retención). Desde entonces, cada `bastion surface`, y la pestaña Superficie de la consola, se compara con el último guardado del equipo y muestra qué ha cambiado:
+
+- servicios que empiezan a escuchar en la red (`+`) o que dejan de hacerlo (`-`);
+- puertos que el firewall deja más abiertos (`↑`, por ejemplo de «limitado» a «abierto») o más cerrados (`↓`);
+- hallazgos nuevos (`!`) y resueltos (`✓`), y la exposición de antes y de ahora.
+
+Lo que aumenta la exposición sale primero. Es la forma de enterarse de que un programa recién instalado ha abierto un puerto o de que alguien ha cambiado una regla. En una tarea programada, `bastion surface --save --fail-on-new` sale con código 3 si la exposición ha crecido. El JSON incluye la comparación en `changes`.
 
 **Corregir: `bastion surface fix`.** En Windows, los hallazgos de puertos abiertos a cualquiera por reglas del almacén local (RDP, mDNS, programas…) se pueden corregir sin copiar comandos: `bastion surface fix` muestra el plan, una línea por regla con sus direcciones remotas actuales y `LocalSubnet` como destino, y `--apply` lo aplica como `harden`. Primero guarda una instantánea; luego limita cada regla, vuelve a leerla para verificar y, si no quedó limitada, la revierte. El cambio aparece en `bastion history` y en la consola, y se deshace con `bastion rollback`. Se puede limitar a ciertos hallazgos (`bastion surface fix SURF-APPS-OPEN --apply`). RDP (también su regla UDP), SSH, WinRM y VNC solo se incluyen con `--include-remote` y se aplican con *dead-man switch*. Lo que llega por otras reglas ya limitadas, como la de Tailscale, sigue llegando.
 

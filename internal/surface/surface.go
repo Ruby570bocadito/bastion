@@ -137,6 +137,8 @@ type Report struct {
 	Ports     []Port `json:"ports"`
 	Inventory
 	Findings []Finding `json:"findings"`
+	// Changes compara con el último análisis guardado del equipo (si hay).
+	Changes *Changes `json:"changes,omitempty"`
 }
 
 // Penalización por hallazgo en la puntuación de exposición.

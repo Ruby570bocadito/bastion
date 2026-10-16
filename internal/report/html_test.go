@@ -2,6 +2,7 @@ package report
 
 import (
 	"bytes"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -135,5 +136,45 @@ func TestSurfaceHTMLNeutralizesHostileData(t *testing.T) {
 	}
 	if strings.Contains(out, "innerHTML") || strings.Contains(out, "insertAdjacentHTML") {
 		t.Error("el informe no debe insertar HTML")
+	}
+}
+
+func TestSurfaceHistoryAndChanges(t *testing.T) {
+	dir := t.TempDir()
+	mk := func(ts time.Time, ports ...surface.Port) *surface.Report {
+		return &surface.Report{Schema: surface.Schema, Host: platform.Info{Hostname: "Rby"}, FinishedAt: ts, Score: 80, Grade: "B", Ports: ports}
+	}
+	p22 := surface.Port{Proto: "tcp", Port: 22, Addresses: []string{"0.0.0.0"}, Scope: surface.ScopeNetwork, Process: "sshd", Firewall: surface.FirewallOpen}
+	p8766 := surface.Port{Proto: "tcp", Port: 8766, Addresses: []string{"0.0.0.0"}, Scope: surface.ScopeNetwork, Process: "AutoClaw.exe", Firewall: surface.FirewallOpen}
+	t0 := time.Date(2026, 10, 15, 9, 0, 0, 0, time.Local)
+	if prev, err := LatestSurface(dir, "Rby"); prev != nil || err != nil {
+		t.Fatalf("sin historial: %v %v", prev, err)
+	}
+	for i, r := range []*surface.Report{mk(t0, p22), mk(t0.Add(time.Hour), p22), mk(t0.Add(2*time.Hour), p22)} {
+		if _, _, err := SaveSurface(dir, r, 2); err != nil {
+			t.Fatalf("guardar %d: %v", i, err)
+		}
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "surface-Rby-*.json"))
+	if len(files) != 2 {
+		t.Errorf("se conservan 2 análisis, hay %d", len(files))
+	}
+	prev, err := LatestSurface(dir, "Rby")
+	if err != nil || prev == nil || !prev.FinishedAt.Equal(t0.Add(2*time.Hour)) {
+		t.Fatalf("último análisis: %v %v", prev, err)
+	}
+	cur := mk(t0.Add(3*time.Hour), p22, p8766)
+	cur.Changes = surface.Diff(prev, cur)
+	var buf bytes.Buffer
+	SurfaceConsole(&buf, cur, false, Style{})
+	out := buf.String()
+	if !strings.Contains(out, "CAMBIOS DESDE EL 15/10/2026 11:00") || !strings.Contains(out, "+ 8766/tcp (AutoClaw.exe) escucha en la red: abierto a cualquiera") {
+		t.Errorf("la consola debe mostrar los cambios:\n%s", out)
+	}
+	cur.Changes = surface.Diff(cur, cur)
+	buf.Reset()
+	SurfaceConsole(&buf, cur, false, Style{})
+	if !strings.Contains(buf.String(), "Sin cambios en la exposición desde el") {
+		t.Errorf("sin cambios:\n%s", buf.String())
 	}
 }

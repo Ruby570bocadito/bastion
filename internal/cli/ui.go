@@ -185,7 +185,13 @@ func (b *uiBackend) Changes() ([]ui.Change, error) {
 	return out, nil
 }
 
-func (b *uiBackend) Surface(ctx context.Context) (*surface.Report, error) { return analyzeSurface(ctx) }
+func (b *uiBackend) Surface(ctx context.Context) (*surface.Report, error) {
+	rep, err := analyzeSurface(ctx)
+	if err == nil {
+		attachSurfaceChanges(loadConfig(), rep)
+	}
+	return rep, err
+}
 
 func (b *uiBackend) Exceptions() ([]ui.Exception, error) {
 	f, err := exceptions.Load(exceptionsPath())

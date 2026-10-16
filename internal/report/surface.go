@@ -81,6 +81,7 @@ func SurfaceConsole(w io.Writer, rep *surface.Report, all bool, s Style) {
 		summary = s.Red(Sym("✗")+" "+plural(len(rep.Findings), "hallazgo", "hallazgos")) + s.Dim(" ("+strings.Join(parts, ", ")+")")
 	}
 	fmt.Fprintf(w, "              %s\n", summary)
+	surfaceChanges(w, rep, s)
 
 	if len(rep.Findings) > 0 {
 		fmt.Fprintln(w)
@@ -193,4 +194,50 @@ func SurfaceConsole(w io.Writer, rep *surface.Report, all bool, s Style) {
 		fmt.Fprintf(w, "  %s %s\n", s.Dim("·"), s.Dim("Sin evaluar el firewall, cada puerto en la red se muestra como accesible, aunque puede estar filtrado."))
 	}
 	fmt.Fprintln(w)
+}
+
+// surfaceChanges muestra lo que ha cambiado desde el último análisis
+// guardado: primero lo que aumenta la exposición.
+func surfaceChanges(w io.Writer, rep *surface.Report, s Style) {
+	ch := rep.Changes
+	if ch == nil {
+		return
+	}
+	since := ch.Since.Local().Format("02/01/2006 15:04")
+	if len(ch.Items) == 0 {
+		fmt.Fprintf(w, "              %s\n", s.Dim("Sin cambios en la exposición desde el "+since+"."))
+		return
+	}
+	fmt.Fprintln(w)
+	delta := ""
+	if d := rep.Score - ch.ScoreBefore; d != 0 {
+		delta = fmt.Sprintf(" · exposición %d → %d", ch.ScoreBefore, rep.Score)
+	}
+	fmt.Fprintf(w, "  %s %s\n", s.Bold("CAMBIOS DESDE EL "+since), s.Dim(fmt.Sprintf("(%d)%s", len(ch.Items), delta)))
+	fmt.Fprintln(w, "  "+s.Dim(strings.Repeat("─", 72)))
+	for _, c := range ch.Items {
+		var sym string
+		switch c.Kind {
+		case surface.ChangeNew:
+			sym = s.Red("+")
+		case surface.ChangeWorse:
+			sym = s.Red(Sym("↑"))
+		case surface.ChangeBetter:
+			sym = s.Green(Sym("↓"))
+		case surface.ChangeGone:
+			sym = s.Green("-")
+		case surface.ChangeFinding:
+			sym = s.Red("!")
+		case surface.ChangeResolved:
+			sym = s.Green(Sym("✓"))
+		}
+		text := c.Title
+		switch c.Kind {
+		case surface.ChangeFinding:
+			text = "Hallazgo nuevo (" + strings.ToLower(SeverityLabel(c.Severity)) + "): " + text
+		case surface.ChangeResolved:
+			text = "Resuelto: " + text
+		}
+		fmt.Fprintf(w, "  %s %s\n", sym, text)
+	}
 }

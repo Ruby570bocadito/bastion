@@ -136,6 +136,25 @@ __STYLE__
   ]);
   app.appendChild(el("div", { class: "hero-row" }, [hero, kpis]));
 
+  // ---- Cambios desde el último análisis guardado
+  var ch = data.changes;
+  if (ch) {
+    var since = fmtDate(ch.since);
+    var KIND = {
+      worse: { sym: "↑", color: "var(--critical)" }, "new": { sym: "+", color: "var(--critical)" },
+      finding: { sym: "!", color: "var(--critical)", pre: "Hallazgo nuevo: " },
+      better: { sym: "↓", color: "var(--good-text)" }, gone: { sym: "−", color: "var(--good-text)" },
+      resolved: { sym: "✓", color: "var(--good-text)", pre: "Resuelto: " }
+    };
+    var items = ch.items || [];
+    var body = items.length ? el("ul", { class: "list" }, items.map(function (c) {
+      var k = KIND[c.kind] || { sym: "·", color: "var(--muted)" };
+      return el("li", null, [el("b", { text: k.sym + " ", style: "color:" + k.color }), (k.pre || "") + c.title]);
+    })) : el("p", { class: "empty", text: "Sin cambios en la exposición." });
+    var title = "Cambios desde el " + since + (ch.score_before !== data.score ? " · exposición " + ch.score_before + " → " + data.score : "");
+    app.appendChild(card(title, [body]));
+  }
+
   // ---- Hallazgos
   var flist = el("div");
   if (!findings.length) flist.appendChild(el("p", { class: "empty", text: "Sin hallazgos: nada de riesgo expuesto a la red." }));

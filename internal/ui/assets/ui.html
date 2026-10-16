@@ -736,6 +736,21 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
     });
     app.appendChild(el("div", { class: "hero-row" }, [hero, kpis]));
 
+    // Cambios desde el último análisis guardado (bastion surface --save).
+    if (sf.changes) {
+      var KIND = {
+        worse: ["↑", "var(--critical)", ""], "new": ["+", "var(--critical)", ""], finding: ["!", "var(--critical)", "Hallazgo nuevo: "],
+        better: ["↓", "var(--good-text)", ""], gone: ["−", "var(--good-text)", ""], resolved: ["✓", "var(--good-text)", "Resuelto: "]
+      };
+      var chItems = sf.changes.items || [];
+      var chBody = chItems.length ? el("div", null, chItems.map(function (c) {
+        var k = KIND[c.kind] || ["·", "var(--muted)", ""];
+        return el("div", { class: "item" }, [el("div", { class: "h" }, [el("b", { text: k[0], style: "color:" + k[1] }), el("span", { class: "t", text: k[2] + c.title })])]);
+      })) : el("p", { class: "empty", text: "Sin cambios en la exposición." });
+      var chTitle = "Cambios desde el " + fmtDate(sf.changes.since) + (sf.changes.score_before !== sf.score ? " · exposición " + sf.changes.score_before + " → " + sf.score : "");
+      app.appendChild(el("section", null, [card(chTitle, [chBody])]));
+    }
+
     var finds = sf.findings.length ? el("div", null, sf.findings.map(function (f) {
       return el("div", { class: "item" }, [
         el("div", { class: "h" }, [sevBadge(f.severity), el("span", { class: "t", text: f.title }), el("span", { class: "rid", text: f.subject })]),

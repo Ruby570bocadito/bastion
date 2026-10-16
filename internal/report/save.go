@@ -1,6 +1,7 @@
 package report
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Ruby570bocadito/bastion/internal/engine"
+	"github.com/Ruby570bocadito/bastion/internal/surface"
 )
 
 // JSON escribe el informe en el formato estable bastion.report/v1.
@@ -162,6 +164,65 @@ func LoadSaved(dir, id string) (*engine.Report, error) {
 	var rep engine.Report
 	if err := json.Unmarshal(b, &rep); err != nil {
 		return nil, fmt.Errorf("%s: %w", id, err)
+	}
+	return &rep, nil
+}
+
+// SaveSurface guarda un análisis de superficie (HTML y JSON) en dir, junto a
+// los informes de escaneo pero con su propio prefijo, y conserva los keep
+// más recientes. Devuelve (html, json).
+func SaveSurface(dir string, rep *surface.Report, keep int) (string, string, error) {
+	host := unsafeName.ReplaceAllString(rep.Host.Hostname, "_")
+	base := filepath.Join(dir, fmt.Sprintf("surface-%s-%s", host, rep.FinishedAt.Local().Format("20060102-150405")))
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return "", "", err
+	}
+	var hb bytes.Buffer
+	if err := SurfaceHTML(&hb, rep); err != nil {
+		return "", "", err
+	}
+	jb, err := json.MarshalIndent(rep, "", "  ")
+	if err != nil {
+		return "", "", err
+	}
+	if err := os.WriteFile(base+".html", hb.Bytes(), 0o640); err != nil {
+		return "", "", err
+	}
+	if err := os.WriteFile(base+".json", append(jb, '\n'), 0o640); err != nil {
+		return "", "", err
+	}
+	if keep > 0 {
+		for _, ext := range []string{".html", ".json"} {
+			files, _ := filepath.Glob(filepath.Join(dir, "surface-"+host+"-*"+ext))
+			sort.Strings(files)
+			if len(files) > keep {
+				for _, f := range files[:len(files)-keep] {
+					os.Remove(f)
+				}
+			}
+		}
+	}
+	return base + ".html", base + ".json", nil
+}
+
+// LatestSurface devuelve el último análisis de superficie guardado de host
+// (nil si no hay ninguno).
+func LatestSurface(dir, host string) (*surface.Report, error) {
+	files, err := filepath.Glob(filepath.Join(dir, "surface-"+unsafeName.ReplaceAllString(host, "_")+"-*.json"))
+	if err != nil || len(files) == 0 {
+		return nil, err
+	}
+	sort.Strings(files)
+	b, err := os.ReadFile(files[len(files)-1])
+	if err != nil {
+		return nil, err
+	}
+	var rep surface.Report
+	if err := json.Unmarshal(b, &rep); err != nil {
+		return nil, fmt.Errorf("%s: %w", filepath.Base(files[len(files)-1]), err)
+	}
+	if rep.Schema != surface.Schema {
+		return nil, fmt.Errorf("%s: formato %q desconocido", filepath.Base(files[len(files)-1]), rep.Schema)
 	}
 	return &rep, nil
 }
