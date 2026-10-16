@@ -116,6 +116,7 @@ func (b *uiBackend) Scan(ctx context.Context) (*engine.Report, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	attachScanChanges(b.cfg, rep)
 	_, jsonPath, _, _, err := saveReport(b.cfg, rep)
 	if err != nil {
 		return nil, "", err

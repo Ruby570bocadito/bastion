@@ -45,8 +45,10 @@ type Run struct {
 	Time         time.Time `json:"time"`
 	ScanScore    int       `json:"scan_score"`
 	SurfaceScore int       `json:"surface_score"`
-	// NewExposure cuenta los cambios que aumentan la exposición desde el
-	// análisis anterior.
+	// Regressions cuenta los controles que han pasado de superados a
+	// fallidos y NewExposure, los cambios que aumentan la exposición, desde
+	// el análisis anterior.
+	Regressions int      `json:"regressions"`
 	NewExposure int      `json:"new_exposure"`
 	Errors      []string `json:"errors,omitempty"`
 }

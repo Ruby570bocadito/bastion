@@ -117,6 +117,7 @@ func Console(w io.Writer, rep *engine.Report, o ConsoleOptions) {
 	}
 	counts = append(counts, s.Dim(fmt.Sprintf(Sym("○")+" %d no aplican", sc.NA)))
 	fmt.Fprintf(w, "           %s\n", strings.Join(counts, "   "))
+	scanChanges(w, rep, s)
 
 	// Severidad
 	fmt.Fprintln(w)
@@ -318,4 +319,36 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(r[:n]) + "…"
+}
+
+// scanChanges muestra los controles que han empeorado o se han corregido
+// desde el último escaneo guardado del mismo perfil.
+func scanChanges(w io.Writer, rep *engine.Report, s Style) {
+	ch := rep.Changes
+	if ch == nil {
+		return
+	}
+	since := ch.Since.Local().Format("02/01/2006 15:04")
+	if len(ch.Regressions)+len(ch.Fixed) == 0 {
+		fmt.Fprintf(w, "           %s\n", s.Dim("Sin cambios en los controles desde el "+since+"."))
+		return
+	}
+	fmt.Fprintln(w)
+	delta := ""
+	if rep.Score.Value != ch.ScoreBefore {
+		delta = fmt.Sprintf(" · postura %d → %d", ch.ScoreBefore, rep.Score.Value)
+	}
+	fmt.Fprintf(w, "  %s %s\n", s.Bold("CAMBIOS DESDE EL "+since),
+		s.Dim(fmt.Sprintf("(%s, %s)%s", plural(len(ch.Regressions), "empeorado", "empeorados"), plural(len(ch.Fixed), "corregido", "corregidos"), delta)))
+	for _, c := range ch.Regressions {
+		fmt.Fprintf(w, "  %s %s %s %s %s\n", s.Red(Sym("✗")), sevColor(s, c.Severity)(pad(SeverityLabel(c.Severity), 8)),
+			s.Cyan(pad(c.ID, 13)), c.Title, s.Dim("(antes superado)"))
+	}
+	for i, c := range ch.Fixed {
+		if i == 8 {
+			fmt.Fprintf(w, "  %s\n", s.Dim(fmt.Sprintf("  y %d corregidos más", len(ch.Fixed)-8)))
+			break
+		}
+		fmt.Fprintf(w, "  %s %s %s %s\n", s.Green(Sym("✓")), s.Dim(pad("corregido", 8)), s.Cyan(pad(c.ID, 13)), c.Title)
+	}
 }

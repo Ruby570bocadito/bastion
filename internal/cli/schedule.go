@@ -30,8 +30,9 @@ cron, si no hay systemd).
 Cada día guarda un escaneo y un análisis de superficie. Así "bastion ui"
 muestra la tendencia de la postura y "bastion surface" avisa de lo que ha
 cambiado: un programa recién instalado que abre un puerto, una regla del
-firewall modificada… Cada ejecución queda anotada en schedule.log; si la
-exposición ha crecido, la tarea termina con código 3.`,
+firewall modificada… Cada ejecución queda anotada en schedule.log; si algún
+control ha empeorado o la exposición ha crecido, la tarea termina con
+código 3.`,
 		Example: `  bastion schedule enable              # cada día a las 09:00
   bastion schedule enable --at 13:30
   bastion schedule                     # estado y últimas ejecuciones
@@ -179,9 +180,16 @@ func scheduleStatus() error {
 		tb.Row(report.Styled("FECHA", s.Bold), report.Styled("POSTURA", s.Bold), report.Styled("EXPOSICIÓN", s.Bold), report.Styled("CAMBIOS", s.Bold))
 		for i := len(runs) - 1; i >= 0 && i >= len(runs)-7; i-- {
 			r := runs[i]
-			changes := report.Styled("sin aumento de exposición", s.Dim)
+			changes := report.Styled("sin empeorar", s.Dim)
+			var worse []string
+			if r.Regressions > 0 {
+				worse = append(worse, fmt.Sprintf("%d controles empeorados", r.Regressions))
+			}
 			if r.NewExposure > 0 {
-				changes = report.Styled(fmt.Sprintf("%d que aumentan la exposición", r.NewExposure), s.Red)
+				worse = append(worse, fmt.Sprintf("%d cambios que aumentan la exposición", r.NewExposure))
+			}
+			if len(worse) > 0 {
+				changes = report.Styled(strings.Join(worse, ", "), s.Red)
 			}
 			if len(r.Errors) > 0 {
 				changes = report.Styled("error: "+strings.Join(r.Errors, "; "), s.Red)
@@ -210,10 +218,16 @@ func scheduleRun() error {
 
 	if rep, err := scanReport(ctx, cfg, "", nil, nil, nil); err != nil {
 		run.Errors = append(run.Errors, "escaneo: "+err.Error())
-	} else if _, _, _, _, err := saveReport(cfg, rep); err != nil {
-		run.Errors = append(run.Errors, err.Error())
 	} else {
-		run.ScanScore = rep.Score.Value
+		attachScanChanges(cfg, rep)
+		if _, _, _, _, err := saveReport(cfg, rep); err != nil {
+			run.Errors = append(run.Errors, err.Error())
+		} else {
+			run.ScanScore = rep.Score.Value
+			if rep.Changes != nil {
+				run.Regressions = len(rep.Changes.Regressions)
+			}
+		}
 	}
 	if srep, err := analyzeSurface(ctx); err != nil {
 		run.Errors = append(run.Errors, "superficie: "+err.Error())
@@ -236,12 +250,13 @@ func scheduleRun() error {
 		}
 	}
 	logErr := schedule.AppendRun(schedule.LogPath(config.DataDir()), run)
-	fmt.Printf("postura %d/100 · exposición %d/100 · %d cambios que aumentan la exposición\n", run.ScanScore, run.SurfaceScore, run.NewExposure)
+	fmt.Printf("postura %d/100 · %d controles empeorados · exposición %d/100 · %d cambios que aumentan la exposición\n",
+		run.ScanScore, run.Regressions, run.SurfaceScore, run.NewExposure)
 	switch {
 	case len(run.Errors) > 0:
 		return &ExitError{Code: 1, Msg: strings.Join(run.Errors, "; ")}
-	case run.NewExposure > 0:
-		return &ExitError{Code: 3, Msg: "la exposición ha crecido desde el análisis anterior (bastion surface lo detalla)"}
+	case run.NewExposure > 0 || run.Regressions > 0:
+		return &ExitError{Code: 3, Msg: "la postura o la exposición han empeorado desde el análisis anterior (bastion scan y bastion surface lo detallan)"}
 	}
 	if logErr != nil {
 		return fmt.Errorf("no se pudo anotar la ejecución: %w", logErr)

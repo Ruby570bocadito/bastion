@@ -141,6 +141,8 @@ type Report struct {
 	DurationMs int64         `json:"duration_ms"`
 	Score      Score         `json:"score"`
 	Results    []Result      `json:"results"`
+	// Changes compara con el último escaneo guardado del mismo perfil.
+	Changes *Changes `json:"changes,omitempty"`
 }
 
 // ToolInfo identifica la versión de Bastion que generó el informe.

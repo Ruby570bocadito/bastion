@@ -178,3 +178,22 @@ func TestSurfaceHistoryAndChanges(t *testing.T) {
 		t.Errorf("sin cambios:\n%s", buf.String())
 	}
 }
+
+func TestScanChangesConsole(t *testing.T) {
+	rep := &engine.Report{Schema: engine.SchemaVersion, Score: engine.Score{Value: 70, Grade: "C"},
+		Changes: &engine.Changes{Since: time.Date(2026, 10, 15, 9, 0, 0, 0, time.Local), ScoreBefore: 80,
+			Regressions: []engine.RuleChange{{ID: "WIN-NET-006", Title: "LLMNR deshabilitado", Severity: rule.SevHigh, Before: engine.Pass, After: engine.Fail}},
+			Fixed:       []engine.RuleChange{{ID: "WIN-NET-003", Title: "Firma SMB obligatoria en el servidor", Severity: rule.SevHigh, Before: engine.Fail, After: engine.Pass}}}}
+	var buf bytes.Buffer
+	Console(&buf, rep, ConsoleOptions{})
+	out := buf.String()
+	for _, want := range []string{"CAMBIOS DESDE EL 15/10/2026 09:00", "1 empeorado, 1 corregido", "postura 80 → 70", "WIN-NET-006", "(antes superado)", "corregido", "WIN-NET-003"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("falta %q en:\n%s", want, out)
+		}
+	}
+	var html bytes.Buffer
+	if err := HTML(&html, rep); err != nil || !strings.Contains(html.String(), `"regressions":[{"id":"WIN-NET-006"`) {
+		t.Errorf("el informe HTML debe llevar los cambios: %v", err)
+	}
+}

@@ -561,6 +561,24 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
     });
     app.appendChild(el("div", { class: "hero-row" }, [hero, kpis]));
 
+    // Controles que han empeorado o se han corregido desde el escaneo anterior.
+    var ch = r.changes;
+    if (ch && ((ch.regressions || []).length || (ch.fixed || []).length)) {
+      var chList = el("ol", { class: "prio" });
+      (ch.regressions || []).forEach(function (c) {
+        chList.appendChild(el("li", null, [sevBadge(c.severity),
+          el("div", null, [el("span", { class: "t", text: c.title }), el("span", { class: "id", text: c.id })]),
+          el("div", { class: "d", style: "color:var(--critical)", text: "Ha empeorado: antes se superaba y ahora falla." })]));
+      });
+      (ch.fixed || []).slice(0, 8).forEach(function (c) {
+        chList.appendChild(el("li", null, [statusBadge("pass"),
+          el("div", null, [el("span", { class: "t", text: c.title }), el("span", { class: "id", text: c.id })]),
+          el("div", { class: "d", text: "Corregido desde el escaneo anterior." })]));
+      });
+      app.appendChild(el("section", null, [card("Cambios desde el " + fmtDate(ch.since) + " · " + (ch.regressions || []).length + " empeorados, " +
+        (ch.fixed || []).length + " corregidos", [chList])]));
+    }
+
     // Tendencia + corrección automática
     app.appendChild(el("section", { class: "wide-left" }, [trendCard(), autofixCard(results)]));
 

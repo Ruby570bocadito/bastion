@@ -73,6 +73,10 @@ sudo bastion scan --min-score 85 -q -o informe.html || echo "La imagen no cumple
 | 2 | Puntuación inferior a `--min-score` |
 | 130 | Interrumpido (Ctrl+C) |
 
+### Cambios desde el escaneo anterior
+
+Si hay un escaneo guardado del mismo equipo y perfil (`--save`, la consola o el análisis programado), cada escaneo se compara con él y muestra los controles que **han empeorado** (se superaban y ahora fallan: una actualización, una GPO o alguien que ha deshecho un ajuste) y los que **se han corregido**. Sale en la consola, en el informe HTML, en el Panel de `bastion ui` y en el JSON (`changes`). Los errores, los controles sin evaluar y las excepciones no cuentan como cambios.
+
 ## Corregir: `bastion harden`
 
 ```bash
@@ -147,7 +151,7 @@ sudo bastion schedule disable           # quita la tarea; los informes se conser
 
 Crea una tarea en el planificador del sistema: el Programador de tareas en Windows (`\Bastion\Escaneo diario`, como SYSTEM) y un temporizador de systemd en Linux (`bastion-scan.timer`), o una entrada en `/etc/cron.d/bastion` si no hay systemd. Si el equipo está apagado a esa hora, se hace al encenderlo.
 
-Cada ejecución (`bastion schedule run`) guarda un escaneo y un análisis de superficie comparado con el anterior y lo anota en `schedule.log`, en la carpeta de datos. Así `bastion ui` dibuja la tendencia de la postura, y `bastion surface` y la pestaña Superficie avisan de lo que ha cambiado. Si la exposición ha crecido, la tarea termina con código 3 (en Windows aparece como último resultado de la tarea).
+Cada ejecución (`bastion schedule run`) guarda un escaneo y un análisis de superficie comparado con el anterior y lo anota en `schedule.log`, en la carpeta de datos. Así `bastion ui` dibuja la tendencia de la postura, y `bastion surface` y la pestaña Superficie avisan de lo que ha cambiado. Si algún control ha empeorado o la exposición ha crecido, la tarea termina con código 3 (en Windows aparece como último resultado de la tarea) y `bastion schedule` lo muestra en sus últimas ejecuciones.
 
 Como la tarea se ejecuta como SYSTEM o root, `enable` se niega si el ejecutable está en una carpeta que otros usuarios pueden modificar (Descargas, el escritorio, una carpeta de `/home`…): quien pudiera sustituirlo obtendría esos privilegios. El instalador deja Bastion en `Program Files` o `/usr/local/bin`, que son seguras. `--unsafe-path` lo permite igualmente, solo para laboratorios.
 
@@ -238,6 +242,8 @@ Cuando el informe dice `actual 1 (por defecto)`, el valor no estaba configurado 
   ]
 }
 ```
+
+Si hay un escaneo anterior guardado del mismo perfil, el informe incluye además `"changes": {"since": "…", "score_before": 80, "regressions": [ … ], "fixed": [ … ]}` con los controles que han empeorado y los que se han corregido.
 
 El formato es estable dentro de `v1`: solo se añadirán campos, nunca se eliminarán ni cambiarán de significado.
 

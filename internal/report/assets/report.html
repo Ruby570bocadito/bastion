@@ -408,6 +408,24 @@ footer { color: var(--muted); font-size: 12.5px; padding: 28px 0 40px; }
     });
   app.appendChild(el("div", { class: "hero-row" }, [hero, kpis]));
 
+  // ---- Cambios desde el último escaneo guardado del mismo perfil ----
+  var ch = data.changes;
+  if (ch && ((ch.regressions || []).length || (ch.fixed || []).length)) {
+    var chList = el("ol", { class: "prio" });
+    (ch.regressions || []).forEach(function (c) {
+      chList.appendChild(el("li", null, [sevBadge(c.severity),
+        el("div", null, [el("span", { class: "t", text: c.title }), el("span", { class: "id", text: c.id })]),
+        el("div", { class: "d", style: "color:var(--critical)", text: "Ha empeorado: antes se superaba y ahora falla." })]));
+    });
+    (ch.fixed || []).forEach(function (c) {
+      chList.appendChild(el("li", null, [statusBadge("pass"),
+        el("div", null, [el("span", { class: "t", text: c.title }), el("span", { class: "id", text: c.id })]),
+        el("div", { class: "d", text: "Corregido desde el escaneo anterior." })]));
+    });
+    var chTitle = "Cambios desde el " + fmtDate(ch.since) + (ch.score_before !== sc.value ? " · postura " + ch.score_before + " → " + sc.value : "");
+    app.appendChild(el("section", null, [el("div", { class: "card" }, [el("h2", { text: chTitle }), chList])]));
+  }
+
   // ---- Prioridades + severidad ----
   var failed = results.filter(function (r) { return r.status === "fail"; });
   var prio = el("ol", { class: "prio" });

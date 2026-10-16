@@ -77,6 +77,7 @@ func runScan(f scanFlags) error {
 	if err != nil {
 		return err
 	}
+	attachScanChanges(cfg, rep)
 
 	switch f.format {
 	case "json":
@@ -175,6 +176,28 @@ func scanReport(ctx context.Context, cfg config.Config, profile string, ids, cat
 		Score:      engine.ComputeScore(results),
 		Results:    results,
 	}, nil
+}
+
+// attachScanChanges compara el escaneo con el último guardado del mismo
+// equipo y perfil: controles que han empeorado y que se han corregido.
+func attachScanChanges(cfg config.Config, rep *engine.Report) {
+	if rep.Profile == nil {
+		return
+	}
+	dir, _ := reportsDir(cfg)
+	metas, err := report.ListSaved(dir, rep.Host.Hostname)
+	if err != nil {
+		return
+	}
+	for i := len(metas) - 1; i >= 0; i-- {
+		if metas[i].Profile != rep.Profile.ID {
+			continue
+		}
+		if prev, err := report.LoadSaved(dir, metas[i].ID); err == nil {
+			rep.Changes = engine.Diff(prev, rep)
+		}
+		return
+	}
 }
 
 // saveReport guarda el informe HTML y JSON en el directorio de informes.
