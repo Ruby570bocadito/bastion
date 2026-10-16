@@ -23,7 +23,7 @@ Bastion es una **suite de 16 herramientas sobre el mismo motor y el mismo agente
 | `ui` | Gobernar | ✅ consola local: tendencia, plan, historial y excepciones | 1 |
 | `rule` (SDK) | Gobernar | ✅ `list`, `show`, `lint`, `doc` · 🔜 `new`, `test`, `pack` | 1 / 2 |
 | `update` | — | ✅ | 0 |
-| `surface` | Evaluar | ✅ puertos, servicios de riesgo, recursos compartidos y administradores · 🔜 firewall, firma de binarios y grafo | 1 |
+| `surface` | Evaluar | ✅ puertos, servicios de riesgo, recursos compartidos, administradores y Firewall de Windows · 🔜 firewall de Linux, firma de binarios y grafo | 1 |
 | `harden` | Endurecer | ✅ simulación, instantánea, verificación, rollback, dead-man switch · 🔜 *health checks* | 2 |
 | `plan` | Endurecer | ✅ olas por riesgo de rotura (en `harden`) · 🔜 prioridad por exposición y anillos | 2 / 5 |
 | `studio` | Endurecer | 🔜 | 2 |
@@ -72,6 +72,8 @@ Implementado (v1):
 - ✅ **Catálogo de unos 40 servicios** cuyo riesgo depende de estar expuestos (Telnet, rsh, FTP, TFTP, SNMP, SMB, NetBIOS, RDP, VNC, WinRM, Redis, MongoDB, Elasticsearch, memcached, Docker API, etcd, kubelet, bases de datos…), cada uno con el motivo y cómo cerrarlo. El mismo puerto en IPv4 e IPv6 cuenta una vez.
 - ✅ **Recursos compartidos:** SMB con lectura o escritura para Todos, Anónimo, Usuarios autenticados o Invitados (por SID, sin depender del idioma); exportaciones NFS con `no_root_squash` o para cualquier cliente; recursos Samba con acceso de invitado.
 - ✅ **Administradores:** miembros del grupo Administradores (S-1-5-32-544) en Windows; cuentas con UID 0 y miembros de `sudo`, `wheel` y `admin` en Linux.
+- ✅ **Firewall de Windows:** con la política efectiva (perfiles activos, acción por defecto y reglas de entrada, leídas con `HNetCfg.FwPolicy2`) cada puerto se marca como **abierto** o **filtrado**, con la regla que lo permite. Solo lo abierto genera hallazgos.
+- ✅ Sockets UDP de cliente (puertos dinámicos) separados de los servicios, IPv4 e IPv6 en una fila, RPC dinámico de Windows etiquetado y NetBIOS como un único hallazgo.
 - ✅ **Puntuación de exposición** de 0 a 100 (crítico −30, alto −15, medio −7, bajo −3) y pestaña **Superficie** en `bastion ui`.
 
 Objetivo completo:
@@ -85,7 +87,7 @@ Objetivo completo:
 | Cuentas | Administradores locales, Guest, contraseñas que no expiran, cuentas inactivas, UID 0 duplicado |
 | Servicios por rol | Spooler en servidores, Remote Registry, avahi, cups, rpcbind… |
 
-🔜 Cruzar cada puerto con las reglas del firewall y la firma del binario, y mostrarlo como un grafo de exposición (host → puerto → servicio → riesgo).
+🔜 Evaluar ufw, firewalld y nftables en Linux, comprobar la firma del binario de cada proceso y mostrarlo como un grafo de exposición (host → puerto → servicio → riesgo).
 
 ## `bastion ad`: auditor de Active Directory 🔜
 

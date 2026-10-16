@@ -33,7 +33,8 @@
 - [x] Excepciones con motivo, responsable y caducidad (`bastion exceptions`, estado `exception`).
 - [ ] Estado `manual` (controles que requieren revisión humana).
 - [x] `bastion surface` v1: puertos con proceso, catálogo de servicios de riesgo, recursos compartidos, administradores y puntuación de exposición (también en `bastion ui`).
-- [ ] `surface`: cruzar con las reglas del firewall y la firma de los binarios.
+- [x] `surface`: evaluar el Firewall de Windows (perfiles, acción por defecto, reglas de permiso y bloqueo).
+- [ ] `surface`: firewall de Linux (ufw, firewalld, nftables) y firma de los binarios.
 - [ ] Firma de releases (cosign) y Authenticode.
 - [ ] Prueba de los instaladores de punta a punta en CI (espejo local).
 - [x] UI local: `bastion ui` (127.0.0.1 con token): postura, tendencia, plan por olas, historial de escaneos y cambios, excepciones ([ADR-0008](adr/0008-consola-local.md)).

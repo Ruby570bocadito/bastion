@@ -27,12 +27,14 @@ func Collect(_ context.Context) (Inventory, error) {
 		}
 		socks = append(socks, parseProcNet(string(b), src.proto, src.v6)...)
 	}
+	lo, hi := ephemeralRange()
 	owners, complete := socketOwners()
 	if !complete {
 		inv.Notes = append(inv.Notes, "Sin root no se ven los procesos de otros usuarios: ejecuta con sudo para saber qué proceso abre cada puerto.")
 	}
 	for _, s := range socks {
 		l := s.Listener
+		l.Ephemeral = l.Proto == "udp" && l.Port >= lo && l.Port <= hi
 		if pid, ok := owners[s.inode]; ok {
 			l.PID = pid
 			l.Process = processName(pid)
@@ -95,6 +97,22 @@ func socketOwners() (map[string]int, bool) {
 		}
 	}
 	return owners, complete
+}
+
+// ephemeralRange es el rango de puertos locales que el kernel asigna a los
+// clientes (net.ipv4.ip_local_port_range; por defecto 32768-60999).
+func ephemeralRange() (int, int) {
+	b, err := os.ReadFile("/proc/sys/net/ipv4/ip_local_port_range")
+	if err == nil {
+		if f := strings.Fields(string(b)); len(f) == 2 {
+			lo, err1 := strconv.Atoi(f[0])
+			hi, err2 := strconv.Atoi(f[1])
+			if err1 == nil && err2 == nil && lo > 0 && hi >= lo {
+				return lo, hi
+			}
+		}
+	}
+	return 32768, 60999
 }
 
 func processName(pid int) string {

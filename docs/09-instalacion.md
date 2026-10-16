@@ -118,6 +118,8 @@ sudo bastion update --check    # solo comprobar
 
 Las reglas oficiales van dentro del binario: al actualizar Bastion se actualizan también las reglas.
 
+En Windows, `C:\Program Files\Bastion` solo lo puede modificar un administrador. Si ejecutas `bastion update` en una ventana normal, Bastion lo detecta antes de descargar nada y abre una ventana de administrador (aviso de UAC) que termina la actualización y espera a que pulses Intro. En Linux, sin root, te pide repetir con `sudo`.
+
 ## Rutas
 
 | | Linux | Windows |

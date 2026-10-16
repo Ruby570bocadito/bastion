@@ -726,7 +726,8 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
       el("div", { class: "hero-figure" }, [el("span", { class: "num", text: String(sf.score) }), el("span", { class: "of", text: "/ 100" }),
         el("span", { class: "grade", text: sf.grade, style: "color:" + color })]),
       el("div", { class: "meter" }, [el("i", { style: "width:" + sf.score + "%;background:" + color })]),
-      el("p", { text: sf.exposed + " servicios escuchan en la red y " + (sf.listeners.length - sf.exposed) + " solo en el propio equipo. Cada hallazgo resta según su severidad (crítico 30, alto 15, medio 7, bajo 3)." })])]);
+      el("p", { text: sf.exposed + " servicios escuchan en la red" + (sf.firewall ? " y el firewall deja pasar " + sf.reachable : "") +
+        ". Cada hallazgo resta según su severidad (crítico 30, alto 15, medio 7, bajo 3)." + (sf.firewall ? "" : " En este sistema todavía no se evalúa el firewall.") })])]);
     var kpis = el("div", { class: "kpis" });
     [["critical", "Críticos"], ["high", "Altos"], ["medium", "Medios"], ["low", "Bajos"]].forEach(function (k) {
       kpis.appendChild(el("div", { class: "card kpi" }, [el("div", { class: "label" }, [dot(SEV[k[0]].color), k[1]]),
@@ -741,22 +742,38 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
     })) : el("p", { class: "empty", text: "Ningún servicio de riesgo expuesto ni recurso compartido abierto a todos." });
     app.appendChild(el("section", null, [card("Hallazgos", [finds], again)]));
 
-    var rows = sf.listeners.filter(function (l) { return S.showLocal || l.scope === "network"; });
-    var tbl = el("table", null, [el("thead", null, [el("tr", null, ["Puerto", "Dirección", "Alcance", "Proceso", "Servicio"].map(function (h) { return el("th", { text: h }); }))])]);
+    var ports = sf.ports || [];
+    var hidden = ports.filter(function (p) { return p.scope !== "network" || p.ephemeral; }).length;
+    var rows = ports.filter(function (p) { return S.showLocal || (p.scope === "network" && !p.ephemeral); });
+    var heads = ["Puerto", "Dirección", "Alcance"].concat(sf.firewall ? ["Firewall"] : [], ["Proceso", "Servicio"]);
+    var tbl = el("table", null, [el("thead", null, [el("tr", null, heads.map(function (h) { return el("th", { text: h }); }))])]);
     var tb = el("tbody");
-    rows.forEach(function (l) {
-      var proc = (l.process || "?") + (l.pid ? " (" + l.pid + ")" : "");
-      tb.appendChild(el("tr", null, [el("td", { class: "mono", text: l.port + "/" + l.proto }), el("td", { class: "mono", text: l.address }),
-        el("td", null, [l.scope === "network" ? el("span", { style: "color:var(--serious);font-weight:600", text: "red" }) : el("span", { class: "sub", text: "local" })]),
-        el("td", null, [el("div", { text: proc }), l.services && l.services.length ? el("div", { class: "sub", text: l.services.join(", ") }) : null]),
-        el("td", { text: l.known || "" })]));
+    rows.forEach(function (p) {
+      var proc = (p.process || "?") + (p.pid ? " (" + p.pid + ")" : "");
+      var scope = p.ephemeral ? el("span", { class: "sub", text: "cliente" }) : p.scope === "network" ?
+        el("span", { style: "color:var(--serious);font-weight:600", text: "red" }) : el("span", { class: "sub", text: "local" });
+      var cells = [el("td", { class: "mono", text: p.port + "/" + p.proto }), el("td", { class: "mono", text: (p.addresses || []).join(", ") }), el("td", null, [scope])];
+      if (sf.firewall) {
+        cells.push(el("td", { title: p.firewall_why || "" }, [p.firewall === "open" ? el("span", { style: "color:var(--critical);font-weight:600", text: "abierto" }) :
+          p.firewall === "filtered" ? el("span", { style: "color:var(--good-text);font-weight:600", text: "filtrado" }) : el("span", { class: "sub", text: "—" }),
+          p.firewall_why ? el("div", { class: "sub", text: p.firewall_why }) : null]));
+      }
+      cells.push(el("td", null, [el("div", { text: proc }), p.services && p.services.length ? el("div", { class: "sub", text: p.services.join(", ") }) : null]),
+        el("td", { text: p.known || "" }));
+      tb.appendChild(el("tr", null, cells));
     });
     tbl.appendChild(tb);
-    var toggle = el("button", { class: "btn copy", type: "button", text: S.showLocal ? "Ocultar los locales" : "Mostrar también los locales (" + (sf.listeners.length - sf.exposed) + ")",
+    var toggle = el("button", { class: "btn copy", type: "button", text: S.showLocal ? "Solo los de la red" : "Mostrar también locales y de cliente (" + hidden + ")",
       onclick: function () { S.showLocal = !S.showLocal; render(); } });
-    app.appendChild(el("section", null, [card(S.showLocal ? "Puertos a la escucha" : "Puertos expuestos en la red",
+    var fwNote = "En este sistema Bastion todavía no evalúa las reglas del firewall: un puerto en la red puede estar filtrado.";
+    if (sf.firewall) {
+      fwNote = "Firewall de Windows: " + sf.firewall.profiles.filter(function (p) { return p.active; }).map(function (p) {
+        return "perfil " + p.name + (p.enabled ? (p.block_inbound ? " activo, entrada bloqueada por defecto" : " activo, entrada permitida por defecto") : " desactivado");
+      }).join(" · ") + " · " + sf.firewall.inbound_rules + " reglas de entrada.";
+    }
+    app.appendChild(el("section", null, [card(S.showLocal ? "Puertos a la escucha" : "Servicios en la red",
       [rows.length ? el("div", { class: "table-wrap" }, [tbl]) : el("p", { class: "empty", text: "Ningún servicio escucha en la red." }),
-        el("p", { class: "note", text: "Bastion todavía no evalúa las reglas del firewall: un puerto en la red puede estar filtrado." })], toggle)]));
+        el("p", { class: "note", text: fwNote })], toggle)]));
 
     var shares = sf.shares.length ? el("ul", { class: "prio" }, sf.shares.map(function (sh) {
       var acc = (sh.access || []).map(function (a) { return a.account + ": " + a.right + (a.deny ? " (denegado)" : ""); }).concat(sh.options || []);
@@ -852,7 +869,11 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
     document.title = "Bastion · " + S.info.hostname;
     var last = S.reports[S.reports.length - 1];
     // Sin escaneos recientes (última hora) se escanea al abrir.
-    if (!last || Date.now() - new Date(last.finished_at).getTime() > 3600 * 1000) { busy(false); scan(); return; }
+    if (!last || Date.now() - new Date(last.finished_at).getTime() > 3600 * 1000) {
+      // Se escanea y se cargan a la vez los datos de la pestaña abierta (el
+      // servidor los sirve en cuanto termina el escaneo).
+      busy(false); scan(); route(); return;
+    }
     S.latestId = last.id;
     return openReport(last.id).then(function () { route(); });
   }).catch(function (e) {

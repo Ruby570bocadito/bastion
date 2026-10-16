@@ -192,8 +192,17 @@ func TestAnalyze(t *testing.T) {
 		},
 	}
 	rep := Analyze(inv, platform.Info{Hostname: "pc"}, "test", time.Now())
-	if len(rep.Listeners) != 6 || rep.Exposed != 5 {
-		t.Errorf("escuchas %d (quiero 6), expuestos %d (quiero 5)", len(rep.Listeners), rep.Exposed)
+	// Servicios en la red: 3389 (IPv4 e IPv6 del mismo proceso), 22, 8443 y 445/udp.
+	if len(rep.Listeners) != 6 || rep.Exposed != 4 || rep.Reachable != 4 {
+		t.Errorf("escuchas %d (quiero 6), expuestos %d (quiero 4), accesibles %d", len(rep.Listeners), rep.Exposed, rep.Reachable)
+	}
+	if p := rep.Ports[0]; p.Port != 22 || len(rep.Ports) != 5 {
+		t.Errorf("puertos agrupados: %+v", rep.Ports)
+	}
+	for _, p := range rep.Ports {
+		if p.Port == 3389 && (len(p.Addresses) != 2 || p.Firewall != "") {
+			t.Errorf("RDP agrupado (sin firewall evaluado): %+v", p)
+		}
 	}
 	var ids []string
 	var rdp Finding
@@ -211,7 +220,7 @@ func TestAnalyze(t *testing.T) {
 	if rep.Score != 55 || rep.Grade != "F" { // 100 - 3×15
 		t.Errorf("puntuación %d %s, quiero 55 F", rep.Score, rep.Grade)
 	}
-	if rep.Listeners[0].Known == "" {
+	if rep.Ports[0].Known != "SSH" {
 		t.Error("los puertos conocidos deben llevar el nombre del servicio")
 	}
 	if !strings.Contains(rdp.Title, "svchost.exe · TermService") {
@@ -223,5 +232,108 @@ func TestAnalyze(t *testing.T) {
 	}
 	if rep.Findings[0].Severity != rule.SevHigh {
 		t.Errorf("los hallazgos se ordenan por severidad: %+v", rep.Findings[0])
+	}
+}
+
+func TestNetBIOSAndEphemeral(t *testing.T) {
+	inv := Inventory{Listeners: []Listener{
+		{Proto: "udp", Address: "192.168.1.5", Port: 137, Scope: ScopeNetwork, PID: 4, Process: "System"},
+		{Proto: "udp", Address: "192.168.1.5", Port: 138, Scope: ScopeNetwork, PID: 4, Process: "System"},
+		{Proto: "tcp", Address: "192.168.1.5", Port: 139, Scope: ScopeNetwork, PID: 4, Process: "System"},
+		{Proto: "udp", Address: "0.0.0.0", Port: 52706, Scope: ScopeNetwork, PID: 3132, Process: "svchost.exe", Ephemeral: true},
+		{Proto: "tcp", Address: "0.0.0.0", Port: 49664, Scope: ScopeNetwork, PID: 1492, Process: "lsass.exe"},
+	}}
+	rep := Analyze(inv, platform.Info{}, "test", time.Now())
+	if len(rep.Findings) != 1 || rep.Findings[0].ID != "SURF-NETBIOS" || rep.Findings[0].Subject != "137/udp, 138/udp, 139/tcp" {
+		t.Fatalf("NetBIOS debe ser un único hallazgo: %+v", rep.Findings)
+	}
+	if rep.Score != 93 {
+		t.Errorf("puntuación %d, quiero 93 (un hallazgo medio)", rep.Score)
+	}
+	// El socket UDP efímero del cliente DNS no es un servicio expuesto.
+	if rep.Exposed != 4 {
+		t.Errorf("expuestos %d, quiero 4", rep.Exposed)
+	}
+	for _, p := range rep.Ports {
+		if p.Port == 49664 && p.Known != "RPC dinámico (Windows)" {
+			t.Errorf("RPC dinámico sin etiquetar: %+v", p)
+		}
+	}
+}
+
+func TestFirewallEvaluate(t *testing.T) {
+	fw := &Firewall{
+		Profiles: []FirewallProfile{
+			{Name: "Dominio", Bit: 1, Enabled: true, BlockInbound: true},
+			{Name: "Privado", Bit: 2, Enabled: true, BlockInbound: true, Active: true},
+			{Name: "Público", Bit: 4, Enabled: true, BlockInbound: true},
+		},
+		Rules: []FirewallRule{
+			{Name: "Escritorio remoto - Modo de usuario (TCP de entrada)", Allow: true, Protocol: 6, LocalPorts: "3389",
+				App: `%SystemRoot%\system32\svchost.exe`, Service: "termservice", Profiles: 0x7fffffff, Remote: "*"},
+			{Name: "Compartir archivos e impresoras (SMB de entrada)", Allow: true, Protocol: 6, LocalPorts: "445", App: "System", Profiles: 4, Remote: "LocalSubnet"},
+			{Name: "Steam", Allow: true, Protocol: 256, App: `C:\Program Files (x86)\Steam\steam.exe`, Profiles: 2, Remote: "*"},
+			{Name: "Bloquear Steam UDP", Allow: false, Protocol: 17, LocalPorts: "27036", Profiles: 2},
+			{Name: "RPC dinámico", Allow: true, Protocol: 6, LocalPorts: "RPC", Service: "*", Profiles: 2},
+			{Name: "Rango", Allow: true, Protocol: 17, LocalPorts: "47998-48010", Profiles: 2},
+		},
+	}
+	cases := []struct {
+		p    Port
+		open bool
+		why  string
+	}{
+		{Port{Proto: "tcp", Port: 3389, Process: "svchost.exe", Services: []string{"TermService"}}, true, "Escritorio remoto"},
+		{Port{Proto: "tcp", Port: 3389, Process: "otro.exe"}, false, "ninguna regla"},
+		{Port{Proto: "tcp", Port: 445, Process: "System"}, false, "perfil Privado"}, // la regla solo es del perfil Público
+		{Port{Proto: "tcp", Port: 27036, Process: "steam.exe"}, true, "Steam"},
+		{Port{Proto: "udp", Port: 27036, Process: "steam.exe"}, false, "regla de bloqueo"},
+		{Port{Proto: "tcp", Port: 49666, Process: "svchost.exe", Services: []string{"Schedule"}}, true, "RPC dinámico"},
+		{Port{Proto: "tcp", Port: 49665, Process: "wininit.exe"}, false, ""}, // sin servicio: no casa con Service "*"
+		{Port{Proto: "udp", Port: 48000, Process: "sunshine.exe"}, true, "Rango"},
+		{Port{Proto: "tcp", Port: 48000, Process: "sunshine.exe"}, false, ""},
+	}
+	for _, c := range cases {
+		open, why := fw.Evaluate(c.p)
+		if open != c.open || !strings.Contains(why, c.why) {
+			t.Errorf("%d/%s %s → %v %q, quiero %v (%q)", c.p.Port, c.p.Proto, c.p.Process, open, why, c.open, c.why)
+		}
+	}
+	// Una regla limitada a direcciones remotas lo dice; un perfil desactivado lo abre todo.
+	fw.Profiles[2].Active, fw.Profiles[1].Active = true, false
+	if open, why := fw.Evaluate(Port{Proto: "tcp", Port: 445, Process: "System"}); !open || !strings.Contains(why, "solo desde LocalSubnet") {
+		t.Errorf("SMB en red pública: %v %q", open, why)
+	}
+	fw.Profiles[2].Enabled = false
+	if open, why := fw.Evaluate(Port{Proto: "tcp", Port: 9999}); !open || !strings.Contains(why, "desactivado") {
+		t.Errorf("firewall desactivado: %v %q", open, why)
+	}
+
+	// Con el firewall evaluado, lo filtrado no genera hallazgos ni resta.
+	inv := Inventory{Firewall: fw, Listeners: []Listener{
+		{Proto: "tcp", Address: "0.0.0.0", Port: 3389, Scope: ScopeNetwork, Process: "svchost.exe", Services: []string{"TermService"}},
+	}}
+	fw.Profiles[2].Enabled = true
+	fw.Rules[0].Allow = false // ahora es una regla de bloqueo
+	rep := Analyze(inv, platform.Info{}, "test", time.Now())
+	if len(rep.Findings) != 0 || rep.Reachable != 0 || rep.Exposed != 1 || rep.Ports[0].Firewall != "filtered" {
+		t.Errorf("RDP filtrado: %+v %+v", rep.Findings, rep.Ports)
+	}
+}
+
+func TestParsePSFirewall(t *testing.T) {
+	data := map[string]any{
+		"profiles": []any{
+			map[string]any{"Bit": 1.0, "Enabled": true, "BlockInbound": true, "Active": false},
+			map[string]any{"Bit": 2.0, "Enabled": true, "BlockInbound": true, "Active": true},
+		},
+		"rules": map[string]any{"N": "Escritorio remoto", "A": 1.0, "P": 6.0, "L": "3389", "App": "", "S": "", "Pr": 2147483647.0, "R": "*"},
+	}
+	fw := parsePSFirewall(data)
+	if fw == nil || len(fw.Profiles) != 2 || fw.Profiles[1].Name != "Privado" || !fw.Profiles[1].Active || fw.InboundRules != 1 || !fw.Rules[0].Allow {
+		t.Errorf("firewall: %+v", fw)
+	}
+	if parsePSFirewall(map[string]any{}) != nil {
+		t.Error("sin perfiles no hay evaluación")
 	}
 }

@@ -86,3 +86,18 @@ func TestSavedReports(t *testing.T) {
 		}
 	}
 }
+
+func TestTableIgnoresColorCodes(t *testing.T) {
+	red := func(s string) string { return "\x1b[31m" + s + "\x1b[0m" }
+	var tb Table
+	tb.Row(Styled("PUERTO", red), "PROCESO")
+	tb.Row("22/tcp", Styled("sshd", red))
+	tb.Row("27036/udp", "steam.exe")
+	var b bytes.Buffer
+	tb.Write(&b)
+	plain := regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(b.String(), "")
+	want := "PUERTO     PROCESO\n22/tcp     sshd\n27036/udp  steam.exe\n"
+	if plain != want {
+		t.Errorf("tabla:\n%q\nquiero:\n%q", plain, want)
+	}
+}

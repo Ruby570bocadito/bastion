@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/user"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -224,30 +223,30 @@ func listExceptions(asJSON bool) error {
 		return nil
 	}
 	cat, _ := loadCatalog(loadConfig())
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	tb := report.Table{Indent: "  "}
 	fmt.Println()
-	fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n", s.Bold("CONTROL"), s.Bold("CADUCA"), s.Bold("RESPONSABLE"), s.Bold("EQUIPOS"), s.Bold("MOTIVO"))
+	tb.Row(report.Styled("CONTROL", s.Bold), report.Styled("CADUCA", s.Bold), report.Styled("RESPONSABLE", s.Bold), report.Styled("EQUIPOS", s.Bold), report.Styled("MOTIVO", s.Bold))
 	expired := 0
 	for _, e := range f.Exceptions {
-		when := e.Expires + s.Dim(fmt.Sprintf(" (%dd)", e.DaysLeft(now)))
+		when := report.Styled(fmt.Sprintf("%s (%dd)", e.Expires, e.DaysLeft(now)), nil)
 		switch {
 		case e.Expired(now):
-			when = s.Red(e.Expires + " caducada")
+			when = report.Styled(e.Expires+" caducada", s.Red)
 			expired++
 		case e.DaysLeft(now) <= 30:
-			when = s.Yellow(e.Expires + fmt.Sprintf(" (%dd)", e.DaysLeft(now)))
+			when = report.Styled(fmt.Sprintf("%s (%dd)", e.Expires, e.DaysLeft(now)), s.Yellow)
 		}
 		hosts := "todos"
 		if len(e.Hosts) > 0 {
 			hosts = strings.Join(e.Hosts, ",")
 		}
-		id := e.Rule
+		id := report.Styled(e.Rule, s.Cyan)
 		if cat != nil && cat.Rule(e.Rule) == nil {
-			id += s.Yellow(" (regla desconocida)")
+			id = report.Styled(e.Rule+" (regla desconocida)", s.Yellow)
 		}
-		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n", s.Cyan(id), when, e.Owner, hosts, e.Reason)
+		tb.Row(id, when, e.Owner, hosts, e.Reason)
 	}
-	w.Flush()
+	tb.Write(os.Stdout)
 	if len(f.Exceptions) == 1 {
 		fmt.Print("\n  1 excepción")
 	} else {

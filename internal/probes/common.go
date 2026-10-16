@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 	"unicode/utf16"
+	"unicode/utf8"
 )
 
 func init() {
@@ -93,8 +94,29 @@ func decodeText(b []byte) string {
 	if len(b) >= 2 && b[0] == 0xFE && b[1] == 0xFF {
 		return decodeUTF16(b[2:], true)
 	}
-	return strings.TrimPrefix(string(b), "\xef\xbb\xbf")
+	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
+	if !utf8.Valid(b) {
+		// Herramientas como auditpol escriben en la página de códigos
+		// "ANSI" del sistema (Windows-1252 en español): sin convertirla,
+		// "Creación" se vería como "Creaci�n".
+		return decodeLegacy(b)
+	}
+	return string(b)
 }
+
+// decodeLegacy convierte texto de 8 bits que no es UTF-8. En Windows usa la
+// página de códigos ANSI del sistema; en el resto, Latin-1.
+var decodeLegacy = func(b []byte) string {
+	r := make([]rune, len(b))
+	for i, c := range b {
+		r[i] = rune(c)
+	}
+	return string(r)
+}
+
+// DecodeText convierte la salida de una herramienta del sistema a UTF-8
+// (UTF-16 con BOM, UTF-8 o la página de códigos heredada).
+func DecodeText(b []byte) string { return decodeText(b) }
 
 func decodeUTF16(b []byte, bigEndian bool) string {
 	u := make([]uint16, 0, len(b)/2)

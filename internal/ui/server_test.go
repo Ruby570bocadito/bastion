@@ -200,7 +200,8 @@ func TestPlanAndBusy(t *testing.T) {
 		t.Errorf("superficie sin token: %d", rec.Code)
 	}
 
-	// Mientras un escaneo está en curso, otro escaneo o plan responde 409.
+	// Mientras un escaneo está en curso, otro escaneo responde 409 y el plan
+	// espera a que termine (no falla).
 	fb.block, fb.started = make(chan struct{}), make(chan struct{})
 	done := make(chan int)
 	go func() { done <- do(h, "POST", "/api/scan", tok).Code }()
@@ -208,12 +209,19 @@ func TestPlanAndBusy(t *testing.T) {
 	if rec := do(h, "POST", "/api/scan", tok); rec.Code != http.StatusConflict {
 		t.Errorf("segundo escaneo: %d, quiero 409", rec.Code)
 	}
-	if rec := do(h, "GET", "/api/plan?wave=1", tok); rec.Code != http.StatusConflict {
-		t.Errorf("plan durante un escaneo: %d, quiero 409", rec.Code)
+	planDone := make(chan int)
+	go func() { planDone <- do(h, "GET", "/api/plan?wave=1", tok).Code }()
+	select {
+	case code := <-planDone:
+		t.Fatalf("el plan no debe adelantarse al escaneo en curso (respondió %d)", code)
+	case <-time.After(100 * time.Millisecond):
 	}
 	close(fb.block)
 	if code := <-done; code != 200 {
 		t.Errorf("primer escaneo: %d", code)
+	}
+	if code := <-planDone; code != 200 {
+		t.Errorf("plan tras el escaneo: %d", code)
 	}
 }
 

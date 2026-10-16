@@ -50,7 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo ./bin/bastion surface --all --no-color
-          sudo ./bin/bastion surface --format json | jq -e '.schema == "bastion.surface/v1" and (.listeners | length) > 0 and (.admins | length) > 0'
+          sudo ./bin/bastion surface --format json | jq -e '.schema == "bastion.surface/v1" and (.listeners | length) > 0 and (.ports | length) > 0 and (.admins | length) > 0'
       - name: Superficie de ataque (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -61,6 +61,8 @@ jobs:
           if ($r.listeners.Count -eq 0) { throw 'no se detectó ningún puerto a la escucha' }
           if ($r.admins.Count -eq 0) { throw 'no se leyeron los administradores' }
           if (-not ($r.listeners | Where-Object { $_.process })) { throw 'ningún puerto asociado a su proceso' }
+          if (-not $r.firewall -or $r.firewall.profiles.Count -ne 3) { throw 'no se evaluó el Firewall de Windows' }
+          "Servicios en la red: $($r.exposed) · accesibles a través del firewall: $($r.reachable) · reglas de entrada: $($r.firewall.inbound_rules)"
       # Una excepción saca el control de la puntuación y al quitarla vuelve.
       - name: Excepciones (Linux)
         if: runner.os == 'Linux'

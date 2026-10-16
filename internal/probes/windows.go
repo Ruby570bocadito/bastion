@@ -375,6 +375,11 @@ var psQueries = map[string]struct{ desc, script string }{
 	// con el SID de cada cuenta, para no depender del idioma de los nombres.
 	"smb_shares": {"Get-SmbShare / Get-SmbShareAccess",
 		`try { $o=@(); Get-SmbShare | Where-Object { -not $_.Special } | ForEach-Object { $n=[string]$_.Name; $acc=@(Get-SmbShareAccess -Name $n -ErrorAction SilentlyContinue | ForEach-Object { $sid=''; try { $sid=(New-Object System.Security.Principal.NTAccount($_.AccountName)).Translate([System.Security.Principal.SecurityIdentifier]).Value } catch {}; @{Account=[string]$_.AccountName;SID=$sid;Right=[string]$_.AccessRight;Type=[string]$_.AccessControlType} }); $o+=@{Name=$n;Path=[string]$_.Path;Access=$acc} }; @{shares=$o} | ConvertTo-Json -Compress -Depth 5 } catch { @{__err=$_.Exception.Message} | ConvertTo-Json -Compress }`},
+	// Política efectiva del Firewall de Windows (COM HNetCfg.FwPolicy2, que
+	// es mucho más rápido que Get-NetFirewallRule): perfiles activos, estado
+	// y acción de entrada por defecto, y reglas de entrada habilitadas.
+	"firewall_policy": {"HNetCfg.FwPolicy2 (Firewall de Windows)",
+		`try { $p=New-Object -ComObject HNetCfg.FwPolicy2; $cur=[int]$p.CurrentProfileTypes; $prof=@(); foreach($b in 1,2,4){ $prof+=@{Bit=$b;Enabled=[bool]$p.FirewallEnabled($b);BlockInbound=([int]$p.DefaultInboundAction($b) -eq 0);Active=(($cur -band $b) -ne 0)} }; $rules=New-Object System.Collections.ArrayList; foreach($r in $p.Rules){ if($r.Enabled -and $r.Direction -eq 1){ [void]$rules.Add(@{N=[string]$r.Name;A=[int]$r.Action;P=[int]$r.Protocol;L=[string]$r.LocalPorts;App=[string]$r.ApplicationName;S=[string]$r.ServiceName;Pr=[int]$r.Profiles;R=[string]$r.RemoteAddresses}) } }; @{profiles=$prof;rules=$rules} | ConvertTo-Json -Compress -Depth 4 } catch { @{__err=$_.Exception.Message} | ConvertTo-Json -Compress }`},
 	// Miembros del grupo Administradores por SID (S-1-5-32-544). Si
 	// Get-LocalGroupMember falla (SIDs huérfanos), se usa ADSI.
 	"local_admins": {"miembros de Administradores (S-1-5-32-544)",

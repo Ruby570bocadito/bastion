@@ -373,3 +373,56 @@ func firstNonEmpty(a, b string) string {
 	}
 	return b
 }
+
+// parsePSFirewall interpreta la consulta PowerShell "firewall_policy"
+// (HNetCfg.FwPolicy2: perfiles y reglas de entrada habilitadas).
+func parsePSFirewall(data map[string]any) *Firewall {
+	fw := &Firewall{}
+	for _, it := range asList(data["profiles"]) {
+		m, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		bit := int(num(m["Bit"]))
+		fw.Profiles = append(fw.Profiles, FirewallProfile{Name: profileNames[bit], Bit: bit,
+			Enabled: truthy(m["Enabled"]), BlockInbound: truthy(m["BlockInbound"]), Active: truthy(m["Active"])})
+	}
+	for _, it := range asList(data["rules"]) {
+		m, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		fw.Rules = append(fw.Rules, FirewallRule{Name: str(m["N"]), Allow: num(m["A"]) == 1, Protocol: int(num(m["P"])),
+			LocalPorts: str(m["L"]), App: str(m["App"]), Service: str(m["S"]), Profiles: int(num(m["Pr"])), Remote: str(m["R"])})
+	}
+	fw.InboundRules = len(fw.Rules)
+	if len(fw.Profiles) == 0 {
+		return nil
+	}
+	return fw
+}
+
+func num(v any) float64 {
+	switch x := v.(type) {
+	case float64:
+		return x
+	case int:
+		return float64(x)
+	case string:
+		f, _ := strconv.ParseFloat(x, 64)
+		return f
+	}
+	return 0
+}
+
+func truthy(v any) bool {
+	switch x := v.(type) {
+	case bool:
+		return x
+	case string:
+		return strings.EqualFold(x, "true")
+	case float64:
+		return x != 0
+	}
+	return false
+}

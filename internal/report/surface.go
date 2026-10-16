@@ -5,7 +5,6 @@ import (
 	"io"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/Ruby570bocadito/bastion/internal/surface"
 	"github.com/Ruby570bocadito/bastion/pkg/rule"
@@ -20,9 +19,37 @@ func SurfaceConsole(w io.Writer, rep *surface.Report, all bool, s Style) {
 	fmt.Fprintf(w, "  %s  %s %s\n", s.Bold(s.Cyan(Sym("▲")+" BASTION")), s.Dim("·"), s.Dim("superficie de ataque  "+rep.Version))
 	fmt.Fprintln(w, "  "+line)
 	fmt.Fprintf(w, "  %s %s %s\n", s.Dim(pad("Equipo", 9)), s.Bold(host.Hostname), s.Dim("· "+host.DisplayName()))
-	loopback := len(rep.Listeners) - rep.Exposed
-	fmt.Fprintf(w, "  %s %d a la escucha · %s · %d solo locales\n", s.Dim(pad("Puertos", 9)), len(rep.Listeners),
-		s.Bold(fmt.Sprintf("%d en la red", rep.Exposed)), loopback)
+	local, ephemeral := 0, 0
+	for _, p := range rep.Ports {
+		switch {
+		case p.Ephemeral:
+			ephemeral++
+		case p.Scope != surface.ScopeNetwork:
+			local++
+		}
+	}
+	reach := fmt.Sprintf("%d en la red", rep.Exposed)
+	if rep.Firewall != nil {
+		reach += fmt.Sprintf(" · %s", s.Bold(fmt.Sprintf("%d accesibles a través del firewall", rep.Reachable)))
+	} else {
+		reach = s.Bold(reach)
+	}
+	fmt.Fprintf(w, "  %s %s · %d solo locales\n", s.Dim(pad("Servicios", 9)), reach, local)
+	if fw := rep.Firewall; fw != nil {
+		var parts []string
+		for _, p := range fw.Active() {
+			state := s.Green("activo")
+			if !p.Enabled {
+				state = s.Red("desactivado")
+			} else if !p.BlockInbound {
+				state = s.Yellow("activo, entrada permitida por defecto")
+			} else {
+				state += ", entrada bloqueada por defecto"
+			}
+			parts = append(parts, "perfil "+p.Name+": "+state)
+		}
+		fmt.Fprintf(w, "  %s %s %s\n", s.Dim(pad("Firewall", 9)), strings.Join(parts, " · "), s.Dim(fmt.Sprintf("· %d reglas de entrada", fw.InboundRules)))
+	}
 
 	fmt.Fprintln(w)
 	c := scoreColor(s, rep.Score)
@@ -56,47 +83,61 @@ func SurfaceConsole(w io.Writer, rep *surface.Report, all bool, s Style) {
 	}
 
 	fmt.Fprintln(w)
-	shown := 0
-	for _, l := range rep.Listeners {
-		if all || l.Scope == surface.ScopeNetwork {
-			shown++
-		}
+	var tb Table
+	tb.Indent = "  "
+	header := []any{Styled("PUERTO", s.Dim), Styled("DIRECCIÓN", s.Dim), Styled("ALCANCE", s.Dim)}
+	if rep.Firewall != nil {
+		header = append(header, Styled("FIREWALL", s.Dim))
 	}
-	title := "PUERTOS EXPUESTOS EN LA RED"
+	tb.Row(append(header, Styled("PROCESO", s.Dim), Styled("SERVICIO", s.Dim))...)
+	for _, p := range rep.Ports {
+		if !all && (p.Scope != surface.ScopeNetwork || p.Ephemeral) {
+			continue
+		}
+		proc := p.Process
+		if p.PID > 0 {
+			proc = strings.TrimSpace(proc + " (" + strconv.Itoa(p.PID) + ")")
+		}
+		if len(p.Services) > 0 {
+			proc += " · " + strings.Join(p.Services, ", ")
+		}
+		procCell := Styled(truncate(proc, 46), nil)
+		if proc == "" {
+			procCell = Styled("?", s.Dim)
+		}
+		scope := Styled("red", s.Yellow)
+		switch {
+		case p.Ephemeral:
+			scope = Styled("cliente", s.Dim)
+		case p.Scope == surface.ScopeLoopback:
+			scope = Styled("local", s.Dim)
+		}
+		row := []any{fmt.Sprintf("%d/%s", p.Port, p.Proto), truncate(strings.Join(p.Addresses, ", "), 28), scope}
+		if rep.Firewall != nil {
+			switch p.Firewall {
+			case "open":
+				row = append(row, Styled("abierto", s.Red))
+			case "filtered":
+				row = append(row, Styled("filtrado", s.Green))
+			default:
+				row = append(row, Styled("—", s.Dim))
+			}
+		}
+		tb.Row(append(row, procCell, p.Known)...)
+	}
+	title := "SERVICIOS EN LA RED"
 	if all {
 		title = "PUERTOS A LA ESCUCHA"
 	}
-	fmt.Fprintf(w, "  %s %s\n", s.Bold(title), s.Dim(fmt.Sprintf("(%d)", shown)))
+	fmt.Fprintf(w, "  %s %s\n", s.Bold(title), s.Dim(fmt.Sprintf("(%d)", tb.Len()-1)))
 	fmt.Fprintln(w, "  "+line)
-	if shown == 0 {
+	if tb.Len() == 1 {
 		fmt.Fprintf(w, "  %s\n", s.Green(Sym("✓")+" Ningún servicio escucha en la red."))
 	} else {
-		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\n", s.Dim("PUERTO"), s.Dim("DIRECCIÓN"), s.Dim("ALCANCE"), s.Dim("PROCESO"), s.Dim("SERVICIO"))
-		for _, l := range rep.Listeners {
-			if !all && l.Scope != surface.ScopeNetwork {
-				continue
-			}
-			proc := l.Process
-			if l.PID > 0 {
-				proc = strings.TrimSpace(proc + " (" + strconv.Itoa(l.PID) + ")")
-			}
-			if len(l.Services) > 0 {
-				proc += " · " + strings.Join(l.Services, ", ")
-			}
-			if proc == "" {
-				proc = s.Dim("?")
-			}
-			scope := s.Yellow("red")
-			if l.Scope == surface.ScopeLoopback {
-				scope = s.Dim("local")
-			}
-			fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\n", fmt.Sprintf("%d/%s", l.Port, l.Proto), l.Address, scope, truncate(proc, 44), l.Known)
-		}
-		tw.Flush()
+		tb.Write(w)
 	}
-	if !all && loopback > 0 {
-		fmt.Fprintf(w, "  %s\n", s.Dim(fmt.Sprintf("+ %d solo accesibles desde este equipo (bastion surface --all)", loopback)))
+	if !all && local+ephemeral > 0 {
+		fmt.Fprintf(w, "  %s\n", s.Dim(fmt.Sprintf("+ %d solo locales y %d sockets de cliente (bastion surface --all)", local, ephemeral)))
 	}
 
 	if len(rep.Shares) > 0 {
@@ -134,5 +175,8 @@ func SurfaceConsole(w io.Writer, rep *surface.Report, all bool, s Style) {
 	for _, n := range rep.Notes {
 		fmt.Fprintf(w, "  %s %s\n", s.Yellow("!"), s.Dim(n))
 	}
-	fmt.Fprintf(w, "  %s %s\n\n", s.Dim("·"), s.Dim("Bastion todavía no evalúa las reglas del firewall: un puerto en la red puede estar filtrado. Compruébalo antes de darlo por accesible."))
+	if rep.Firewall == nil {
+		fmt.Fprintf(w, "  %s %s\n", s.Dim("·"), s.Dim("En este sistema Bastion todavía no evalúa las reglas del firewall: un puerto en la red puede estar filtrado."))
+	}
+	fmt.Fprintln(w)
 }

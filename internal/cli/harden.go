@@ -7,9 +7,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
-	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -143,7 +143,7 @@ func runHarden(f hardenFlags) error {
 		return fmt.Errorf("los cambios de acceso remoto necesitan confirmación interactiva; en máquinas desechables usa --no-deadman")
 	}
 	if !f.yes && !askYesNo(fmt.Sprintf("¿Aplicar %d cambios en %s? Se guardará una instantánea para poder deshacerlos.", planned, info.Hostname)) {
-		return &ExitError{Code: 1, Msg: "cancelado: no se ha cambiado nada"}
+		return &ExitError{Code: 1, Msg: cancelled}
 	}
 
 	if err := ensureDataDirs(); err != nil {
@@ -320,10 +320,41 @@ func askYesNo(q string) bool {
 		fmt.Fprintln(os.Stderr, "\n  entrada no interactiva: usa --yes para confirmar")
 		return false
 	}
+	discardPendingInput()
 	fmt.Printf("\n  %s [s/N] ", q)
 	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	switch strings.ToLower(strings.TrimSpace(line)) {
+	return isYes(line)
+}
+
+// cancelled explica cómo confirmar cuando la respuesta no fue "s".
+const cancelled = "cancelado: no se ha cambiado nada. Para confirmar, escribe s y pulsa Intro (o añade --yes)."
+
+// isYes acepta s, si, sí, y o yes en cualquier caja. La consola de Windows
+// puede entregar la "í" de "sí" en otra página de códigos (uno o dos bytes
+// que no son ASCII): también se acepta.
+func isYes(answer string) bool {
+	// Solo se pasan a minúsculas las letras ASCII: strings.ToLower cambiaría
+	// los bytes inválidos por U+FFFD.
+	a := []byte(strings.TrimSpace(answer))
+	for i, c := range a {
+		if 'A' <= c && c <= 'Z' {
+			a[i] = c + 'a' - 'A'
+		}
+	}
+	return yesWord(string(a))
+}
+
+func yesWord(a string) bool {
+	switch a {
 	case "s", "si", "sí", "y", "yes":
+		return true
+	}
+	if rest, ok := strings.CutPrefix(a, "s"); ok && len(rest) >= 1 && len(rest) <= 2 {
+		for i := 0; i < len(rest); i++ {
+			if rest[i] < 0x80 {
+				return false
+			}
+		}
 		return true
 	}
 	return false
@@ -397,7 +428,7 @@ func newRollbackCmd() *cobra.Command {
 				return nil
 			}
 			if !yes && !askYesNo(fmt.Sprintf("¿Restaurar %d valores a su estado anterior?", n)) {
-				return &ExitError{Code: 1, Msg: "cancelado"}
+				return &ExitError{Code: 1, Msg: cancelled}
 			}
 			unlock, err := store.Lock()
 			if err != nil {
@@ -433,8 +464,8 @@ func newHistoryCmd() *cobra.Command {
 				remediate.StatusApplied: "aplicado", remediate.StatusPartial: "parcial", remediate.StatusFailed: "fallido",
 				remediate.StatusRolledBack: "deshecho", remediate.StatusInProgress: "interrumpido", remediate.StatusNothing: "sin cambios",
 			}
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", s.Bold("CAMBIO"), s.Bold("FECHA"), s.Bold("PERFIL"), s.Bold("OLA"), s.Bold("ESTADO"), s.Bold("CONTROLES"))
+			var tb report.Table
+			tb.Row(report.Styled("CAMBIO", s.Bold), report.Styled("FECHA", s.Bold), report.Styled("PERFIL", s.Bold), report.Styled("OLA", s.Bold), report.Styled("ESTADO", s.Bold), report.Styled("CONTROLES", s.Bold))
 			for _, m := range all {
 				ok := 0
 				for _, r := range m.Rules {
@@ -442,9 +473,10 @@ func newHistoryCmd() *cobra.Command {
 						ok++
 					}
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%d de %d\n", m.ID, m.CreatedAt.Local().Format("2006-01-02 15:04"), m.Profile, m.Wave, names[m.Status], ok, len(m.Rules))
+				tb.Row(m.ID, m.CreatedAt.Local().Format("2006-01-02 15:04"), m.Profile, strconv.Itoa(m.Wave), names[m.Status], fmt.Sprintf("%d de %d", ok, len(m.Rules)))
 			}
-			return w.Flush()
+			tb.Write(os.Stdout)
+			return nil
 		},
 	}
 }

@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -120,12 +122,12 @@ func newRulesCmd() *cobra.Command {
 				rs = cat.Select(info.Tags, p.ID)
 			}
 			s := stdoutStyle()
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", s.Bold("ID"), s.Bold("SEVERIDAD"), s.Bold("CATEGORÍA"), s.Bold("TÍTULO"))
+			var tb report.Table
+			tb.Row(report.Styled("ID", s.Bold), report.Styled("SEVERIDAD", s.Bold), report.Styled("CATEGORÍA", s.Bold), report.Styled("TÍTULO", s.Bold))
 			for _, r := range rs {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.ID, report.SeverityLabel(r.Severity), r.Category, r.Title)
+				tb.Row(r.ID, report.SeverityLabel(r.Severity), r.Category, r.Title)
 			}
-			w.Flush()
+			tb.Write(os.Stdout)
 			fmt.Printf("\n%d reglas\n", len(rs))
 			return nil
 		},
@@ -345,20 +347,21 @@ func newProfilesCmd() *cobra.Command {
 			}
 			def := cat.DefaultProfile(info.Tags)
 			s := stdoutStyle()
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", s.Bold("PERFIL"), s.Bold("NOMBRE"), s.Bold("HEREDA DE"), s.Bold("REGLAS"))
+			var tb report.Table
+			tb.Row(report.Styled("PERFIL", s.Bold), report.Styled("NOMBRE", s.Bold), report.Styled("HEREDA DE", s.Bold), report.Styled("REGLAS", s.Bold))
 			for _, p := range cat.ProfilesFor(tags) {
-				mark := ""
+				id := report.Styled(p.ID, nil)
 				if def != nil && p.ID == def.ID {
-					mark = s.Green(" (por defecto)")
+					id = report.Styled(p.ID+" (por defecto)", s.Green)
 				}
 				n := len(cat.Select(representativeTags(p.Platforms), p.ID))
 				if !all {
 					n = len(cat.Select(info.Tags, p.ID))
 				}
-				fmt.Fprintf(w, "%s%s\t%s\t%s\t%d\n", p.ID, mark, p.Name, strings.Join(p.Extends, ", "), n)
+				tb.Row(id, p.Name, strings.Join(p.Extends, ", "), strconv.Itoa(n))
 			}
-			return w.Flush()
+			tb.Write(os.Stdout)
+			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "incluir perfiles de otras plataformas")
@@ -368,7 +371,7 @@ func newProfilesCmd() *cobra.Command {
 // ---- update ------------------------------------------------------------------
 
 func newUpdateCmd() *cobra.Command {
-	var check, force bool
+	var check, force, pause bool
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Actualizar Bastion (y su paquete de reglas) a la última versión",
@@ -377,7 +380,19 @@ Las reglas oficiales van incrustadas en el binario, así que también se actuali
 
 Origen: https://github.com/<repo>/releases (configurable en config.yaml o con
 BASTION_REPO / BASTION_RELEASES_URL para usar un espejo interno).`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) (err error) {
+			if pause {
+				// Ventana de administrador abierta por la elevación: que no
+				// se cierre antes de poder leer el resultado.
+				defer func() {
+					if err != nil {
+						fmt.Fprintln(os.Stderr, "error:", err)
+						err = &ExitError{Code: 1}
+					}
+					fmt.Print("\n  Pulsa Intro para cerrar esta ventana…")
+					_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+				}()
+			}
 			cfg := loadConfig()
 			src := selfupdate.Source{
 				Repo:    firstNonEmpty(os.Getenv("BASTION_REPO"), cfg.Update.Repo, version.Repo),
@@ -402,6 +417,21 @@ BASTION_REPO / BASTION_RELEASES_URL para usar un espejo interno).`,
 				fmt.Printf("  %s Hay una versión nueva. Ejecuta: bastion update\n", s.Yellow(report.Sym("↑")))
 				return nil
 			}
+			// En Windows, Bastion vive en Program Files: sin elevar no se puede
+			// sustituir. En vez de fallar al final, se repite la actualización
+			// en una ventana de administrador (como hace el instalador).
+			if dir, werr := selfupdate.InstallDirWritable(); werr != nil && !probes.Privileged() {
+				if !canElevate() {
+					return fmt.Errorf("no se puede escribir en %s: repite con sudo (sudo bastion update)", dir)
+				}
+				args := []string{"update", "--pause"}
+				if force {
+					args = append(args, "--force")
+				}
+				fmt.Printf("  %s %s solo lo puede modificar un administrador.\n", s.Yellow("!"), dir)
+				fmt.Println("    Se abre una ventana de administrador para terminar la actualización (acepta el aviso de Windows).")
+				return relaunchElevated(args)
+			}
 			fmt.Printf("  Descargando %s …\n", selfupdate.AssetName(runtimeGOOS(), runtimeGOARCH()))
 			bin, tmp, err := src.Download(ctx, latest)
 			if err != nil {
@@ -418,6 +448,8 @@ BASTION_REPO / BASTION_RELEASES_URL para usar un espejo interno).`,
 	}
 	cmd.Flags().BoolVar(&check, "check", false, "solo comprobar si hay una versión nueva")
 	cmd.Flags().BoolVar(&force, "force", false, "reinstalar aunque no haya versión nueva")
+	cmd.Flags().BoolVar(&pause, "pause", false, "esperar a Intro al terminar (ventana abierta por la elevación)")
+	_ = cmd.Flags().MarkHidden("pause")
 	return cmd
 }
 

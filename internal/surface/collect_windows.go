@@ -20,6 +20,12 @@ func Collect(ctx context.Context) (Inventory, error) {
 		return inv, err
 	}
 	inv.Listeners = parseNetstat(out)
+	for i := range inv.Listeners {
+		// Los sockets UDP en el rango dinámico (49152-65535) son de clientes:
+		// consultas DNS, descubrimiento, sesiones de escritorio remoto…
+		l := &inv.Listeners[i]
+		l.Ephemeral = l.Proto == "udp" && l.Port >= 49152
+	}
 	if tl, err := run(ctx, probes.System32("tasklist.exe"), "/svc", "/fo", "csv", "/nh"); err == nil {
 		procs := parseTasklist(tl)
 		for i := range inv.Listeners {
@@ -43,6 +49,18 @@ func Collect(ctx context.Context) (Inventory, error) {
 		inv.Admins = parsePSAdmins(data)
 	} else {
 		inv.Notes = append(inv.Notes, "No se pudieron leer los miembros de Administradores: "+err.Error())
+	}
+	if data, err := probes.QueryPS(ctx, "firewall_policy"); err == nil {
+		inv.Firewall = parsePSFirewall(data)
+	} else {
+		inv.Notes = append(inv.Notes, "No se pudo leer la política del Firewall de Windows: los puertos se muestran sin filtrar. "+err.Error())
+	}
+	if fw := inv.Firewall; fw != nil {
+		for _, p := range fw.Active() {
+			if !p.Enabled {
+				inv.Notes = append(inv.Notes, "El Firewall de Windows está desactivado en el perfil "+p.Name+": si usas otro cortafuegos, Bastion no puede evaluarlo y considera abiertos todos los puertos.")
+			}
+		}
 	}
 	if !probes.Privileged() {
 		inv.Notes = append(inv.Notes, "Sin privilegios de administrador algunos procesos aparecen sin nombre.")

@@ -31,7 +31,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Ruby570bocadito/bastion/internal/engine"
@@ -112,9 +111,31 @@ type Backend interface {
 type Server struct {
 	backend Backend
 	token   string
-	// Un único escaneo o plan a la vez: ambos leen todo el sistema.
-	busy sync.Mutex
+	// Un único escaneo, plan o análisis de superficie a la vez: todos leen
+	// el sistema entero. Un segundo escaneo se rechaza; el plan y la
+	// superficie esperan a que termine el que está en curso.
+	busy chan struct{}
 }
+
+func (s *Server) tryAcquire() bool {
+	select {
+	case s.busy <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Server) acquire(ctx context.Context) error {
+	select {
+	case s.busy <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *Server) release() { <-s.busy }
 
 // New crea la consola con un token aleatorio.
 func New(b Backend) (*Server, error) {
@@ -122,7 +143,7 @@ func New(b Backend) (*Server, error) {
 	if _, err := rand.Read(t); err != nil {
 		return nil, err
 	}
-	return &Server{backend: b, token: base64.RawURLEncoding.EncodeToString(t)}, nil
+	return &Server{backend: b, token: base64.RawURLEncoding.EncodeToString(t), busy: make(chan struct{}, 1)}, nil
 }
 
 // Token es el secreto de la sesión (va en la URL que se abre).
@@ -177,10 +198,10 @@ func (s *Server) Handler() http.Handler {
 		return s.backend.Report(id)
 	}))
 	mux.Handle("POST /api/scan", s.api(func(w http.ResponseWriter, r *http.Request) (any, error) {
-		if !s.busy.TryLock() {
+		if !s.tryAcquire() {
 			return nil, httpError{http.StatusConflict, "ya hay un escaneo en curso"}
 		}
-		defer s.busy.Unlock()
+		defer s.release()
 		rep, id, err := s.backend.Scan(r.Context())
 		if err != nil {
 			return nil, err
@@ -192,10 +213,10 @@ func (s *Server) Handler() http.Handler {
 		if err != nil || wave < 1 || wave > 3 {
 			return nil, httpError{http.StatusBadRequest, "wave debe ser 1, 2 o 3"}
 		}
-		if !s.busy.TryLock() {
-			return nil, httpError{http.StatusConflict, "hay un escaneo en curso"}
+		if err := s.acquire(r.Context()); err != nil {
+			return nil, err
 		}
-		defer s.busy.Unlock()
+		defer s.release()
 		items, err := s.backend.Plan(r.Context(), wave)
 		if items == nil {
 			items = []PlanItem{}
@@ -217,10 +238,10 @@ func (s *Server) Handler() http.Handler {
 		return list, err
 	}))
 	mux.Handle("GET /api/surface", s.api(func(w http.ResponseWriter, r *http.Request) (any, error) {
-		if !s.busy.TryLock() {
-			return nil, httpError{http.StatusConflict, "hay un escaneo en curso"}
+		if err := s.acquire(r.Context()); err != nil {
+			return nil, err
 		}
-		defer s.busy.Unlock()
+		defer s.release()
 		return s.backend.Surface(r.Context())
 	}))
 	// El informe HTML completo de un escaneo (para la pestaña Controles).

@@ -247,6 +247,27 @@ func Apply(newBin string) error {
 	return os.Rename(staged, exe)
 }
 
+// InstallDirWritable comprueba si se puede escribir junto al ejecutable
+// actual (lo que necesita Apply). Devuelve el directorio y el error.
+func InstallDirWritable() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	if exe, err = filepath.EvalSymlinks(exe); err != nil {
+		return "", err
+	}
+	dir := filepath.Dir(exe)
+	f, err := os.CreateTemp(dir, ".bastion-write-test-*")
+	if err != nil {
+		return dir, err
+	}
+	name := f.Name()
+	f.Close()
+	os.Remove(name)
+	return dir, nil
+}
+
 // CleanupOld elimina el ejecutable anterior que deja Apply en Windows.
 func CleanupOld() {
 	if exe, err := os.Executable(); err == nil {

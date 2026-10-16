@@ -162,3 +162,13 @@ func TestSplitRegistryPath(t *testing.T) {
 		t.Error("HKCU debería rechazarse (Bastion audita el equipo, no un usuario)")
 	}
 }
+
+func TestDecodeLegacy(t *testing.T) {
+	// "Creación del proceso" en Windows-1252/Latin-1 (como lo escribe auditpol).
+	if got := decodeText([]byte("Creaci\xf3n del proceso")); got != "Creación del proceso" {
+		t.Errorf("legacy = %q", got)
+	}
+	if got := decodeText([]byte("\xef\xbb\xbfCreación")); got != "Creación" {
+		t.Errorf("UTF-8 con BOM = %q", got)
+	}
+}

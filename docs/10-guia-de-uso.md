@@ -19,7 +19,7 @@
 | `bastion rollback [ID] [--yes]` | Deshacer un cambio de hardening (por defecto, el último) |
 | `bastion history` | Cambios de hardening aplicados |
 | `bastion exceptions [list\|add\|remove]` | Aceptar controles fallidos con motivo, responsable y caducidad (ver abajo) |
-| `bastion update [--check] [--force]` | Actualizar Bastion y sus reglas (verificado con SHA-256) |
+| `bastion update [--check] [--force]` | Actualizar Bastion y sus reglas (verificado con SHA-256). En Windows pide elevación si hace falta |
 | `bastion init` | Crear directorios y configuración (lo hace el instalador) |
 | `bastion version [--short]` | Versión |
 
@@ -91,9 +91,13 @@ bastion surface --format json > superficie.json
 bastion surface --fail-on high        # código 2 si hay hallazgos altos o críticos
 ```
 
-Lista los servicios a la escucha con su dirección, alcance (**red** o **local**), proceso y servicio conocido, y genera hallazgos para los servicios de riesgo expuestos en la red (Telnet, SMB, RDP, Redis, Docker API…), los recursos compartidos abiertos a todos y las exportaciones NFS peligrosas. Cada hallazgo dice por qué importa y cómo cerrarlo. La puntuación de exposición empieza en 100 y resta 30, 15, 7 o 3 por cada hallazgo crítico, alto, medio o bajo.
+Agrupa los sockets por servicio (el mismo puerto en IPv4 e IPv6 es una fila) con su dirección, alcance (**red**, **local** o **cliente**), proceso y servicio conocido, y genera hallazgos para los servicios de riesgo expuestos en la red (Telnet, SMB, RDP, Redis, Docker API…), los recursos compartidos abiertos a todos y las exportaciones NFS peligrosas. Cada hallazgo dice por qué importa y cómo cerrarlo. La puntuación de exposición empieza en 100 y resta 30, 15, 7 o 3 por cada hallazgo crítico, alto, medio o bajo.
 
-Ejecútalo como administrador o root: sin privilegios no se ve el proceso de otros usuarios y, en Windows, no se leen los recursos compartidos. Bastion todavía no evalúa las reglas del firewall, así que un puerto "en la red" puede estar filtrado.
+**Firewall de Windows.** En Windows, Bastion lee la política efectiva del firewall (perfiles activos, acción de entrada por defecto y reglas de entrada) y decide para cada puerto si está **abierto** o **filtrado**, como lo haría el propio firewall: en cada perfil activo, una regla de bloqueo gana a una de permiso y, sin regla, manda la acción por defecto. Solo los puertos abiertos generan hallazgos, y cada uno dice qué regla lo permite (y si solo desde la red local). Si el firewall está desactivado en el perfil activo, todos los puertos cuentan como abiertos. En Linux todavía no se evalúan las reglas (ufw, firewalld, nftables).
+
+Los sockets UDP en puertos dinámicos (49152-65535 en Windows; `ip_local_port_range` en Linux) son de clientes, como las consultas DNS: se muestran como **cliente** solo con `--all` y no cuentan como servicios. Los puertos TCP dinámicos de `lsass`, `services`, `spoolsv`… se etiquetan como **RPC dinámico**. NetBIOS (137-139) cuenta como un único hallazgo.
+
+Ejecútalo como administrador o root: sin privilegios no se ve el proceso de otros usuarios y, en Windows, no se leen los recursos compartidos.
 
 | Opción | Descripción |
 |---|---|

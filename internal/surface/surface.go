@@ -37,6 +37,27 @@ type Listener struct {
 	Services []string `json:"services,omitempty"` // servicios de Windows en ese proceso
 	// Known es el servicio conocido en ese puerto (vacío si no está catalogado).
 	Known string `json:"known,omitempty"`
+	// Ephemeral marca los sockets UDP en puertos dinámicos: son los de un
+	// cliente (consultas DNS, descubrimiento…), no servicios a la escucha.
+	Ephemeral bool `json:"ephemeral,omitempty"`
+}
+
+// Port agrupa los sockets del mismo puerto, protocolo y proceso (IPv4, IPv6
+// o varias direcciones). Es lo que se muestra y lo que genera hallazgos.
+type Port struct {
+	Proto     string   `json:"proto"`
+	Port      int      `json:"port"`
+	Addresses []string `json:"addresses"`
+	Scope     string   `json:"scope"`
+	PID       int      `json:"pid,omitempty"`
+	Process   string   `json:"process,omitempty"`
+	Services  []string `json:"services,omitempty"`
+	Known     string   `json:"known,omitempty"`
+	Ephemeral bool     `json:"ephemeral,omitempty"`
+	// Firewall: "open" (se puede llegar desde la red), "filtered" (lo
+	// bloquea el firewall) o vacío si no se ha podido evaluar.
+	Firewall    string `json:"firewall,omitempty"`
+	FirewallWhy string `json:"firewall_why,omitempty"`
 }
 
 // ShareAccess es un permiso de un recurso compartido.
@@ -69,6 +90,8 @@ type Inventory struct {
 	Listeners []Listener `json:"listeners"`
 	Shares    []Share    `json:"shares"`
 	Admins    []Account  `json:"admins"`
+	// Firewall es el estado del firewall del equipo, si se ha podido leer.
+	Firewall *Firewall `json:"firewall,omitempty"`
 	// Notes explica límites de la recogida (p. ej. sin root no se ven los
 	// procesos de otros usuarios).
 	Notes []string `json:"notes,omitempty"`
@@ -92,7 +115,12 @@ type Report struct {
 	FinishedAt time.Time     `json:"finished_at"`
 	Score      int           `json:"score"`
 	Grade      string        `json:"grade"`
-	Exposed    int           `json:"exposed"` // puertos a la escucha en la red
+	// Exposed son los servicios (puertos agrupados) que escuchan en la red;
+	// Reachable, los que además no bloquea el firewall (o todos, si no se
+	// ha podido evaluar).
+	Exposed   int    `json:"exposed"`
+	Reachable int    `json:"reachable"`
+	Ports     []Port `json:"ports"`
 	Inventory
 	Findings []Finding `json:"findings"`
 }
@@ -107,50 +135,59 @@ type knownPort struct {
 	sev     rule.Severity
 	why     string
 	fix     string
+	// group une en un solo hallazgo puertos con la misma causa (NetBIOS).
+	group string
+}
+
+// groups son los hallazgos que agrupan varios puertos.
+var groups = map[string]knownPort{
+	"netbios": {service: "NetBIOS sobre TCP/IP", sev: rule.SevMedium,
+		why: "NetBIOS (137-139) permite enumerar el equipo, envenenar resoluciones de nombres y retransmitir autenticaciones.",
+		fix: "Deshabilita NetBIOS sobre TCP/IP en los adaptadores (control WIN-NET-007: bastion harden --wave 2)."},
 }
 
 // ports es el catálogo de servicios cuyo riesgo depende de estar expuestos.
 // La severidad es la de tenerlos accesibles desde la red.
 var ports = map[int]knownPort{
-	21:    {"FTP", "tcp", rule.SevHigh, "FTP transmite usuarios, contraseñas y ficheros en claro.", "Sustitúyelo por SFTP/FTPS o desinstálalo si no se usa."},
-	22:    {"SSH", "tcp", rule.SevInfo, "Administración remota cifrada. Es normal en servidores; asegúrate de que el hardening de SSH pasa.", "Limítalo a la red de gestión con el firewall y usa autenticación por clave."},
-	23:    {"Telnet", "tcp", rule.SevCritical, "Telnet transmite la sesión y la contraseña en claro.", "Desinstala el servidor Telnet y usa SSH."},
-	25:    {"SMTP", "tcp", rule.SevLow, "Un servidor de correo expuesto puede usarse como relay si está mal configurado.", "Si no es un servidor de correo, desactívalo o restríngelo a localhost."},
-	53:    {"DNS", "", rule.SevLow, "Un DNS abierto a Internet puede usarse en ataques de amplificación.", "Si no es un servidor DNS, desactívalo; si lo es, desactiva la recursión para clientes externos."},
-	69:    {"TFTP", "udp", rule.SevHigh, "TFTP no tiene autenticación: cualquiera puede leer (o escribir) ficheros.", "Desinstálalo si no arrancas equipos por red."},
-	80:    {"HTTP", "tcp", rule.SevInfo, "Servicio web sin cifrar.", "Redirige a HTTPS y revisa qué aplicación responde."},
-	111:   {"rpcbind", "", rule.SevMedium, "rpcbind expone los servicios RPC del equipo y se usa en amplificación.", "Desactívalo si no usas NFS: systemctl disable --now rpcbind rpcbind.socket."},
-	135:   {"RPC (Windows)", "tcp", rule.SevMedium, "El mapeador RPC es base de mucho movimiento lateral en Windows.", "Bloquéalo en el firewall para redes que no sean de administración."},
-	137:   {"NetBIOS", "udp", rule.SevMedium, "NetBIOS permite enumerar el equipo y envenenar resoluciones de nombres.", "Deshabilita NetBIOS sobre TCP/IP en los adaptadores (control WIN-NET-007)."},
-	138:   {"NetBIOS", "udp", rule.SevMedium, "NetBIOS permite enumerar el equipo y envenenar resoluciones de nombres.", "Deshabilita NetBIOS sobre TCP/IP en los adaptadores (control WIN-NET-007)."},
-	139:   {"NetBIOS/SMB", "tcp", rule.SevMedium, "SMB sobre NetBIOS: enumeración y ataques de retransmisión.", "Deshabilita NetBIOS sobre TCP/IP en los adaptadores."},
-	161:   {"SNMP", "udp", rule.SevHigh, "SNMP v1/v2c usa comunidades en claro (a menudo \"public\") y revela mucha información.", "Desactívalo o usa SNMPv3 con autenticación y cifrado, limitado a la red de gestión."},
-	389:   {"LDAP", "", rule.SevInfo, "Directorio. Normal en controladores de dominio.", "Exige firma LDAP y channel binding (controles del perfil de DC)."},
-	445:   {"SMB", "tcp", rule.SevHigh, "SMB es vector clásico de ransomware y movimiento lateral (EternalBlue, retransmisión NTLM).", "Si no compartes recursos, bloquéalo en el firewall; si los compartes, limítalo a las redes necesarias y exige firma SMB."},
-	512:   {"rexec", "tcp", rule.SevCritical, "Servicio r* heredado sin cifrado.", "Desinstala rsh-server y usa SSH."},
-	513:   {"rlogin", "tcp", rule.SevCritical, "Servicio r* heredado sin cifrado y con confianza por host.", "Desinstala rsh-server y usa SSH."},
-	514:   {"rsh", "tcp", rule.SevCritical, "Servicio r* heredado sin cifrado y con confianza por host.", "Desinstala rsh-server y usa SSH."},
-	631:   {"IPP/CUPS", "", rule.SevMedium, "El servicio de impresión ha tenido fallos explotables remotamente (2024).", "Desactiva cups-browsed y deja CUPS solo en localhost si no compartes impresoras."},
-	873:   {"rsync", "tcp", rule.SevHigh, "Un demonio rsync expuesto suele permitir leer módulos sin autenticación.", "Desactívalo o exige autenticación y limita las IP de origen."},
-	1433:  {"SQL Server", "tcp", rule.SevMedium, "Base de datos accesible desde la red.", "Limítala a los servidores de aplicación con el firewall."},
-	1900:  {"SSDP/UPnP", "udp", rule.SevMedium, "UPnP anuncia el equipo y se usa en amplificación.", "Desactiva el servicio de detección SSDP si no se necesita."},
-	2049:  {"NFS", "", rule.SevMedium, "NFS comparte ficheros con control por IP.", "Limita los clientes en /etc/exports y no uses no_root_squash."},
-	2375:  {"Docker API (sin TLS)", "tcp", rule.SevCritical, "La API de Docker sin TLS da control total del equipo (root) a quien llegue al puerto.", "Desactiva el socket TCP de Docker o protégelo con TLS mutuo."},
-	2376:  {"Docker API (TLS)", "tcp", rule.SevMedium, "API de Docker con TLS: su compromiso equivale a root.", "Limítala a la red de gestión y verifica que exige certificado de cliente."},
-	2379:  {"etcd", "tcp", rule.SevHigh, "etcd guarda los secretos de Kubernetes.", "Exige TLS mutuo y limita el acceso a los nodos del plano de control."},
-	3306:  {"MySQL/MariaDB", "tcp", rule.SevMedium, "Base de datos accesible desde la red.", "Usa bind-address = 127.0.0.1 o limita el acceso con el firewall."},
-	3389:  {"RDP", "tcp", rule.SevHigh, "RDP expuesto es una de las vías de entrada más usadas por el ransomware.", "Limítalo a la red de gestión o a una VPN, exige NLA (WIN-RDP-001) y MFA."},
-	5353:  {"mDNS", "udp", rule.SevLow, "mDNS anuncia el equipo en la red local.", "Desactiva avahi (Linux) o mDNS si no se usa."},
-	5355:  {"LLMNR", "udp", rule.SevMedium, "LLMNR permite envenenar resoluciones y capturar hashes NTLM (Responder).", "Deshabilita LLMNR por directiva (control WIN-NET-006)."},
-	5432:  {"PostgreSQL", "tcp", rule.SevMedium, "Base de datos accesible desde la red.", "Usa listen_addresses = 'localhost' o limita el acceso en pg_hba.conf y el firewall."},
-	5900:  {"VNC", "tcp", rule.SevHigh, "VNC suele tener autenticación débil y tráfico sin cifrar.", "Ciérralo o tunelízalo por SSH/VPN."},
-	5985:  {"WinRM (HTTP)", "tcp", rule.SevMedium, "Administración remota de Windows (PowerShell Remoting).", "Limítalo a la red de gestión; prefiere WinRM sobre HTTPS (5986)."},
-	5986:  {"WinRM (HTTPS)", "tcp", rule.SevLow, "Administración remota de Windows cifrada.", "Limítalo a la red de gestión."},
-	6379:  {"Redis", "tcp", rule.SevCritical, "Redis no exige autenticación por defecto y permite escribir ficheros en el equipo.", "Usa bind 127.0.0.1, protected-mode yes y requirepass/ACL."},
-	9200:  {"Elasticsearch", "tcp", rule.SevHigh, "Elasticsearch expuesto ha causado muchas fugas de datos.", "Actívale la seguridad (usuarios y TLS) y limítalo a la red interna."},
-	10250: {"kubelet", "tcp", rule.SevHigh, "La API del kubelet permite ejecutar comandos en los contenedores si no exige autenticación.", "Verifica --anonymous-auth=false y authorization-mode=Webhook."},
-	11211: {"memcached", "", rule.SevHigh, "memcached no tiene autenticación y se usa en amplificación masiva (UDP).", "Escucha solo en 127.0.0.1 y desactiva UDP (-U 0)."},
-	27017: {"MongoDB", "tcp", rule.SevHigh, "MongoDB expuesto sin autenticación ha causado muchas fugas de datos.", "Usa bindIp 127.0.0.1 y activa la autorización."},
+	21:    {"FTP", "tcp", rule.SevHigh, "FTP transmite usuarios, contraseñas y ficheros en claro.", "Sustitúyelo por SFTP/FTPS o desinstálalo si no se usa.", ""},
+	22:    {"SSH", "tcp", rule.SevInfo, "Administración remota cifrada. Es normal en servidores; asegúrate de que el hardening de SSH pasa.", "Limítalo a la red de gestión con el firewall y usa autenticación por clave.", ""},
+	23:    {"Telnet", "tcp", rule.SevCritical, "Telnet transmite la sesión y la contraseña en claro.", "Desinstala el servidor Telnet y usa SSH.", ""},
+	25:    {"SMTP", "tcp", rule.SevLow, "Un servidor de correo expuesto puede usarse como relay si está mal configurado.", "Si no es un servidor de correo, desactívalo o restríngelo a localhost.", ""},
+	53:    {"DNS", "", rule.SevLow, "Un DNS abierto a Internet puede usarse en ataques de amplificación.", "Si no es un servidor DNS, desactívalo; si lo es, desactiva la recursión para clientes externos.", ""},
+	69:    {"TFTP", "udp", rule.SevHigh, "TFTP no tiene autenticación: cualquiera puede leer (o escribir) ficheros.", "Desinstálalo si no arrancas equipos por red.", ""},
+	80:    {"HTTP", "tcp", rule.SevInfo, "Servicio web sin cifrar.", "Redirige a HTTPS y revisa qué aplicación responde.", ""},
+	111:   {"rpcbind", "", rule.SevMedium, "rpcbind expone los servicios RPC del equipo y se usa en amplificación.", "Desactívalo si no usas NFS: systemctl disable --now rpcbind rpcbind.socket.", ""},
+	135:   {"RPC (Windows)", "tcp", rule.SevMedium, "El mapeador RPC es base de mucho movimiento lateral en Windows.", "Bloquéalo en el firewall para redes que no sean de administración.", ""},
+	137:   {"NetBIOS", "udp", rule.SevMedium, "NetBIOS permite enumerar el equipo y envenenar resoluciones de nombres.", "Deshabilita NetBIOS sobre TCP/IP en los adaptadores (control WIN-NET-007).", "netbios"},
+	138:   {"NetBIOS", "udp", rule.SevMedium, "NetBIOS permite enumerar el equipo y envenenar resoluciones de nombres.", "Deshabilita NetBIOS sobre TCP/IP en los adaptadores (control WIN-NET-007).", "netbios"},
+	139:   {"NetBIOS/SMB", "tcp", rule.SevMedium, "SMB sobre NetBIOS: enumeración y ataques de retransmisión.", "Deshabilita NetBIOS sobre TCP/IP en los adaptadores.", "netbios"},
+	161:   {"SNMP", "udp", rule.SevHigh, "SNMP v1/v2c usa comunidades en claro (a menudo \"public\") y revela mucha información.", "Desactívalo o usa SNMPv3 con autenticación y cifrado, limitado a la red de gestión.", ""},
+	389:   {"LDAP", "", rule.SevInfo, "Directorio. Normal en controladores de dominio.", "Exige firma LDAP y channel binding (controles del perfil de DC).", ""},
+	445:   {"SMB", "tcp", rule.SevHigh, "SMB es vector clásico de ransomware y movimiento lateral (EternalBlue, retransmisión NTLM).", "Si no compartes recursos, bloquéalo en el firewall; si los compartes, limítalo a las redes necesarias y exige firma SMB.", ""},
+	512:   {"rexec", "tcp", rule.SevCritical, "Servicio r* heredado sin cifrado.", "Desinstala rsh-server y usa SSH.", ""},
+	513:   {"rlogin", "tcp", rule.SevCritical, "Servicio r* heredado sin cifrado y con confianza por host.", "Desinstala rsh-server y usa SSH.", ""},
+	514:   {"rsh", "tcp", rule.SevCritical, "Servicio r* heredado sin cifrado y con confianza por host.", "Desinstala rsh-server y usa SSH.", ""},
+	631:   {"IPP/CUPS", "", rule.SevMedium, "El servicio de impresión ha tenido fallos explotables remotamente (2024).", "Desactiva cups-browsed y deja CUPS solo en localhost si no compartes impresoras.", ""},
+	873:   {"rsync", "tcp", rule.SevHigh, "Un demonio rsync expuesto suele permitir leer módulos sin autenticación.", "Desactívalo o exige autenticación y limita las IP de origen.", ""},
+	1433:  {"SQL Server", "tcp", rule.SevMedium, "Base de datos accesible desde la red.", "Limítala a los servidores de aplicación con el firewall.", ""},
+	1900:  {"SSDP/UPnP", "udp", rule.SevMedium, "UPnP anuncia el equipo y se usa en amplificación.", "Desactiva el servicio de detección SSDP si no se necesita.", ""},
+	2049:  {"NFS", "", rule.SevMedium, "NFS comparte ficheros con control por IP.", "Limita los clientes en /etc/exports y no uses no_root_squash.", ""},
+	2375:  {"Docker API (sin TLS)", "tcp", rule.SevCritical, "La API de Docker sin TLS da control total del equipo (root) a quien llegue al puerto.", "Desactiva el socket TCP de Docker o protégelo con TLS mutuo.", ""},
+	2376:  {"Docker API (TLS)", "tcp", rule.SevMedium, "API de Docker con TLS: su compromiso equivale a root.", "Limítala a la red de gestión y verifica que exige certificado de cliente.", ""},
+	2379:  {"etcd", "tcp", rule.SevHigh, "etcd guarda los secretos de Kubernetes.", "Exige TLS mutuo y limita el acceso a los nodos del plano de control.", ""},
+	3306:  {"MySQL/MariaDB", "tcp", rule.SevMedium, "Base de datos accesible desde la red.", "Usa bind-address = 127.0.0.1 o limita el acceso con el firewall.", ""},
+	3389:  {"RDP", "tcp", rule.SevHigh, "RDP expuesto es una de las vías de entrada más usadas por el ransomware.", "Limítalo a la red de gestión o a una VPN, exige NLA (WIN-RDP-001) y MFA.", ""},
+	5353:  {"mDNS", "udp", rule.SevLow, "mDNS anuncia el equipo en la red local.", "Desactiva avahi (Linux) o mDNS si no se usa.", ""},
+	5355:  {"LLMNR", "udp", rule.SevMedium, "LLMNR permite envenenar resoluciones y capturar hashes NTLM (Responder).", "Deshabilita LLMNR por directiva (control WIN-NET-006).", ""},
+	5432:  {"PostgreSQL", "tcp", rule.SevMedium, "Base de datos accesible desde la red.", "Usa listen_addresses = 'localhost' o limita el acceso en pg_hba.conf y el firewall.", ""},
+	5900:  {"VNC", "tcp", rule.SevHigh, "VNC suele tener autenticación débil y tráfico sin cifrar.", "Ciérralo o tunelízalo por SSH/VPN.", ""},
+	5985:  {"WinRM (HTTP)", "tcp", rule.SevMedium, "Administración remota de Windows (PowerShell Remoting).", "Limítalo a la red de gestión; prefiere WinRM sobre HTTPS (5986).", ""},
+	5986:  {"WinRM (HTTPS)", "tcp", rule.SevLow, "Administración remota de Windows cifrada.", "Limítalo a la red de gestión.", ""},
+	6379:  {"Redis", "tcp", rule.SevCritical, "Redis no exige autenticación por defecto y permite escribir ficheros en el equipo.", "Usa bind 127.0.0.1, protected-mode yes y requirepass/ACL.", ""},
+	9200:  {"Elasticsearch", "tcp", rule.SevHigh, "Elasticsearch expuesto ha causado muchas fugas de datos.", "Actívale la seguridad (usuarios y TLS) y limítalo a la red interna.", ""},
+	10250: {"kubelet", "tcp", rule.SevHigh, "La API del kubelet permite ejecutar comandos en los contenedores si no exige autenticación.", "Verifica --anonymous-auth=false y authorization-mode=Webhook.", ""},
+	11211: {"memcached", "", rule.SevHigh, "memcached no tiene autenticación y se usa en amplificación masiva (UDP).", "Escucha solo en 127.0.0.1 y desactiva UDP (-U 0).", ""},
+	27017: {"MongoDB", "tcp", rule.SevHigh, "MongoDB expuesto sin autenticación ha causado muchas fugas de datos.", "Usa bindIp 127.0.0.1 y activa la autorización.", ""},
 }
 
 // Lookup devuelve el servicio conocido de un puerto y protocolo.
@@ -178,41 +215,82 @@ func ScopeOf(addr string) string {
 	return ScopeNetwork
 }
 
+// rpcProcs son los procesos de Windows que exponen extremos RPC dinámicos.
+var rpcProcs = map[string]bool{"lsass.exe": true, "wininit.exe": true, "services.exe": true, "spoolsv.exe": true, "svchost.exe": true}
+
 // Analyze genera los hallazgos y la puntuación a partir del inventario.
 func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *Report {
-	rep := &Report{Schema: Schema, Host: host, Version: version, FinishedAt: now.UTC(), Inventory: inv}
 	inv.Listeners = dedupe(inv.Listeners)
-	rep.Listeners = inv.Listeners
-	seen := map[string]bool{}
-	for i := range rep.Listeners {
-		l := &rep.Listeners[i]
-		k, ok := lookup(l.Proto, l.Port)
-		if ok {
-			l.Known = k.service
+	rep := &Report{Schema: Schema, Host: host, Version: version, FinishedAt: now.UTC(), Inventory: inv}
+	rep.Ports = groupPorts(inv.Listeners)
+
+	type acc struct {
+		k        knownPort
+		id       string
+		subjects []string
+		who      []string
+		why      string
+	}
+	var order []string
+	found := map[string]*acc{}
+	for i := range rep.Ports {
+		p := &rep.Ports[i]
+		k, ok := lookup(p.Proto, p.Port)
+		switch {
+		case ok:
+			p.Known = k.service
+		case p.Proto == "tcp" && p.Port >= 49152 && rpcProcs[strings.ToLower(p.Process)]:
+			p.Known = "RPC dinámico (Windows)"
 		}
-		if l.Scope != ScopeNetwork {
+		if p.Scope != ScopeNetwork || p.Ephemeral {
 			continue
 		}
 		rep.Exposed++
+		if inv.Firewall != nil {
+			open, why := inv.Firewall.Evaluate(*p)
+			p.Firewall, p.FirewallWhy = "filtered", why
+			if open {
+				p.Firewall = "open"
+			}
+		}
+		if p.Firewall == "filtered" {
+			continue
+		}
+		rep.Reachable++
 		if !ok || k.sev == rule.SevInfo {
 			continue
 		}
-		key := fmt.Sprintf("%d/%s", l.Port, l.Proto)
-		if seen[key] {
-			continue // mismo puerto en IPv4 e IPv6
+		subject := fmt.Sprintf("%d/%s", p.Port, p.Proto)
+		key, kk, id := subject, k, "SURF-PORT-"+strconv.Itoa(p.Port)
+		if k.group != "" {
+			key, kk, id = k.group, groups[k.group], "SURF-"+strings.ToUpper(k.group)
 		}
-		seen[key] = true
-		who := l.Process
+		a := found[key]
+		if a == nil {
+			a = &acc{k: kk, id: id, why: p.FirewallWhy}
+			found[key] = a
+			order = append(order, key)
+		}
+		a.subjects = appendOnce(a.subjects, subject)
+		who := p.Process
 		if who == "" {
 			who = "proceso desconocido"
 		}
-		if len(l.Services) > 0 {
-			who += " · " + strings.Join(l.Services, ", ")
+		if len(p.Services) > 0 {
+			who += " · " + strings.Join(p.Services, ", ")
+		}
+		a.who = appendOnce(a.who, who)
+	}
+	for _, key := range order {
+		a := found[key]
+		detail := a.k.why
+		if a.why != "" {
+			detail += " Firewall: " + a.why + "."
 		}
 		rep.Findings = append(rep.Findings, Finding{
-			ID: "SURF-PORT-" + strconv.Itoa(l.Port), Severity: k.sev, Subject: key,
-			Title:  fmt.Sprintf("%s expuesto en la red (%s)", k.service, who),
-			Detail: k.why, Fix: k.fix,
+			ID: a.id, Severity: a.k.sev, Subject: strings.Join(a.subjects, ", "),
+			Title:  fmt.Sprintf("%s accesible desde la red (%s)", a.k.service, strings.Join(a.who, "; ")),
+			Detail: detail, Fix: a.k.fix,
 		})
 	}
 	rep.Findings = append(rep.Findings, shareFindings(inv.Shares)...)
@@ -227,6 +305,9 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 	}
 	if rep.Listeners == nil {
 		rep.Listeners = []Listener{}
+	}
+	if rep.Ports == nil {
+		rep.Ports = []Port{}
 	}
 	if rep.Shares == nil {
 		rep.Shares = []Share{}
@@ -244,6 +325,41 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 	rep.Score = score
 	rep.Grade = grade(score)
 	return rep
+}
+
+// groupPorts une los sockets del mismo protocolo, puerto y proceso.
+func groupPorts(ls []Listener) []Port {
+	var out []Port
+	idx := map[string]int{}
+	for _, l := range ls {
+		key := fmt.Sprintf("%s|%d|%d|%s", l.Proto, l.Port, l.PID, l.Process)
+		i, ok := idx[key]
+		if !ok {
+			i = len(out)
+			idx[key] = i
+			out = append(out, Port{Proto: l.Proto, Port: l.Port, Scope: l.Scope, PID: l.PID, Process: l.Process,
+				Services: l.Services, Ephemeral: l.Ephemeral})
+		}
+		p := &out[i]
+		p.Addresses = appendOnce(p.Addresses, l.Address)
+		if l.Scope == ScopeNetwork {
+			p.Scope = ScopeNetwork
+		}
+		p.Ephemeral = p.Ephemeral && l.Ephemeral
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if (out[i].Scope == ScopeNetwork) != (out[j].Scope == ScopeNetwork) {
+			return out[i].Scope == ScopeNetwork
+		}
+		if out[i].Ephemeral != out[j].Ephemeral {
+			return !out[i].Ephemeral
+		}
+		if out[i].Port != out[j].Port {
+			return out[i].Port < out[j].Port
+		}
+		return out[i].Proto < out[j].Proto
+	})
+	return out
 }
 
 // SIDs de grupos amplios: compartir con ellos es compartir con casi todos.
