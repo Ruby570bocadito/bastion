@@ -13,6 +13,7 @@ import (
 
 	"github.com/Ruby570bocadito/bastion/internal/engine"
 	"github.com/Ruby570bocadito/bastion/internal/report"
+	"github.com/Ruby570bocadito/bastion/internal/schedule"
 	"github.com/Ruby570bocadito/bastion/internal/surface"
 )
 
@@ -49,6 +50,9 @@ func (f *fakeBackend) Changes() ([]Change, error)       { return nil, nil }
 func (f *fakeBackend) Exceptions() ([]Exception, error) { return nil, nil }
 func (f *fakeBackend) Surface(ctx context.Context) (*surface.Report, error) {
 	return &surface.Report{Schema: surface.Schema, Score: 85}, nil
+}
+func (f *fakeBackend) Schedule(ctx context.Context) (*ScheduleInfo, error) {
+	return &ScheduleInfo{Status: schedule.Status{Enabled: true, At: "09:00", Mechanism: "systemd"}}, nil
 }
 
 func newTest(t *testing.T) (*Server, http.Handler, *fakeBackend) {
@@ -198,6 +202,12 @@ func TestPlanAndBusy(t *testing.T) {
 	}
 	if rec := do(h, "GET", "/api/surface", nil); rec.Code != http.StatusUnauthorized {
 		t.Errorf("superficie sin token: %d", rec.Code)
+	}
+	if rec := do(h, "GET", "/api/schedule", tok); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"at":"09:00"`) || !strings.Contains(rec.Body.String(), `"runs":[]`) {
+		t.Errorf("programación: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "GET", "/api/schedule", nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("programación sin token: %d", rec.Code)
 	}
 
 	// Mientras un escaneo está en curso, otro escaneo responde 409 y el plan

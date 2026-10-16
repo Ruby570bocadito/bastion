@@ -19,6 +19,7 @@ import (
 	"github.com/Ruby570bocadito/bastion/internal/platform"
 	"github.com/Ruby570bocadito/bastion/internal/remediate"
 	"github.com/Ruby570bocadito/bastion/internal/report"
+	"github.com/Ruby570bocadito/bastion/internal/schedule"
 	"github.com/Ruby570bocadito/bastion/internal/surface"
 	"github.com/Ruby570bocadito/bastion/internal/ui"
 	"github.com/Ruby570bocadito/bastion/internal/version"
@@ -184,6 +185,29 @@ func (b *uiBackend) Changes() ([]ui.Change, error) {
 		out = append(out, c)
 	}
 	return out, nil
+}
+
+func (b *uiBackend) Schedule(ctx context.Context) (*ui.ScheduleInfo, error) {
+	info := &ui.ScheduleInfo{}
+	if runs, err := schedule.ReadRuns(schedule.LogPath(config.DataDir())); err == nil {
+		if len(runs) > 10 {
+			runs = runs[len(runs)-10:]
+		}
+		info.Runs = runs
+	}
+	sched, err := schedule.New()
+	if err != nil {
+		info.Unsupported = true
+		return info, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	st, err := sched.Get(ctx)
+	if err != nil {
+		st.Detail = "no se pudo consultar la tarea: " + err.Error()
+	}
+	info.Status = st
+	return info, nil
 }
 
 func (b *uiBackend) Surface(ctx context.Context) (*surface.Report, error) {

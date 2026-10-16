@@ -320,7 +320,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
   var TABS = [["panel", "Panel"], ["controles", "Controles"], ["plan", "Plan de hardening"], ["superficie", "Superficie"], ["historial", "Historial"], ["excepciones", "Excepciones"]];
 
   var S = { info: null, reports: [], report: null, reportId: "", latestId: "", plan: { wave: 1, items: null, loading: false },
-    changes: null, exceptions: null, surface: null, surfaceLoading: false, showLocal: false, scanning: false, tab: "panel", error: "" };
+    changes: null, exceptions: null, schedule: null, surface: null, surfaceLoading: false, showLocal: false, scanning: false, tab: "panel", error: "" };
 
   // ---- Utilidades ----
   function el(tag, attrs, children) {
@@ -420,6 +420,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
     });
     if (S.tab === "plan" && S.plan.items === null && !S.plan.loading && S.info) loadPlan(S.plan.wave);
     if (S.tab === "historial" && S.changes === null) loadChanges();
+    if (S.tab === "historial" && S.schedule === null) loadSchedule();
     if (S.tab === "superficie" && S.surface === null && !S.surfaceLoading && S.info) loadSurface();
     if (S.tab === "excepciones" && S.exceptions === null) loadExceptions();
     render();
@@ -463,6 +464,9 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
     api("/api/surface").then(function (r) { S.surface = r; })
       .catch(function (e) { toast("No se pudo analizar la superficie: " + e.message); })
       .then(function () { S.surfaceLoading = false; busy(false); render(); });
+  }
+  function loadSchedule() {
+    api("/api/schedule").then(function (x) { S.schedule = x; render(); }).catch(function (e) { S.schedule = { status: {}, runs: [] }; toast(e.message); });
   }
   function loadChanges() {
     api("/api/changes").then(function (c) { S.changes = c; render(); }).catch(function (e) { S.changes = []; toast(e.message); });
@@ -826,7 +830,43 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
   }
 
   // ---- Historial ----
+  function scheduleCard() {
+    var x = S.schedule;
+    if (x === null) return card("Análisis programado", [loadingBox("Consultando el planificador…")]);
+    var st = x.status || {}, body = [];
+    if (x.unsupported) {
+      body.push(el("p", { class: "empty", text: "Este sistema no tiene un planificador compatible." }));
+    } else if (!st.mechanism) {
+      body.push(el("p", { text: "No hay análisis programado. Con uno diario, el historial se llena solo y Bastion avisa de los controles que empeoran y de los puertos que se abren." }));
+      body.push(cmdBox("bastion schedule enable"));
+    } else {
+      body.push(el("p", null, [el("strong", { text: st.enabled ? "Diario a las " + st.at : "Programado pero desactivado" }),
+        " · " + st.mechanism + (st.next_run ? " · próxima ejecución: " + st.next_run : "")]));
+      if (st.detail) body.push(el("p", { class: "note", text: st.detail }));
+    }
+    var runs = (x.runs || []).slice().reverse();
+    if (runs.length) {
+      var t = el("table", null, [el("thead", null, [el("tr", null, ["Ejecución", "Postura", "Exposición", "Resultado"].map(function (h, i) {
+        return el("th", { text: h, style: i === 1 || i === 2 ? "text-align:right" : null });
+      }))])]);
+      var b = el("tbody");
+      runs.forEach(function (r) {
+        var worse = [];
+        if (r.regressions) worse.push(plural(r.regressions, "control empeorado", "controles empeorados"));
+        if (r.new_exposure) worse.push(plural(r.new_exposure, "cambio que aumenta la exposición", "cambios que aumentan la exposición"));
+        var res = r.errors && r.errors.length ? el("span", { style: "color:var(--critical)", text: "error: " + r.errors.join("; ") }) :
+          worse.length ? el("span", { style: "color:var(--critical)", text: worse.join(", ") }) : el("span", { class: "sub", text: "sin empeorar" });
+        b.appendChild(el("tr", null, [el("td", { text: fmtDate(r.time) }), el("td", { class: "num", text: r.scan_score + "/100" }),
+          el("td", { class: "num", text: r.surface_score + "/100" }), el("td", null, [res])]));
+      });
+      t.appendChild(b);
+      body.push(el("div", { class: "table-wrap" }, [t]));
+    }
+    return card("Análisis programado", body);
+  }
+
   function renderHistory() {
+    app.appendChild(el("section", null, [scheduleCard()]));
     var rows = S.reports.slice().reverse();
     var tbl = el("table", null, [el("thead", null, [el("tr", null, ["Fecha", "Perfil", "Puntuación", "Cambio", "Fallidos", "Sin evaluar", ""].map(function (h, i) {
       return el("th", { text: h, style: i >= 2 && i <= 5 ? "text-align:right" : null });

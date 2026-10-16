@@ -35,6 +35,7 @@ import (
 
 	"github.com/Ruby570bocadito/bastion/internal/engine"
 	"github.com/Ruby570bocadito/bastion/internal/report"
+	"github.com/Ruby570bocadito/bastion/internal/schedule"
 	"github.com/Ruby570bocadito/bastion/internal/surface"
 )
 
@@ -93,6 +94,14 @@ type Exception struct {
 	DaysLeft int      `json:"days_left"`
 }
 
+// ScheduleInfo es el análisis programado y sus últimas ejecuciones.
+type ScheduleInfo struct {
+	Status schedule.Status `json:"status"`
+	Runs   []schedule.Run  `json:"runs"`
+	// Unsupported indica que el sistema no tiene un planificador conocido.
+	Unsupported bool `json:"unsupported,omitempty"`
+}
+
 // Backend es lo que la consola necesita de Bastion. Lo implementa la CLI.
 type Backend interface {
 	State() State
@@ -105,6 +114,8 @@ type Backend interface {
 	Exceptions() ([]Exception, error)
 	// Surface analiza la superficie de ataque (puertos, recursos, administradores).
 	Surface(ctx context.Context) (*surface.Report, error)
+	// Schedule describe el análisis programado (bastion schedule).
+	Schedule(ctx context.Context) (*ScheduleInfo, error)
 }
 
 // Server es la consola local.
@@ -236,6 +247,13 @@ func (s *Server) Handler() http.Handler {
 			list = []Exception{}
 		}
 		return list, err
+	}))
+	mux.Handle("GET /api/schedule", s.api(func(w http.ResponseWriter, r *http.Request) (any, error) {
+		info, err := s.backend.Schedule(r.Context())
+		if info != nil && info.Runs == nil {
+			info.Runs = []schedule.Run{}
+		}
+		return info, err
 	}))
 	mux.Handle("GET /api/surface", s.api(func(w http.ResponseWriter, r *http.Request) (any, error) {
 		if err := s.acquire(r.Context()); err != nil {
