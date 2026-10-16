@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -27,6 +28,9 @@ type FirewallProfile struct {
 
 // FirewallRule es una regla de entrada habilitada.
 type FirewallRule struct {
+	// ID es el nombre interno de la regla (el de Set-NetFirewallRule -Name).
+	// Solo se conoce si se ha leído del almacén local del registro.
+	ID         string
 	Name       string
 	Allow      bool
 	Protocol   int    // 6 TCP, 17 UDP, 256 cualquiera
@@ -66,10 +70,17 @@ type Firewall struct {
 type Access struct {
 	State string // FirewallOpen | FirewallLimited | FirewallFiltered
 	// Limit resume desde dónde se llega cuando está limitado ("Tailscale",
-	// "red local", "desde 10.0.0.0/8"…).
-	Limit string
+	// "la red local", "10.0.0.0/8"…) y Limits son sus partes por separado.
+	Limit  string
+	Limits []string
 	// Why explica la decisión (reglas y perfil) para poder comprobarla.
 	Why string
+	// Rules son las reglas que lo abren a cualquiera o, si está limitado,
+	// las que lo limitan.
+	Rules []string
+	// IDs son los nombres internos de las reglas que lo abren a cualquiera,
+	// si se conocen todos (vacío si no).
+	IDs []string
 }
 
 var profileNames = map[int]string{1: "Dominio", 2: "Privado", 4: "Público"}
@@ -95,13 +106,14 @@ func (fw *Firewall) Active() []FirewallProfile {
 // locales (p. ej. «Tailscale-In», solo hacia la IP de Tailscale), remotas
 // (LocalSubnet) o interfaces: entonces el puerto queda "limitado".
 func (fw *Firewall) Evaluate(p Port) Access {
-	var limits, limitRules, blocked []string
+	var limits, limitRules, blocked, open, openProfiles, ids []string
+	allIDs := true
 	for _, prof := range fw.Active() {
 		if !prof.Enabled {
 			return Access{State: FirewallOpen, Why: "firewall desactivado en el perfil " + prof.Name}
 		}
 		if r := fw.fullBlock(p, prof.Bit); r != nil {
-			blocked = append(blocked, fmt.Sprintf("regla de bloqueo «%s»", r.Name))
+			blocked = appendOnce(blocked, fmt.Sprintf("regla de bloqueo «%s»", r.Name))
 			continue
 		}
 		if !prof.BlockInbound {
@@ -112,25 +124,41 @@ func (fw *Firewall) Evaluate(p Port) Access {
 			if !r.Allow || !r.matches(p, prof.Bit) {
 				continue
 			}
-			limit, applies := r.limit(p)
+			parts, applies := r.limit(p)
 			if !applies {
 				continue
 			}
-			if limit == "" {
-				return Access{State: FirewallOpen, Why: fmt.Sprintf("lo permite la regla «%s» (perfil %s)", r.Name, prof.Name)}
+			if len(parts) == 0 {
+				open = appendOnce(open, "«"+r.Name+"»")
+				openProfiles = appendOnce(openProfiles, prof.Name)
+				if r.ID == "" {
+					allIDs = false
+				} else {
+					ids = appendOnce(ids, r.ID)
+				}
+				continue
 			}
-			limits = appendOnce(limits, limit)
-			limitRules = appendOnce(limitRules, fmt.Sprintf("«%s»", r.Name))
+			for _, x := range parts {
+				limits = appendOnce(limits, x)
+			}
+			limitRules = appendOnce(limitRules, "«"+r.Name+"»")
 		}
 	}
-	if len(limits) > 0 {
-		label := joinHuman(limits)
-		word := "regla"
-		if len(limitRules) > 1 {
-			word = "reglas"
+	if len(open) > 0 {
+		a := Access{State: FirewallOpen, Rules: open,
+			Why: fmt.Sprintf("lo permite la regla %s (perfil %s)", open[0], joinHuman(openProfiles))}
+		if len(open) > 1 {
+			a.Why = fmt.Sprintf("lo permiten las reglas %s (perfil %s)", shortList(open, 4), joinHuman(openProfiles))
 		}
-		return Access{State: FirewallLimited, Limit: label,
-			Why: fmt.Sprintf("solo %s (%s %s)", accessFrom(label), word, joinHuman(limitRules))}
+		if allIDs {
+			a.IDs = ids
+		}
+		return a
+	}
+	if len(limits) > 0 {
+		sortLimits(limits)
+		label := joinHuman(limits)
+		return Access{State: FirewallLimited, Limit: label, Limits: limits, Rules: limitRules, Why: limitedWhy(label, limitRules)}
 	}
 	if len(blocked) > 0 {
 		return Access{State: FirewallFiltered, Why: strings.Join(blocked, ", ")}
@@ -140,6 +168,38 @@ func (fw *Firewall) Evaluate(p Port) Access {
 		names = append(names, prof.Name)
 	}
 	return Access{State: FirewallFiltered, Why: "ninguna regla lo permite en el perfil " + strings.Join(names, ", ")}
+}
+
+// limitedWhy explica un acceso limitado: "solo desde X (reglas «A» y «B»)".
+func limitedWhy(label string, rules []string) string {
+	word := "regla"
+	if len(rules) > 1 {
+		word = "reglas"
+	}
+	return fmt.Sprintf("solo %s (%s %s)", accessFrom(label), word, shortList(rules, 4))
+}
+
+// sortLimits ordena las partes de un límite para leerlas mejor: redes
+// (la red local, Tailscale, direcciones), dispositivos, IPsec e interfaces.
+func sortLimits(xs []string) {
+	rank := func(s string) int {
+		switch {
+		case strings.HasPrefix(s, "la ") || strings.HasPrefix(s, "los "):
+			return 0
+		case s == "Tailscale":
+			return 1
+		case strings.HasPrefix(s, "hacia "):
+			return 3
+		case s == "Wi-Fi Direct" || strings.HasPrefix(s, "dispositivos"):
+			return 4
+		case strings.HasPrefix(s, "con "):
+			return 5
+		case strings.HasPrefix(s, "en "):
+			return 6
+		}
+		return 2 // direcciones remotas
+	}
+	sort.SliceStable(xs, func(i, j int) bool { return rank(xs[i]) < rank(xs[j]) })
 }
 
 // joinHuman une una lista como en español: "A", "A y B", "A, B y C".
@@ -224,19 +284,43 @@ func (fw *Firewall) UserAllowAll() []FirewallRule {
 	return out
 }
 
-// psNameList escribe los nombres de las reglas como lista de PowerShell.
-func psNameList(rules []FirewallRule) string {
-	var names []string
+// psList escribe una lista de cadenas de PowerShell ('a','b'), sin repetir
+// las que solo cambian en mayúsculas.
+func psList(xs []string) string {
+	var out []string
 	seen := map[string]bool{}
-	for _, r := range rules {
-		k := strings.ToLower(r.Name)
+	for _, x := range xs {
+		k := strings.ToLower(x)
 		if seen[k] {
 			continue
 		}
 		seen[k] = true
-		names = append(names, "'"+strings.ReplaceAll(r.Name, "'", "''")+"'")
+		out = append(out, "'"+strings.ReplaceAll(x, "'", "''")+"'")
 	}
-	return strings.Join(names, ",")
+	return strings.Join(out, ",")
+}
+
+// ruleSelector elige las reglas para un comando de PowerShell: por su
+// nombre interno si se conocen todos (exacto) o, si no, por el visible.
+func ruleSelector(rules []FirewallRule) string {
+	ids := make([]string, 0, len(rules))
+	names := make([]string, 0, len(rules))
+	for _, r := range rules {
+		names = append(names, r.Name)
+		if r.ID != "" {
+			ids = append(ids, r.ID)
+		}
+	}
+	if len(ids) == len(rules) {
+		return "-Name " + psList(ids)
+	}
+	return "-DisplayName " + psList(names) + " -Direction Inbound"
+}
+
+// limitCmd es el comando para limitar unas reglas a la red local.
+func limitCmd(ids []string) string {
+	return fmt.Sprintf("Para que solo se llegue desde tu red local: Set-NetFirewallRule -Name %s -RemoteAddress LocalSubnet "+
+		"(se deshace con -RemoteAddress Any).", psList(ids))
 }
 
 // ProfileNames devuelve los nombres de los perfiles de la máscara.
@@ -316,20 +400,20 @@ func (r *FirewallRule) matches(p Port, profile int) bool {
 	return matchPorts(r.LocalPorts, p) && matchApp(r.App, p.Process) && matchService(r.Service, p.Services)
 }
 
-// limit devuelve la restricción de la regla para este puerto ("" si no la
-// tiene) y si la regla llega a aplicarse: una regla limitada a direcciones
-// locales no cubre un puerto que solo escucha en otras.
-func (r *FirewallRule) limit(p Port) (string, bool) {
+// limit devuelve las restricciones de la regla para este puerto (ninguna
+// si no las tiene) y si la regla llega a aplicarse: una regla limitada a
+// direcciones locales no cubre un puerto que solo escucha en otras.
+func (r *FirewallRule) limit(p Port) ([]string, bool) {
 	var parts []string
 	if !anyAddr(r.Local) {
 		local := parseAddrs(r.Local)
 		if specific := specificAddrs(p.Addresses); len(specific) > 0 && !local.containsAny(specific) {
-			return "", false
+			return nil, false
 		}
-		parts = append(parts, local.describe(true))
+		parts = append(parts, local.describe(true)...)
 	}
 	if !anyAddr(r.Remote) {
-		parts = append(parts, parseAddrs(r.Remote).describe(false))
+		parts = append(parts, parseAddrs(r.Remote).describe(false)...)
 	}
 	if r.Interfaces != "" {
 		parts = append(parts, "en la interfaz "+r.Interfaces)
@@ -337,16 +421,16 @@ func (r *FirewallRule) limit(p Port) (string, bool) {
 		parts = append(parts, "en "+ifTypesLabel(r.IfTypes))
 	}
 	if r.Trust != "" {
-		parts = append(parts, trustLabel(r.Trust))
+		parts = append(parts, trustLabels(r.Trust)...)
 	}
 	if r.Secure {
 		parts = append(parts, "con IPsec")
 	}
-	return strings.Join(parts, ", "), true
+	return parts, true
 }
 
-// trustLabel describe las palabras clave de dispositivos de confianza.
-func trustLabel(s string) string {
+// trustLabels describe las palabras clave de dispositivos de confianza.
+func trustLabels(s string) []string {
 	var out []string
 	for _, k := range strings.Split(s, ",") {
 		k = strings.TrimSpace(k)
@@ -364,7 +448,7 @@ func trustLabel(s string) string {
 			out = appendOnce(out, "dispositivos de confianza ("+k+")")
 		}
 	}
-	return joinHuman(out)
+	return out
 }
 
 func anyAddr(s string) bool {
@@ -416,6 +500,7 @@ type addrSet struct {
 	ranges   [][2]net.IP
 	keywords []string
 	raw      []string
+	display  []string // raw en forma legible: 10.0.0.0/8 en vez de 10.0.0.0/255.0.0.0
 }
 
 func parseAddrs(s string) addrSet {
@@ -429,6 +514,15 @@ func parseAddrs(s string) addrSet {
 			continue // LA4/LA6 o RA4/RA6 repiten LocalSubnet, DNS…
 		}
 		set.raw = append(set.raw, tok)
+		set.display = append(set.display, tok)
+		addNet := func(n *net.IPNet) {
+			set.nets = append(set.nets, n)
+			if ones, bits := n.Mask.Size(); ones == bits {
+				set.display[len(set.display)-1] = n.IP.String()
+			} else if bits != 0 {
+				set.display[len(set.display)-1] = n.String()
+			}
+		}
 		if lo, hi, ok := strings.Cut(tok, "-"); ok {
 			a, b := net.ParseIP(lo), net.ParseIP(hi)
 			if a != nil && b != nil {
@@ -438,12 +532,12 @@ func parseAddrs(s string) addrSet {
 		}
 		if ip, mask, ok := strings.Cut(tok, "/"); ok {
 			if _, n, err := net.ParseCIDR(tok); err == nil {
-				set.nets = append(set.nets, n)
+				addNet(n)
 				continue
 			}
 			if base, m := net.ParseIP(ip), net.ParseIP(mask); base != nil && m != nil && m.To4() != nil {
 				mm := net.IPMask(m.To4())
-				set.nets = append(set.nets, &net.IPNet{IP: base.Mask(mm), Mask: mm})
+				addNet(&net.IPNet{IP: base.To4().Mask(mm), Mask: mm})
 				continue
 			}
 		}
@@ -452,7 +546,7 @@ func parseAddrs(s string) addrSet {
 			if ip.To4() != nil {
 				ip, bits = ip.To4(), 32
 			}
-			set.nets = append(set.nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+			addNet(&net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
 			continue
 		}
 		set.keywords = append(set.keywords, tok)
@@ -492,11 +586,11 @@ var (
 	_, tailscale6, _ = net.ParseCIDR("fd7a:115c:a1e0::/48")
 )
 
-// describe resume la lista para mostrarla: "Tailscale", "red local" o las
-// direcciones. local indica si son direcciones de destino del equipo.
-func (s addrSet) describe(local bool) string {
+// describe resume la lista para mostrarla: "Tailscale", "la red local",
+// "10.0.0.0/8"… local indica si son direcciones de destino del equipo.
+func (s addrSet) describe(local bool) []string {
 	if len(s.raw) == 0 {
-		return ""
+		return nil
 	}
 	ts := len(s.keywords) == 0 && len(s.ranges) == 0
 	for _, n := range s.nets {
@@ -505,29 +599,27 @@ func (s addrSet) describe(local bool) string {
 		}
 	}
 	if ts {
-		return "Tailscale"
+		return []string{"Tailscale"}
 	}
-	var named, other []string
-	for _, tok := range s.raw {
+	var out, other []string
+	for i, tok := range s.raw {
 		if label, ok := addrKeywords[strings.ToLower(tok)]; ok {
-			named = append(named, label)
+			out = append(out, label)
 		} else {
-			other = append(other, tok)
+			other = append(other, s.display[i])
 		}
 	}
-	if len(other) == 0 {
-		return joinHuman(named)
+	if len(other) > 0 {
+		list := strings.Join(other, ", ")
+		if len(other) > 3 {
+			list = strings.Join(other[:3], ", ") + "…"
+		}
+		if local {
+			list = "hacia " + list
+		}
+		out = append(out, list)
 	}
-	list := strings.Join(other, ", ")
-	if len(other) > 3 {
-		list = strings.Join(other[:3], ", ") + "…"
-	}
-	if local {
-		list = "hacia " + list
-	} else {
-		list = "desde " + list
-	}
-	return joinHuman(append(named, list))
+	return out
 }
 
 // addrKeywords son las palabras clave de direcciones de las reglas.

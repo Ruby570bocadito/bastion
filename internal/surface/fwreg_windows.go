@@ -24,7 +24,7 @@ const (
 // apps de la Store, los dispositivos de confianza (Wi-Fi Direct, UPnP…) y
 // la exigencia de IPsec.
 func readFirewallRules() ([]FirewallRule, error) {
-	local, err := readRuleStore(fwLocalStore)
+	local, err := readRuleStore(fwLocalStore, true)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func readFirewallRules() ([]FirewallRule, error) {
 		}
 	}
 	for _, store := range []string{fwGPOStore, fwMDMStore} {
-		extra, _ := readRuleStore(store) // solo existen con directivas o Intune
+		extra, _ := readRuleStore(store, false) // solo existen con directivas o Intune
 		rules = append(rules, extra...)
 	}
 
@@ -75,7 +75,10 @@ func readFirewallRules() ([]FirewallRule, error) {
 	return rules, nil
 }
 
-func readRuleStore(path string) ([]FirewallRule, error) {
+// readRuleStore lee un almacén de reglas. withID guarda el nombre interno
+// de cada regla, que solo sirve para Set-NetFirewallRule en el almacén
+// local (las de directivas o Intune se cambian en su origen).
+func readRuleStore(path string, withID bool) ([]FirewallRule, error) {
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, path, registry.QUERY_VALUE)
 	if err != nil {
 		return nil, err
@@ -92,6 +95,9 @@ func readRuleStore(path string) ([]FirewallRule, error) {
 			continue
 		}
 		if r, ok := parseRegRule(v); ok {
+			if withID {
+				r.ID = n
+			}
 			out = append(out, r)
 		}
 	}

@@ -291,13 +291,13 @@ func TestFirewallEvaluate(t *testing.T) {
 	}{
 		{"RDP solo por Tailscale", Port{Proto: "tcp", Port: 3389, Addresses: all, Process: "svchost.exe", Services: []string{"TermService"}}, FirewallLimited, "Tailscale"},
 		{"SSH abierto (una regla sin límites gana)", Port{Proto: "tcp", Port: 22, Addresses: all, Process: "sshd.exe"}, FirewallOpen, ""},
-		{"SMB: Tailscale y red local", Port{Proto: "tcp", Port: 445, Addresses: all, Process: "System"}, FirewallLimited, "Tailscale y la red local"},
+		{"SMB: red local y Tailscale", Port{Proto: "tcp", Port: 445, Addresses: all, Process: "System"}, FirewallLimited, "la red local y Tailscale"},
 		{"NetBIOS en la IP de la LAN: Tailscale-In no lo cubre", Port{Proto: "udp", Port: 137, Addresses: []string{"192.168.1.131"}, Process: "System"}, FirewallFiltered, ""},
 		{"tailscaled en su IP", Port{Proto: "tcp", Port: 52722, Addresses: []string{"100.127.45.81"}, Process: "tailscaled.exe"}, FirewallLimited, "Tailscale"},
 		{"Steam TCP abierto", Port{Proto: "tcp", Port: 27036, Addresses: []string{"0.0.0.0"}, Process: "steam.exe"}, FirewallOpen, ""},
 		{"Steam UDP bloqueado", Port{Proto: "udp", Port: 27036, Addresses: []string{"0.0.0.0"}, Process: "steam.exe"}, FirewallFiltered, ""},
 		{"Sunshine por cable y por Tailscale", Port{Proto: "tcp", Port: 47989, Addresses: []string{"0.0.0.0"}, Process: "sunshine.exe"}, FirewallLimited, "Tailscale y en red cableada"},
-		{"WinRM solo desde una subred", Port{Proto: "tcp", Port: 5985, Addresses: []string{"0.0.0.0"}, Process: "System"}, FirewallLimited, "Tailscale y desde 10.0.0.0/255.0.0.0"},
+		{"WinRM solo desde una subred", Port{Proto: "tcp", Port: 5985, Addresses: []string{"0.0.0.0"}, Process: "System"}, FirewallLimited, "Tailscale y 10.0.0.0/8"},
 	}
 	for _, c := range cases {
 		a := fw.Evaluate(c.p)
@@ -449,10 +449,10 @@ func TestParseAddrs(t *testing.T) {
 			t.Errorf("%s: %v, quiero %v", ip, got, want)
 		}
 	}
-	if d := parseAddrs("100.127.45.81,fd7a:115c:a1e0::bf01:2dbf").describe(true); d != "Tailscale" {
+	if d := joinHuman(parseAddrs("100.127.45.81,fd7a:115c:a1e0::bf01:2dbf").describe(true)); d != "Tailscale" {
 		t.Errorf("describe Tailscale: %q", d)
 	}
-	if d := parseAddrs("LocalSubnet").describe(false); d != "la red local" {
+	if d := joinHuman(parseAddrs("LocalSubnet").describe(false)); d != "la red local" {
 		t.Errorf("describe LocalSubnet: %q", d)
 	}
 	if !parseAddrs("LocalSubnet").contains(net.ParseIP("1.2.3.4")) {
@@ -542,7 +542,7 @@ func TestParseRegRule(t *testing.T) {
 		state string
 		limit string
 	}{
-		{"SMB", Port{Proto: "tcp", Port: 445, Addresses: all, Process: "System"}, FirewallLimited, "la red local, Wi-Fi Direct y Tailscale"},
+		{"SMB", Port{Proto: "tcp", Port: 445, Addresses: all, Process: "System"}, FirewallLimited, "la red local, Tailscale y Wi-Fi Direct"},
 		{"SSDP", Port{Proto: "udp", Port: 1900, Addresses: all, Process: "svchost.exe", Services: []string{"SSDPSRV"}}, FirewallLimited, "Tailscale y dispositivos UPnP"},
 		{"programa del usuario: XBOX no lo cubre, solo Tailscale-In", Port{Proto: "tcp", Port: 4530, Addresses: []string{"0.0.0.0"}, Process: "NinjaTrader.exe", UserSID: rafag}, FirewallLimited, "Tailscale"},
 		{"en la IP de la LAN no llega nada", Port{Proto: "tcp", Port: 4530, Addresses: []string{"192.168.1.131"}, Process: "NinjaTrader.exe", UserSID: rafag}, FirewallFiltered, ""},
@@ -572,19 +572,30 @@ func TestParseRegRule(t *testing.T) {
 
 func TestDescribeKeywords(t *testing.T) {
 	for in, want := range map[string]string{
-		"LocalSubnet,LocalSubnet":    "la red local",
-		"LocalSubnet,DNS":            "la red local y los servidores DNS",
-		"IntrAnet,10.0.0.0/8":        "la intranet y desde 10.0.0.0/8",
-		"Ply2Renders":                "dispositivos de «Reproducir en»",
-		"192.168.1.0/24,192.168.2.1": "desde 192.168.1.0/24, 192.168.2.1",
-		"Desconocida":                "desde Desconocida",
+		"LocalSubnet,LocalSubnet":     "la red local",
+		"LocalSubnet,DNS":             "la red local y los servidores DNS",
+		"IntrAnet,10.0.0.0/8":         "la intranet y 10.0.0.0/8",
+		"Ply2Renders":                 "dispositivos de «Reproducir en»",
+		"192.168.1.0/24,192.168.2.1":  "192.168.1.0/24, 192.168.2.1",
+		"192.168.117.0/255.255.255.0": "192.168.117.0/24",
+		"10.0.0.1/255.255.255.255":    "10.0.0.1",
+		"10.0.0.1-10.0.0.9":           "10.0.0.1-10.0.0.9",
+		"Desconocida":                 "Desconocida",
 	} {
-		if got := parseAddrs(in).describe(false); got != want {
+		if got := joinHuman(parseAddrs(in).describe(false)); got != want {
 			t.Errorf("%s: %q, quiero %q", in, got, want)
 		}
 	}
-	if got := trustLabel("WFDPrint,WFDDisplay,ProxApp,Otra"); got != "Wi-Fi Direct, dispositivos cercanos y dispositivos de confianza (Otra)" {
-		t.Errorf("trustLabel: %q", got)
+	if got := joinHuman(parseAddrs("192.168.1.10,192.168.1.11").describe(true)); got != "hacia 192.168.1.10, 192.168.1.11" {
+		t.Errorf("direcciones locales: %q", got)
+	}
+	if got := joinHuman(trustLabels("WFDPrint,WFDDisplay,ProxApp,Otra")); got != "Wi-Fi Direct, dispositivos cercanos y dispositivos de confianza (Otra)" {
+		t.Errorf("trustLabels: %q", got)
+	}
+	xs := []string{"con IPsec", "Wi-Fi Direct", "192.168.117.0/24", "Tailscale", "dispositivos UPnP", "la red local", "en wifi"}
+	sortLimits(xs)
+	if got := joinHuman(xs); got != "la red local, Tailscale, 192.168.117.0/24, Wi-Fi Direct, dispositivos UPnP, con IPsec y en wifi" {
+		t.Errorf("orden de los límites: %q", got)
 	}
 }
 
@@ -610,5 +621,109 @@ func TestLabelsAndShortLists(t *testing.T) {
 	rep := Analyze(inv, platform.Info{}, "test", time.Now())
 	if len(rep.Findings) != 0 || rep.Ports[0].Known != "Optimización de distribución (Windows Update)" {
 		t.Errorf("un puerto etiquetado no es un hallazgo: %+v %+v", rep.Ports, rep.Findings)
+	}
+}
+
+// TestRealMachine reproduce el equipo de la prueba con v0.3.6: reglas como
+// las del registro y los puertos que mostró «bastion surface».
+func TestRealMachine(t *testing.T) {
+	const rafag = "S-1-5-21-1236394060-1900707475-1329702642-1001"
+	reg := map[string]string{
+		"RemoteDesktop-UserMode-In-TCP":                  `v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=6|Profile=Private|LPort=3389|App=%SystemRoot%\system32\svchost.exe|Svc=termservice|Name=Escritorio remoto - Modo usuario (TCP de entrada)|`,
+		"FPS-NB_Name-In-UDP":                             `v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=17|Profile=Private|LPort=137|RA4=LocalSubnet|RA6=LocalSubnet|App=System|Name=Compartir archivos e impresoras (nombre NB de entrada)|`,
+		"FPS-NB_Session-In-TCP":                          `v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=6|Profile=Private|LPort=139|RA4=LocalSubnet|RA6=LocalSubnet|App=System|Name=Compartir archivos e impresoras (sesión NB de entrada)|`,
+		"WFDPRINT-DAFWSD-In-Active-UDP":                  `v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=17|App=System|Name=Solo controlador de WFD (UDP de entrada)|TTK=WFDKmDriver|`,
+		"WFDPRINT-DAFWSD-In-Active-TCP":                  `v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=6|App=System|Name=Solo controlador de WFD (TCP de entrada)|TTK=WFDKmDriver|`,
+		"NETDIS-UPnPHost-In-TCP-Teredo":                  `v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=6|Profile=Public|App=System|Name=Detección de red de Teredo (UPnP de entrada)|Edge=TRUE|TTK=UPnP|`,
+		"{5C2A0BC4-0D38-4C6B-9C83-1A2B3C4D5E6F}":         `v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=6|Profile=Private|Profile=Public|App=C:\Program Files\NinjaTrader 8\bin\NinjaTrader.exe|Name=NinjaTrader|`,
+		"TCP Query User{A1B2}C:\\autoclaw\\autoclaw.exe": `v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=6|Profile=Public|App=C:\AutoClaw\AutoClaw.exe|Name=autoclaw.exe|`,
+		"XBOX-Store": `v2.33|Action=Allow|Active=TRUE|Dir=In|Profile=Domain|Profile=Private|Name=XBOX|LUOwn=` + rafag + `|AppPkgId=S-1-15-2-1|`,
+	}
+	var rules []FirewallRule
+	for id, v := range reg {
+		r, ok := parseRegRule(v)
+		if !ok {
+			t.Fatalf("%s no se interpreta", id)
+		}
+		r.ID = id
+		rules = append(rules, r)
+	}
+	sort.Slice(rules, func(i, j int) bool { return rules[i].ID < rules[j].ID })
+	fw := &Firewall{Source: "registry", Rules: rules, InboundRules: len(rules), Profiles: []FirewallProfile{
+		{Name: "Dominio", Bit: 1, Enabled: true, BlockInbound: true},
+		{Name: "Privado", Bit: 2, Enabled: true, BlockInbound: true, Active: true},
+		{Name: "Público", Bit: 4, Enabled: true, BlockInbound: true, Active: true},
+	}}
+	lan := "192.168.1.131"
+	inv := Inventory{Firewall: fw, Listeners: []Listener{
+		{Proto: "tcp", Address: "0.0.0.0", Port: 3389, Scope: ScopeNetwork, Process: "svchost.exe", Services: []string{"TermService"}},
+		{Proto: "udp", Address: lan, Port: 137, Scope: ScopeNetwork, PID: 4, Process: "System"},
+		{Proto: "udp", Address: lan, Port: 138, Scope: ScopeNetwork, PID: 4, Process: "System"},
+		{Proto: "tcp", Address: lan, Port: 139, Scope: ScopeNetwork, PID: 4, Process: "System"},
+		{Proto: "tcp", Address: "0.0.0.0", Port: 4530, Scope: ScopeNetwork, PID: 14132, Process: "NinjaTrader.exe", UserSID: rafag},
+		{Proto: "tcp", Address: "0.0.0.0", Port: 36973, Scope: ScopeNetwork, PID: 14132, Process: "NinjaTrader.exe", UserSID: rafag},
+		{Proto: "tcp", Address: "0.0.0.0", Port: 8766, Scope: ScopeNetwork, PID: 6864, Process: "AutoClaw.exe", UserSID: rafag},
+		{Proto: "tcp", Address: "0.0.0.0", Port: 7680, Scope: ScopeNetwork, Process: "svchost.exe", Services: []string{"DoSvc"}},
+	}}
+	rep := Analyze(inv, platform.Info{}, "test", time.Now())
+	byID := map[string]Finding{}
+	for _, f := range rep.Findings {
+		byID[f.ID] = f
+	}
+
+	// NetBIOS: los límites de 137, 138 y 139 se unen sin repetirse.
+	nb, ok := byID["SURF-NETBIOS"]
+	if !ok || nb.Severity != rule.SevLow {
+		t.Fatalf("NetBIOS: %+v", rep.Findings)
+	}
+	if want := "NetBIOS sobre TCP/IP accesible solo desde la red local, Wi-Fi Direct y dispositivos UPnP (System)"; nb.Title != want {
+		t.Errorf("título de NetBIOS:\n  %s\nquiero\n  %s", nb.Title, want)
+	}
+	if strings.Count(nb.Detail, "Wi-Fi Direct") != 1 || !strings.Contains(nb.Detail, "«Solo controlador de WFD (UDP de entrada)»") || !strings.Contains(nb.Detail, "«Solo controlador de WFD (TCP de entrada)»") {
+		t.Errorf("el detalle une las reglas de todos los puertos: %s", nb.Detail)
+	}
+
+	// RDP: abierto por una regla del almacén local → comando exacto.
+	rdp := byID["SURF-PORT-3389"]
+	if !strings.Contains(rdp.Fix, "Set-NetFirewallRule -Name 'RemoteDesktop-UserMode-In-TCP' -RemoteAddress LocalSubnet") {
+		t.Errorf("RDP debe dar el comando con el nombre interno: %s", rdp.Fix)
+	}
+
+	// Programas abiertos a cualquiera: NinjaTrader y AutoClaw (el
+	// optimizador de distribución es un servicio de Windows y no cuenta).
+	apps, ok := byID["SURF-APPS-OPEN"]
+	if !ok || apps.Severity != rule.SevLow || apps.Subject != "2 programas" {
+		t.Fatalf("programas abiertos: %+v", rep.Findings)
+	}
+	if want := "2 programas aceptan conexiones desde cualquier dirección: NinjaTrader.exe (4530/tcp, 36973/tcp) y AutoClaw.exe (8766/tcp)"; apps.Title != want {
+		t.Errorf("título:\n  %s\nquiero\n  %s", apps.Title, want)
+	}
+	if !strings.Contains(apps.Fix, `-Name '{5C2A0BC4-0D38-4C6B-9C83-1A2B3C4D5E6F}','TCP Query User{A1B2}C:\autoclaw\autoclaw.exe' -RemoteAddress LocalSubnet`) {
+		t.Errorf("comando para limitar las reglas de los programas: %s", apps.Fix)
+	}
+	if !strings.Contains(apps.Detail, "«NinjaTrader» y «autoclaw.exe»") {
+		t.Errorf("el detalle nombra las reglas: %s", apps.Detail)
+	}
+
+	// Sin el nombre interno (reglas leídas con COM) no hay comando exacto.
+	for i := range fw.Rules {
+		fw.Rules[i].ID = ""
+	}
+	rep = Analyze(inv, platform.Info{}, "test", time.Now())
+	for _, f := range rep.Findings {
+		if strings.Contains(f.Fix, "Set-NetFirewallRule") {
+			t.Errorf("%s: sin nombre interno no se puede dar el comando: %s", f.ID, f.Fix)
+		}
+	}
+}
+
+func TestRuleSelector(t *testing.T) {
+	withID := []FirewallRule{{ID: "A-In", Name: "Uno"}, {ID: "B-In", Name: "Dos"}}
+	if got := ruleSelector(withID); got != "-Name 'A-In','B-In'" {
+		t.Errorf("con nombres internos: %s", got)
+	}
+	withID[1].ID = ""
+	if got := ruleSelector(withID); got != "-DisplayName 'Uno','Dos' -Direction Inbound" {
+		t.Errorf("sin todos los nombres internos: %s", got)
 	}
 }
