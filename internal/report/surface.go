@@ -37,7 +37,17 @@ func SurfaceConsole(w io.Writer, rep *surface.Report, all bool, s Style) {
 		reach = s.Bold(reach)
 	}
 	fmt.Fprintf(w, "  %s %s · %d solo locales\n", s.Dim(pad("Servicios", 9)), reach, local)
-	if fw := rep.Firewall; fw != nil {
+	if fw := rep.Firewall; fw != nil && fw.Linux() {
+		state := s.Green("entrada bloqueada por defecto")
+		if fw.InputPolicy == "accept" {
+			state = s.Yellow("entrada permitida por defecto")
+		}
+		if fw.InputPolicy == "" {
+			fmt.Fprintf(w, "  %s %s\n", s.Dim(pad("Firewall", 9)), s.Yellow("sin reglas de entrada (nftables, iptables): no filtra nada"))
+		} else {
+			fmt.Fprintf(w, "  %s %s · %s %s\n", s.Dim(pad("Firewall", 9)), fw.Source, state, s.Dim(fmt.Sprintf("· %d reglas de entrada", fw.InboundRules)))
+		}
+	} else if fw != nil {
 		var parts []string
 		for _, p := range fw.Active() {
 			state := s.Green("activo")
@@ -180,7 +190,7 @@ func SurfaceConsole(w io.Writer, rep *surface.Report, all bool, s Style) {
 		fmt.Fprintf(w, "  %s %s\n", s.Yellow("!"), s.Dim(n))
 	}
 	if rep.Firewall == nil {
-		fmt.Fprintf(w, "  %s %s\n", s.Dim("·"), s.Dim("En este sistema Bastion todavía no evalúa las reglas del firewall: un puerto en la red puede estar filtrado."))
+		fmt.Fprintf(w, "  %s %s\n", s.Dim("·"), s.Dim("Sin evaluar el firewall, cada puerto en la red se muestra como accesible, aunque puede estar filtrado."))
 	}
 	fmt.Fprintln(w)
 }

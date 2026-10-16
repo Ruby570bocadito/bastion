@@ -728,7 +728,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
       el("div", { class: "meter" }, [el("i", { style: "width:" + sf.score + "%;background:" + color })]),
       el("p", { text: sf.exposed + " servicios escuchan en la red" + (sf.firewall ? ": " + (sf.reachable - (sf.limited || 0)) + " abiertos a cualquiera, " +
         (sf.limited || 0) + " limitados a ciertas redes y " + (sf.exposed - sf.reachable) + " filtrados por el firewall" : "") +
-        ". Cada hallazgo resta según su severidad (crítico 30, alto 15, medio 7, bajo 3)." + (sf.firewall ? "" : " En este sistema todavía no se evalúa el firewall.") })])]);
+        ". Cada hallazgo resta según su severidad (crítico 30, alto 15, medio 7, bajo 3)." + (sf.firewall ? "" : " No se ha podido evaluar el firewall.") })])]);
     var kpis = el("div", { class: "kpis" });
     [["critical", "Críticos"], ["high", "Altos"], ["medium", "Medios"], ["low", "Bajos"]].forEach(function (k) {
       kpis.appendChild(el("div", { class: "card kpi" }, [el("div", { class: "label" }, [dot(SEV[k[0]].color), k[1]]),
@@ -767,9 +767,12 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
     tbl.appendChild(tb);
     var toggle = el("button", { class: "btn copy", type: "button", text: S.showLocal ? "Solo los de la red" : "Mostrar también locales y de cliente (" + hidden + ")",
       onclick: function () { S.showLocal = !S.showLocal; render(); } });
-    var fwNote = "En este sistema Bastion todavía no evalúa las reglas del firewall: un puerto en la red puede estar filtrado.";
-    if (sf.firewall) {
-      fwNote = "Firewall de Windows: " + sf.firewall.profiles.filter(function (p) { return p.active; }).map(function (p) {
+    var fwNote = "Sin evaluar el firewall, cada puerto en la red se muestra como accesible, aunque puede estar filtrado.";
+    if (sf.firewall && sf.firewall.source && sf.firewall.source.indexOf("tables") >= 0) {
+      fwNote = "Firewall de Linux (" + sf.firewall.source + "): " + (sf.firewall.input_policy === "drop" ? "entrada bloqueada por defecto" :
+        sf.firewall.input_policy === "accept" ? "entrada permitida por defecto" : "sin reglas de entrada") + " · " + sf.firewall.inbound_rules + " reglas de entrada.";
+    } else if (sf.firewall) {
+      fwNote = "Firewall de Windows: " + (sf.firewall.profiles || []).filter(function (p) { return p.active; }).map(function (p) {
         return "perfil " + p.name + (p.enabled ? (p.block_inbound ? " activo, entrada bloqueada por defecto" : " activo, entrada permitida por defecto") : " desactivado");
       }).join(" · ") + " · " + sf.firewall.inbound_rules + " reglas de entrada.";
     }

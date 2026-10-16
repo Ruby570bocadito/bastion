@@ -3,18 +3,21 @@
 package surface
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
-// Collect recoge el inventario en Linux leyendo /proc y /etc (sin ejecutar
-// comandos).
-func Collect(_ context.Context) (Inventory, error) {
+// Collect recoge el inventario en Linux leyendo /proc y /etc; con root,
+// también el firewall (nft e iptables-save, de solo lectura).
+func Collect(ctx context.Context) (Inventory, error) {
 	var inv Inventory
 	var socks []procSocket
 	for _, src := range []struct {
@@ -60,7 +63,55 @@ func Collect(_ context.Context) (Inventory, error) {
 	if err1 == nil && err2 == nil {
 		inv.Admins = parseLinuxAdmins(string(passwd), string(group))
 	}
+
+	if os.Geteuid() != 0 {
+		inv.Notes = append(inv.Notes, "Sin root no se puede leer el firewall (nftables, iptables): ejecuta con sudo para saber qué puertos filtra.")
+	} else if fw, err := collectNetfilter(ctx); err != nil {
+		inv.Notes = append(inv.Notes, "No se pudo leer el firewall: los puertos se muestran sin filtrar. "+err.Error())
+	} else {
+		inv.Firewall = fw
+	}
 	return inv, nil
+}
+
+// collectNetfilter lee el firewall del kernel. ufw y firewalld no tienen
+// reglas propias: generan las de nftables o iptables, que son las que se
+// aplican. iptables-save da más detalle de las tablas de iptables-nft
+// (multiport, conntrack…) que nft, que las muestra opacas.
+func collectNetfilter(ctx context.Context) (*Firewall, error) {
+	nft, nftErr := runTool(ctx, "nft", "-j", "list", "ruleset")
+	save4, err4 := runTool(ctx, "iptables-save")
+	save6, _ := runTool(ctx, "ip6tables-save")
+	if nftErr != nil && err4 != nil {
+		return nil, errors.New("no se encontró nft ni iptables-save, o no respondieron: " + nftErr.Error())
+	}
+	return newLinuxFirewall(nft, string(save4), string(save6))
+}
+
+// runTool ejecuta una herramienta del sistema por su ruta absoluta (sudo
+// puede no tener /usr/sbin en el PATH).
+func runTool(ctx context.Context, name string, args ...string) ([]byte, error) {
+	path, err := exec.LookPath(name)
+	if err != nil {
+		for _, dir := range []string{"/usr/sbin", "/sbin", "/usr/bin", "/bin"} {
+			if fi, e := os.Stat(filepath.Join(dir, name)); e == nil && !fi.IsDir() {
+				path, err = filepath.Join(dir, name), nil
+				break
+			}
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	var out bytes.Buffer
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }
 
 // socketOwners asocia el inodo de cada socket con el PID que lo tiene

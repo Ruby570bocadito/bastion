@@ -692,7 +692,7 @@ func TestRealMachine(t *testing.T) {
 	// Programas abiertos a cualquiera: NinjaTrader y AutoClaw (el
 	// optimizador de distribución es un servicio de Windows y no cuenta).
 	apps, ok := byID["SURF-APPS-OPEN"]
-	if !ok || apps.Severity != rule.SevLow || apps.Subject != "2 programas" {
+	if !ok || apps.Severity != rule.SevLow || apps.Subject != "4530/tcp, 36973/tcp, 8766/tcp" {
 		t.Fatalf("programas abiertos: %+v", rep.Findings)
 	}
 	if want := "2 programas aceptan conexiones desde cualquier dirección: NinjaTrader.exe (4530/tcp, 36973/tcp) y AutoClaw.exe (8766/tcp)"; apps.Title != want {
@@ -725,5 +725,30 @@ func TestRuleSelector(t *testing.T) {
 	withID[1].ID = ""
 	if got := ruleSelector(withID); got != "-DisplayName 'Uno','Dos' -Direction Inbound" {
 		t.Errorf("sin todos los nombres internos: %s", got)
+	}
+}
+
+func TestOpenFindingNamesAllRules(t *testing.T) {
+	fw := &Firewall{Source: "registry", Profiles: []FirewallProfile{
+		{Name: "Privado", Bit: 2, Enabled: true, BlockInbound: true, Active: true},
+	}, Rules: []FirewallRule{
+		{ID: "{809B}", Name: "Google Chrome (tráfico mDNS entrante)", Allow: true, Protocol: 17, LocalPorts: "5353", App: `C:\Program Files\Google\Chrome\Application\chrome.exe`, Profiles: 2},
+		{ID: "{86F1}", Name: "Steam Web Helper", Allow: true, Protocol: 256, App: `C:\Program Files (x86)\Steam\bin\cef\cef.win7x64\steamwebhelper.exe`, Profiles: 2},
+	}}
+	inv := Inventory{Firewall: fw, Listeners: []Listener{
+		{Proto: "udp", Address: "0.0.0.0", Port: 5353, Scope: ScopeNetwork, Process: "chrome.exe"},
+		{Proto: "udp", Address: "::", Port: 5353, Scope: ScopeNetwork, Process: "steamwebhelper.exe"},
+	}}
+	rep := Analyze(inv, platform.Info{}, "test", time.Now())
+	if len(rep.Findings) != 1 {
+		t.Fatalf("hallazgos: %+v", rep.Findings)
+	}
+	f := rep.Findings[0]
+	if !strings.Contains(f.Detail, "lo permiten las reglas «Google Chrome (tráfico mDNS entrante)» y «Steam Web Helper»") ||
+		!strings.Contains(f.Fix, "-Name '{809B}','{86F1}'") {
+		t.Errorf("el detalle y el comando deben nombrar las mismas reglas:\n%s\n%s", f.Detail, f.Fix)
+	}
+	if f.Subject != "5353/udp" || f.Title != "mDNS accesible desde la red (chrome.exe; steamwebhelper.exe)" {
+		t.Errorf("asunto y título: %q · %q", f.Subject, f.Title)
 	}
 }

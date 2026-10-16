@@ -1,0 +1,47 @@
+flush ruleset
+table inet firewalld {
+	chain filter_INPUT {
+		type filter hook input priority filter + 10; policy accept;
+		ct state { established, related } accept
+		ct status dnat accept
+		iifname "lo" accept
+		ct state invalid drop
+		jump filter_INPUT_POLICIES
+		reject with icmpx admin-prohibited
+	}
+	chain filter_INPUT_POLICIES {
+		iifname "wg0" jump filter_IN_trusted
+		iifname "wg0" accept
+		iifname "eth0" jump filter_IN_public
+		iifname "eth0" reject with icmpx admin-prohibited
+		jump filter_IN_public
+		reject with icmpx admin-prohibited
+	}
+	chain filter_IN_public {
+		jump filter_IN_public_pre
+		jump filter_IN_public_log
+		jump filter_IN_public_deny
+		jump filter_IN_public_allow
+		jump filter_IN_public_post
+		meta l4proto { icmp, ipv6-icmp } accept
+	}
+	chain filter_IN_public_pre {
+	}
+	chain filter_IN_public_log {
+	}
+	chain filter_IN_public_deny {
+		ip saddr 203.0.113.0/24 drop
+	}
+	chain filter_IN_public_allow {
+		tcp dport 22 accept
+		ip6 daddr fe80::/64 udp dport 546 accept
+		tcp dport 9090 accept
+		meta nfproto ipv4 ip saddr 10.0.0.0/8 tcp dport 5432 ct state new,untracked accept
+		fib daddr type multicast udp dport 5353 accept
+	}
+	chain filter_IN_public_post {
+	}
+	chain filter_IN_trusted {
+		accept
+	}
+}

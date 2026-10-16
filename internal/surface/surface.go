@@ -275,6 +275,7 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		subjects []string
 		who      []string
 		why      string   // la del primer puerto abierto
+		open     []string // reglas que abren alguno de los puertos
 		limits   []string // si todos los puertos del hallazgo están limitados
 		rules    []string // las reglas que los limitan
 		ids      []string // reglas que los abren, para el comando que las limita
@@ -360,6 +361,9 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 				a.why = p.FirewallWhy
 			}
 			a.limited = false
+			for _, r := range p.access.Rules {
+				a.open = appendOnce(a.open, r)
+			}
 			for _, id := range p.access.IDs {
 				a.ids = appendOnce(a.ids, id)
 			}
@@ -378,9 +382,14 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 	for _, key := range order {
 		a := found[key]
 		why := a.why
-		if a.limited {
+		switch {
+		case a.limited:
 			sortLimits(a.limits)
 			why = limitedWhy(joinHuman(a.limits), a.rules)
+		case len(a.open) > 1:
+			// Varios puertos abiertos por reglas distintas (mDNS de Chrome y
+			// de Steam): se nombran todas, como en el comando.
+			why = "lo permiten las reglas " + shortList(a.open, 4)
 		}
 		detail := a.k.why
 		if why != "" {
@@ -425,18 +434,34 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		} else if len(rules) > 1 {
 			fwWhy = "reglas " + shortList(rules, 4)
 		}
-		f := Finding{ID: "SURF-APPS-OPEN", Severity: rule.SevLow, Subject: appOrder[0],
+		var ports []string
+		for _, name := range appOrder {
+			ports = append(ports, apps[name].ports...)
+		}
+		subject := strings.Join(ports, ", ")
+		if len(ports) > 4 {
+			subject = strings.Join(ports[:4], ", ") + "…"
+		}
+		f := Finding{ID: "SURF-APPS-OPEN", Severity: rule.SevLow, Subject: subject,
 			Title: names[0] + " acepta conexiones desde cualquier dirección",
 			Detail: "El firewall deja sus puertos abiertos a cualquiera que llegue al equipo: si el programa tiene un fallo o una contraseña débil, " +
 				"se puede atacar desde la red y, si la regla incluye el perfil Público, también en redes que no controlas (la wifi de un hotel o una cafetería). " +
 				"Firewall: " + fwWhy + ".",
 			Fix: "Si solo lo usas en este equipo o desde tu red, limita sus reglas a la red local; si no lo necesitas desde otros equipos, desactívalas.",
 		}
+		if inv.Firewall.Linux() {
+			// Sin perfiles de red; la solución, con ufw (lo más habitual).
+			f.Detail = strings.Replace(f.Detail, " y, si la regla incluye el perfil Público, también en redes que no controlas (la wifi de un hotel o una cafetería)", "", 1)
+			port, proto, _ := strings.Cut(apps[appOrder[0]].ports[0], "/")
+			f.Fix = fmt.Sprintf("Si solo lo usas desde tu red, limita la regla a esa red y borra la abierta; con ufw, por ejemplo: "+
+				"ufw allow from 192.168.1.0/24 to any port %s proto %s (y ufw status numbered y ufw delete N para la abierta).", port, proto)
+		}
 		if len(appOrder) > 1 {
-			f.Subject = fmt.Sprintf("%d programas", len(appOrder))
 			f.Title = fmt.Sprintf("%d programas aceptan conexiones desde cualquier dirección: %s", len(appOrder), shortList(names, 3))
 			f.Detail = strings.Replace(f.Detail, "si el programa tiene un fallo", "si alguno tiene un fallo", 1)
-			f.Fix = "Si solo los usas en este equipo o desde tu red, limita sus reglas a la red local; si no los necesitas desde otros equipos, desactívalas."
+			if !inv.Firewall.Linux() {
+				f.Fix = "Si solo los usas en este equipo o desde tu red, limita sus reglas a la red local; si no los necesitas desde otros equipos, desactívalas."
+			}
 		}
 		if len(ids) > 0 && !noIDs {
 			f.Fix += " " + limitCmd(ids)
@@ -452,13 +477,12 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 				names = appendOnce(names, "«"+r.Name+"»")
 				profiles |= r.Profiles
 			}
-			verb, subject := "permite", names[0]
+			verb := "permite"
 			if len(names) > 1 {
-				// La lista completa va en el título y en el comando.
-				verb, subject = "permiten", fmt.Sprintf("%d reglas", len(names))
+				verb = "permiten"
 			}
 			rep.Findings = append(rep.Findings, Finding{
-				ID: "SURF-FW-USERALLOWALL", Severity: rule.SevMedium, Subject: subject,
+				ID: "SURF-FW-USERALLOWALL", Severity: rule.SevMedium, Subject: "firewall", // las reglas van en el título
 				Title: fmt.Sprintf("%s %s toda la entrada a los programas de un usuario (perfil %s)", shortList(names, 3), verb, ProfileNames(profiles&7)),
 				Detail: "Cualquier programa que ejecute ese usuario, incluido uno malicioso, puede aceptar conexiones de cualquier puerto desde esas redes. " +
 					"Los servicios del sistema no quedan cubiertos. Estas reglas suelen crearlas apps como la de Xbox para el juego en red.",
@@ -468,7 +492,7 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		}
 		for _, r := range inv.Firewall.AllowAll() {
 			rep.Findings = append(rep.Findings, Finding{
-				ID: "SURF-FW-ALLOWALL", Severity: rule.SevHigh, Subject: "«" + r.Name + "»",
+				ID: "SURF-FW-ALLOWALL", Severity: rule.SevHigh, Subject: "firewall",
 				Title: fmt.Sprintf("La regla de firewall «%s» permite toda la entrada (perfil %s)", r.Name, ProfileNames(r.Profiles)),
 				Detail: "Admite cualquier protocolo y puerto, para cualquier programa y desde cualquier dirección: en esas redes " +
 					"equivale a tener el firewall desactivado, y cualquier servicio que escuche queda accesible.",

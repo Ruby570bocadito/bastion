@@ -39,7 +39,7 @@ calcula una puntuación de postura, la mapea a MITRE ATT&CK y te dice qué corre
 | 🧾 **Evidencias** | Para cada control: valor real, valor esperado y de dónde sale el dato (clave de registro, `sshd -T`, `secedit`...). |
 | 🛠️ **Remediación guiada** | Para lo que no es automático: resumen, ruta de GPO, comandos listos para copiar, riesgo de rotura e impacto. |
 | 🌐 **Informe HTML autocontenido** | Un solo fichero, modo claro y oscuro, filtros, sin conexión, imprimible a PDF. |
-| 🌍 **Superficie de ataque** | `bastion surface` lista qué escucha en la red y con qué proceso, señala los servicios de riesgo expuestos (SMB, RDP, Redis, Docker API…) y los recursos compartidos abiertos a todos. |
+| 🌍 **Superficie de ataque** | `bastion surface` lista qué escucha en la red y con qué proceso, evalúa el firewall (Windows, nftables e iptables, que cubren ufw y firewalld) para decir si cada puerto está abierto a cualquiera, limitado o filtrado, y señala los servicios de riesgo expuestos (SMB, RDP, Redis, Docker API…) y los recursos compartidos abiertos a todos. |
 | 🖥️ **Consola local** | `bastion ui` abre un panel en el navegador con la tendencia de la puntuación, el plan de hardening por olas, el historial y las excepciones. Solo en 127.0.0.1 y con token. |
 | ⚙️ **Listo para CI/CD** | Salida JSON estable y `--min-score` para fallar un pipeline de imágenes doradas. |
 | 🔄 **Auto-actualización verificada** | `bastion update` descarga, verifica la suma SHA-256 y se reemplaza. Las reglas viajan dentro del binario. |

@@ -61,10 +61,19 @@ type Firewall struct {
 	Rules    []FirewallRule    `json:"-"`
 	// InboundRules es el número de reglas de entrada habilitadas.
 	InboundRules int `json:"inbound_rules"`
-	// Source indica de dónde se han leído las reglas: "registry" (completas)
-	// o "com" (HNetCfg.FwPolicy2, sin dispositivos de confianza ni IPsec).
+	// Source indica de dónde se han leído las reglas: en Windows, "registry"
+	// (completas) o "com" (HNetCfg.FwPolicy2, sin dispositivos de confianza
+	// ni IPsec); en Linux, "nftables", "iptables" o ambos.
 	Source string `json:"source,omitempty"`
+	// InputPolicy es, en Linux, la acción por defecto de la entrada: drop si
+	// se descarta lo que no permite una regla, accept si no.
+	InputPolicy string `json:"input_policy,omitempty"`
+
+	nf *netfilter // Linux
 }
+
+// Linux indica si es el cortafuegos del kernel de Linux.
+func (fw *Firewall) Linux() bool { return fw.nf != nil }
 
 // Access es el resultado de evaluar un puerto.
 type Access struct {
@@ -106,6 +115,9 @@ func (fw *Firewall) Active() []FirewallProfile {
 // locales (p. ej. «Tailscale-In», solo hacia la IP de Tailscale), remotas
 // (LocalSubnet) o interfaces: entonces el puerto queda "limitado".
 func (fw *Firewall) Evaluate(p Port) Access {
+	if fw.nf != nil {
+		return fw.nf.evaluate(p)
+	}
 	var limits, limitRules, blocked, open, openProfiles, ids []string
 	allIDs := true
 	for _, prof := range fw.Active() {
