@@ -15,7 +15,7 @@ bastion rules show WIN-CRED-001
 
 <!-- Generado con "bastion rules doc". No editar a mano: edita las reglas en rules/. -->
 
-**131 controles** en el paquete oficial, **100 con corrección automática** (`bastion harden`). ⚡ = afecta al acceso remoto (requiere `--include-remote`).
+**154 controles** en el paquete oficial, **121 con corrección automática** (`bastion harden`). ⚡ = afecta al acceso remoto (requiere `--include-remote`).
 
 ### Perfiles
 
@@ -29,7 +29,7 @@ bastion rules show WIN-CRED-001
 | `win-workstation-l1` | Windows Estación de trabajo · Nivel 1 |  | windows-client |
 | `win-workstation-l2` | Windows Estación de trabajo · Nivel 2 | win-workstation-l1 |  |
 
-### Linux (66)
+### Linux (74)
 
 #### Actualizaciones
 
@@ -80,6 +80,12 @@ bastion rules show WIN-CRED-001
 | `LNX-KRN-005` | Sin volcados de memoria de binarios setuid | medio | linux-server-l1 |  | ninguno | ✓ |
 | `LNX-KRN-006` | Protección de enlaces simbólicos y duros | medio | linux-server-l1 | T1068 | ninguno | ✓ |
 | `LNX-KRN-007` | BPF sin privilegios deshabilitado | medio | linux-server-l2 | T1068 | bajo | ✓ |
+| `LNX-KRN-008` | Protección de FIFOs y ficheros en directorios compartidos | medio | linux-server-l1 | T1068 | ninguno | ✓ |
+| `LNX-KRN-009` | Eventos de rendimiento restringidos (perf_event_paranoid) | medio | linux-server-l1 | T1068 | bajo | ✓ |
+| `LNX-KRN-010` | Carga de kernels en caliente deshabilitada (kexec) | bajo | linux-server-l2 | T1014, T1542 | medio | ✓ |
+| `LNX-KRN-011` | Carga automática de disciplinas de línea TTY deshabilitada | bajo | linux-server-l2 | T1068 | bajo | ✓ |
+| `LNX-KRN-012` | Compilador JIT de BPF reforzado | bajo | linux-server-l2 | T1068 | ninguno | ✓ |
+| `LNX-KRN-013` | Teclas SysRq deshabilitadas | bajo | linux-server-l2 | T1529 | bajo | ✓ |
 
 #### Módulos del kernel
 
@@ -146,6 +152,12 @@ bastion rules show WIN-CRED-001
 | `LNX-SVC-005` | Servidor FTP no instalado | medio | linux-server-l1 | T1040 | medio |  |
 | `LNX-SVC-006` | Sincronización horaria activa | medio | linux-server-l1 |  | ninguno |  |
 
+#### Sistema
+
+| ID | Control | Severidad | Perfiles | ATT&CK | Riesgo de rotura | Auto |
+|---|---|---|---|---|---|---|
+| `LNX-SYS-001` | Los avisos de inicio de sesión no revelan el sistema | bajo | linux-server-l1 | T1082 | ninguno |  |
+
 #### Sistema de ficheros
 
 | ID | Control | Severidad | Perfiles | ATT&CK | Riesgo de rotura | Auto |
@@ -156,8 +168,9 @@ bastion rules show WIN-CRED-001
 | `LNX-FS-004` | Permisos de /etc/passwd | alto | linux-server-l1 | T1136.001 | ninguno | ✓ |
 | `LNX-FS-005` | Permisos de /etc/gshadow | medio | linux-server-l1 |  | ninguno | ✓ |
 | `LNX-FS-006` | Permisos de /etc/crontab | medio | linux-server-l1 | T1053.003 | ninguno | ✓ |
+| `LNX-FS-007` | Permisos de los directorios de cron | medio | linux-server-l1 | T1053.003 | ninguno | ✓ |
 
-### Windows y Windows Server (65)
+### Windows y Windows Server (80)
 
 #### Acceso remoto
 
@@ -165,6 +178,10 @@ bastion rules show WIN-CRED-001
 |---|---|---|---|---|---|---|
 | `WIN-RDP-001` | RDP exige autenticación a nivel de red (NLA) | alto | win-workstation-l1, win-server-l1 | T1021.001, T1210 | bajo | ✓ ⚡ |
 | `WIN-RDP-002` | Asistencia remota solicitada deshabilitada | medio | win-workstation-l1, win-server-l1 | T1219 | bajo | ✓ |
+| `WIN-RDP-003` | El cliente RDP no guarda contraseñas | medio | win-workstation-l1, win-server-l1 | T1555.004 | bajo | ✓ |
+| `WIN-RDP-004` | El servidor RDP pide siempre la contraseña | medio | win-workstation-l1, win-server-l1 | T1021.001 | bajo | ✓ |
+| `WIN-RDP-005` | RDP exige comunicación RPC segura | bajo | win-workstation-l1, win-server-l1 | T1021.001 | ninguno | ✓ |
+| `WIN-RDP-006` | Cifrado alto en las conexiones RDP | bajo | win-workstation-l1, win-server-l1 | T1021.001, T1557 | bajo | ✓ ⚡ |
 | `WIN-WRM-001` | WinRM sin autenticación Basic ni tráfico sin cifrar | medio | win-workstation-l1, win-server-l1 | T1021.006, T1040 | bajo | ✓ |
 
 #### Active Directory
@@ -210,6 +227,7 @@ bastion rules show WIN-CRED-001
 | `WIN-CRED-005` | Sin enumeración anónima de cuentas y recursos | medio | win-workstation-l1, win-server-l1 | T1087.001, T1135 | bajo | ✓ |
 | `WIN-CRED-006` | Credential Guard en ejecución | alto | win-workstation-l2, win-server-l2 | T1003.001, T1550.002 | medio |  |
 | `WIN-CRED-007` | Limitar credenciales de dominio en caché | medio | win-workstation-l2, win-server-l2 | T1003.005 | medio | ✓ |
+| `WIN-CRED-008` | CredSSP solo con equipos actualizados (Encryption Oracle Remediation) | medio | win-workstation-l1, win-server-l1 | T1557, T1210 | bajo | ✓ |
 
 #### Cuentas
 
@@ -267,6 +285,10 @@ bastion rules show WIN-CRED-001
 | `WIN-NET-006` | LLMNR deshabilitado | alto | win-workstation-l1, win-server-l1 | T1557.001 | bajo | ✓ |
 | `WIN-NET-007` | NetBIOS sobre TCP/IP deshabilitado | alto | win-workstation-l1, win-server-l1 | T1557.001 | medio | ✓ |
 | `WIN-NET-008` | mDNS deshabilitado | medio | win-workstation-l2, win-server-l2 | T1557 | bajo | ✓ |
+| `WIN-NET-011` | Point and Print solo instala controladores como administrador | alto | win-workstation-l1, win-server-l1 | T1068, T1210 | bajo | ✓ |
+| `WIN-NET-012` | Controlador cliente SMBv1 deshabilitado | medio | win-workstation-l1, win-server-l1 | T1210 | medio |  |
+| `WIN-NET-013` | No aceptar redirecciones ICMP | bajo | win-workstation-l1, win-server-l1 | T1557 | ninguno | ✓ |
+| `WIN-NET-014` | Enrutamiento de origen IP deshabilitado | bajo | win-workstation-l1, win-server-l1 | T1599 | ninguno | ✓ |
 
 #### Servicios
 
@@ -283,6 +305,12 @@ bastion rules show WIN-CRED-001
 | `WIN-SYS-003` | Arranque seguro (Secure Boot) activado | alto | win-workstation-l1, win-server-l1 | T1542.003 | medio |  |
 | `WIN-SYS-004` | AutoRun y AutoPlay deshabilitados | medio | win-workstation-l1, win-server-l1 | T1091 | ninguno | ✓ |
 | `WIN-SYS-005` | Integridad de memoria (HVCI) en ejecución | medio | win-workstation-l2, win-server-l2 | T1068, T1014 | medio |  |
+| `WIN-SYS-006` | Windows Installer no instala siempre con privilegios elevados | alto | win-workstation-l1, win-server-l1 | T1548 | ninguno | ✓ |
+| `WIN-SYS-007` | SmartScreen de Windows activado | medio | win-workstation-l1 | T1204.002 | bajo | ✓ |
+| `WIN-SYS-008` | Bloqueo de la sesión tras 15 minutos de inactividad | medio | win-workstation-l1, win-server-l1 | T1078 | bajo | ✓ |
+| `WIN-SYS-009` | Protección SEHOP activada | bajo | win-workstation-l1, win-server-l1 | T1203 | ninguno | ✓ |
+| `WIN-SYS-010` | Descarga de controladores de impresora por HTTP deshabilitada | bajo | win-workstation-l1, win-server-l1 | T1557 | ninguno | ✓ |
+| `WIN-UPD-001` | Actualizaciones automáticas de Windows no desactivadas | alto | win-workstation-l1, win-server-l1 | T1190, T1203 | bajo | ✓ |
 
 ## 2. Catálogo objetivo (🔜)
 
@@ -293,11 +321,11 @@ bastion rules show WIN-CRED-001
 | Cuentas | Duración y ventana de bloqueo, renombrar Administrator, contraseñas reversibles, historial |
 | Derechos de usuario | `SeDebugPrivilege`, "Access this computer from the network", "Deny log on through RDP" para cuentas locales |
 | Credenciales | Restricted Admin / Remote Credential Guard, "Network access: Do not allow storage of passwords" |
-| Red | WPAD, firma SMB "si el cliente acepta", cifrado SMB, IPv6 source routing, NTLM saliente |
+| Red | WPAD, firma SMB "si el cliente acepta", cifrado SMB, NTLM saliente |
 | Defender | Resto de reglas ASR, protección contra exploits (DEP/ASLR/CFG), Controlled Folder Access |
 | Aplicaciones | AppLocker/WDAC, Windows Script Host, Office (macros de Internet, OLE, DDE), Edge/Chrome |
 | Cifrado | BitLocker con TPM+PIN, método XTS-AES 256, custodia de la clave de recuperación |
-| Sistema | SmartScreen, Windows Update, pantalla de bloqueo, servicios innecesarios (Xbox, Fax, SSDP…) |
+| Sistema | Pantalla de bloqueo (cámara, notificaciones), servicios innecesarios (Xbox, Fax, SSDP…) |
 
 ### Windows Server 2016-2025
 
@@ -314,7 +342,7 @@ bastion rules show WIN-CRED-001
 |---|---|
 | Sistema de ficheros | `/var/tmp`, `/home` con `nodev`, ficheros sin dueño, escritura global con sticky, SUID/SGID |
 | Arranque | Contraseña de GRUB, modo monousuario autenticado, Secure Boot |
-| Kernel | `kexec_load_disabled`, `fs.protected_fifos/regular`, `kernel.modules_disabled` (L2), lockdown |
+| Kernel | `kernel.modules_disabled` (L2), lockdown |
 | Autenticación | pam_faillock, pwquality, `TMOUT`, `su` restringido (pam_wheel), cuentas de sistema sin shell |
 | Auditoría | Reglas de auditd (identidad, sudoers, hora, módulos, comandos privilegiados), modo inmutable `-e 2`, reenvío rsyslog |
 | Integridad | AIDE configurado y programado |

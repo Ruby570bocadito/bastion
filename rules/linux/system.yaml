@@ -152,3 +152,25 @@ remediation:
     dnf install -y dnf-automatic
     systemctl enable --now dnf-automatic-install.timer
   breaking_risk: low
+---
+id: LNX-SYS-001
+title: Los avisos de inicio de sesión no revelan el sistema
+description: /etc/issue y /etc/issue.net no deben mostrar la distribución, la versión ni el kernel.
+rationale: El aviso se muestra antes de autenticarse. Si incluye la versión del sistema o del kernel, facilita a un atacante elegir el exploit adecuado.
+category: Sistema
+severity: low
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-8, CM-7]
+  mitre_techniques: [T1082]
+check:
+  all:
+    - {label: /etc/issue, probe: file_regex, path: /etc/issue, pattern: '(?i)(\\[mrsv]|ubuntu|debian|red hat|centos|rocky|almalinux|fedora|suse)', op: eq, expected: 0, on_missing: pass}
+    - {label: /etc/issue.net, probe: file_regex, path: /etc/issue.net, pattern: '(?i)(\\[mrsv]|ubuntu|debian|red hat|centos|rocky|almalinux|fedora|suse)', op: eq, expected: 0, on_missing: pass}
+remediation:
+  summary: Sustituir los avisos por un texto legal sin datos del sistema.
+  commands: |
+    echo 'Acceso solo para usuarios autorizados. La actividad puede ser registrada.' > /etc/issue
+    cp /etc/issue /etc/issue.net
+  breaking_risk: none

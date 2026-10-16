@@ -206,3 +206,180 @@ remediation:
       value: 2
       optional: true
 impact: Herramientas eBPF ejecutadas por usuarios sin privilegios dejarán de funcionar.
+---
+id: LNX-KRN-008
+title: Protección de FIFOs y ficheros en directorios compartidos
+description: fs.protected_fifos y fs.protected_regular deben estar activados.
+rationale: Impiden que un proceso privilegiado abra con O_CREAT un FIFO o fichero que otro usuario ha creado de antemano en un directorio compartido con sticky bit (/tmp), una vía clásica de escalada de privilegios.
+category: Kernel
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-6]
+  mitre_techniques: [T1068]
+check:
+  all:
+    - {label: fs.protected_fifos, probe: sysctl, key: fs.protected_fifos, op: gte, expected: 1}
+    - {label: fs.protected_regular, probe: sysctl, key: fs.protected_regular, op: gte, expected: 1}
+remediation:
+  summary: Fijar ambos parámetros en 2 (también en directorios con escritura de grupo).
+  commands: |
+    printf 'fs.protected_fifos = 2\nfs.protected_regular = 2\n' > /etc/sysctl.d/60-bastion-fifos.conf
+    sysctl --system
+  breaking_risk: none
+  actions:
+    - type: sysctl.set
+      key: fs.protected_fifos
+      value: 2
+    - type: sysctl.set
+      key: fs.protected_regular
+      value: 2
+---
+id: LNX-KRN-009
+title: Eventos de rendimiento restringidos (perf_event_paranoid)
+description: kernel.perf_event_paranoid debe ser 2 o mayor.
+rationale: Con valores bajos, cualquier usuario puede usar perf para observar el kernel y otros procesos, y el subsistema ha tenido numerosas vulnerabilidades de escalada de privilegios.
+category: Kernel
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-6, SC-39]
+  mitre_techniques: [T1068]
+check:
+  probe: sysctl
+  key: kernel.perf_event_paranoid
+  op: gte
+  expected: 2
+  on_missing: na
+remediation:
+  summary: Fijar kernel.perf_event_paranoid = 2 (o más, si la distribución lo admite).
+  commands: |
+    echo 'kernel.perf_event_paranoid = 2' > /etc/sysctl.d/60-bastion-perf.conf
+    sysctl --system
+  breaking_risk: low
+  actions:
+    - type: sysctl.set
+      key: kernel.perf_event_paranoid
+      value: 2
+      optional: true
+impact: Los usuarios sin privilegios no pueden perfilar el sistema con perf; los desarrolladores que lo necesiten deben usar sudo.
+---
+id: LNX-KRN-010
+title: Carga de kernels en caliente deshabilitada (kexec)
+description: kernel.kexec_load_disabled debe estar activado.
+rationale: kexec permite sustituir el kernel en ejecución sin pasar por el arranque seguro; un atacante con root puede usarlo para cargar un kernel modificado y persistir sin dejar rastro en disco.
+category: Kernel
+severity: low
+platforms: [linux]
+profiles: [linux-server-l2]
+references:
+  nist: [CM-7, SI-7]
+  mitre_techniques: [T1014, T1542]
+check:
+  probe: sysctl
+  key: kernel.kexec_load_disabled
+  op: eq
+  expected: 1
+  on_missing: na
+remediation:
+  summary: Activar kernel.kexec_load_disabled (no se puede volver a desactivar hasta reiniciar).
+  commands: |
+    echo 'kernel.kexec_load_disabled = 1' > /etc/sysctl.d/60-bastion-kexec.conf
+    sysctl --system
+  breaking_risk: medium
+  actions:
+    - type: sysctl.set
+      key: kernel.kexec_load_disabled
+      value: 1
+      optional: true
+impact: kdump y los reinicios rápidos con kexec dejan de funcionar si se activa antes de que carguen su kernel. Es irreversible hasta reiniciar.
+---
+id: LNX-KRN-011
+title: Carga automática de disciplinas de línea TTY deshabilitada
+description: dev.tty.ldisc_autoload debe estar desactivado.
+rationale: Impide que un usuario sin privilegios haga que el kernel cargue módulos de disciplinas de línea poco usados, fuente de varias escaladas de privilegios (p. ej. CVE-2017-2636).
+category: Kernel
+severity: low
+platforms: [linux]
+profiles: [linux-server-l2]
+references:
+  nist: [CM-7]
+  mitre_techniques: [T1068]
+check:
+  probe: sysctl
+  key: dev.tty.ldisc_autoload
+  op: eq
+  expected: 0
+  on_missing: na
+remediation:
+  summary: Fijar dev.tty.ldisc_autoload = 0.
+  commands: |
+    echo 'dev.tty.ldisc_autoload = 0' > /etc/sysctl.d/60-bastion-tty.conf
+    sysctl --system
+  breaking_risk: low
+  actions:
+    - type: sysctl.set
+      key: dev.tty.ldisc_autoload
+      value: 0
+      optional: true
+---
+id: LNX-KRN-012
+title: Compilador JIT de BPF reforzado
+description: net.core.bpf_jit_harden debe valer 2.
+rationale: El endurecimiento del JIT de BPF ofusca las constantes del código generado y dificulta los ataques de JIT spraying contra el kernel.
+category: Kernel
+severity: low
+platforms: [linux]
+profiles: [linux-server-l2]
+references:
+  nist: [SI-16]
+  mitre_techniques: [T1068]
+check:
+  probe: sysctl
+  key: net.core.bpf_jit_harden
+  op: eq
+  expected: 2
+  on_missing: na
+remediation:
+  summary: Fijar net.core.bpf_jit_harden = 2.
+  commands: |
+    echo 'net.core.bpf_jit_harden = 2' > /etc/sysctl.d/60-bastion-bpf.conf
+    sysctl --system
+  breaking_risk: none
+  actions:
+    - type: sysctl.set
+      key: net.core.bpf_jit_harden
+      value: 2
+      optional: true
+---
+id: LNX-KRN-013
+title: Teclas SysRq deshabilitadas
+description: kernel.sysrq debe valer 0.
+rationale: Las combinaciones SysRq permiten, desde el teclado o /proc/sysrq-trigger, reiniciar, matar procesos o volcar memoria sin autenticarse.
+category: Kernel
+severity: low
+platforms: [linux]
+profiles: [linux-server-l2]
+references:
+  nist: [AC-3, CM-7]
+  mitre_techniques: [T1529]
+check:
+  probe: sysctl
+  key: kernel.sysrq
+  op: eq
+  expected: 0
+  on_missing: na
+remediation:
+  summary: Fijar kernel.sysrq = 0.
+  commands: |
+    echo 'kernel.sysrq = 0' > /etc/sysctl.d/60-bastion-sysrq.conf
+    sysctl --system
+  breaking_risk: low
+  actions:
+    - type: sysctl.set
+      key: kernel.sysrq
+      value: 0
+      optional: true
+impact: Sin SysRq no hay "reinicio de emergencia" desde el teclado si el sistema se cuelga.

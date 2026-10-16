@@ -249,3 +249,120 @@ remediation:
   summary: Fijar la acción entrante por defecto en Bloquear.
   commands: Set-NetFirewallProfile -Profile Domain,Private,Public -DefaultInboundAction Block
   breaking_risk: medium
+---
+id: WIN-NET-011
+title: Point and Print solo instala controladores como administrador
+description: Instalar o actualizar controladores de impresora con Point and Print debe requerir un administrador.
+rationale: PrintNightmare (CVE-2021-34527) y sus variantes permiten a un usuario sin privilegios ejecutar código como SYSTEM instalando un controlador de impresora. Desde agosto de 2021 Windows lo restringe por defecto; esta directiva comprueba que nadie lo ha vuelto a abrir.
+category: Red
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [AC-6, CM-11]
+  mitre_mitigations: [M1026, M1051]
+  mitre_techniques: [T1068, T1210]
+check:
+  probe: registry
+  path: HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint
+  name: RestrictDriverInstallationToAdministrators
+  op: eq
+  expected: 1
+  default: 1
+remediation:
+  summary: Habilitar "Limits print driver installation to Administrators".
+  gpo: Computer Configuration > Administrative Templates > Printers > Limits print driver installation to Administrators
+  commands: reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint" /v RestrictDriverInstallationToAdministrators /t REG_DWORD /d 1 /f
+  breaking_risk: low
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint'
+      name: 'RestrictDriverInstallationToAdministrators'
+      value: 1
+impact: Los usuarios sin privilegios no pueden instalar controladores de impresoras compartidas nuevas; un administrador debe instalarlos antes.
+---
+id: WIN-NET-012
+title: Controlador cliente SMBv1 deshabilitado
+description: El controlador mrxsmb10 (cliente SMB 1.0) no debe cargarse.
+rationale: Aunque el servidor SMBv1 esté apagado, el cliente SMBv1 permite que el equipo hable el protocolo obsoleto con servidores maliciosos o comprometidos.
+category: Red
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [CM-7]
+  mitre_mitigations: [M1042]
+  mitre_techniques: [T1210]
+check:
+  probe: registry
+  path: HKLM\SYSTEM\CurrentControlSet\Services\mrxsmb10
+  name: Start
+  op: eq
+  expected: 4
+  on_missing: pass
+remediation:
+  summary: Desinstalar la característica SMB 1.0/CIFS (WIN-NET-002) o deshabilitar el controlador y quitarlo de las dependencias de la estación de trabajo.
+  gpo: Computer Configuration > Administrative Templates > MS Security Guide > Configure SMB v1 client driver
+  commands: |
+    sc.exe config lanmanworkstation depend= bowser/mrxsmb20/nsi
+    sc.exe config mrxsmb10 start= disabled
+  breaking_risk: medium
+  reboot_required: true
+impact: Sin quitar mrxsmb10 de las dependencias, el servicio Estación de trabajo no arranca. Por eso Bastion no lo cambia solo; desinstalar la característica (WIN-NET-002) lo resuelve del todo.
+---
+id: WIN-NET-013
+title: No aceptar redirecciones ICMP
+description: Las redirecciones ICMP no deben poder cambiar las rutas del equipo.
+rationale: Un atacante en la red local puede enviar redirecciones ICMP para desviar el tráfico del equipo a través de él (intermediario).
+category: Red
+severity: low
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SC-7]
+  mitre_techniques: [T1557]
+check:
+  probe: registry
+  path: HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters
+  name: EnableICMPRedirect
+  op: eq
+  expected: 0
+  default: 1
+remediation:
+  summary: Fijar EnableICMPRedirect = 0.
+  gpo: Computer Configuration > Administrative Templates > MSS (Legacy) > MSS - (EnableICMPRedirect) Allow ICMP redirects to override OSPF generated routes
+  breaking_risk: none
+  actions:
+    - type: registry.set
+      path: 'HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters'
+      name: 'EnableICMPRedirect'
+      value: 0
+---
+id: WIN-NET-014
+title: Enrutamiento de origen IP deshabilitado
+description: Los paquetes con enrutamiento de origen deben descartarse en IPv4 e IPv6.
+rationale: El enrutamiento de origen deja que el remitente elija el camino del paquete, lo que sirve para saltarse filtros y suplantar direcciones.
+category: Red
+severity: low
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SC-7]
+  mitre_techniques: [T1599]
+check:
+  all:
+    - {label: IPv4, probe: registry, path: HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters, name: DisableIPSourceRouting, op: eq, expected: 2, default: 1}
+    - {label: IPv6, probe: registry, path: HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters, name: DisableIPSourceRouting, op: eq, expected: 2, default: 1}
+remediation:
+  summary: Fijar DisableIPSourceRouting = 2 (protección máxima) en IPv4 e IPv6.
+  gpo: Computer Configuration > Administrative Templates > MSS (Legacy) > MSS - (DisableIPSourceRouting) IP source routing protection level
+  breaking_risk: none
+  actions:
+    - type: registry.set
+      path: 'HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters'
+      name: 'DisableIPSourceRouting'
+      value: 2
+    - type: registry.set
+      path: 'HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters'
+      name: 'DisableIPSourceRouting'
+      value: 2

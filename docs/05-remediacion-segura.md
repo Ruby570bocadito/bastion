@@ -1,6 +1,6 @@
 # 05 · Remediación segura (`bastion harden`)
 
-> Estado: ✅ implementado en la v0.2.0. 100 de los 131 controles tienen corrección automática.
+> Estado: ✅ implementado en la v0.2.0. 121 de los 154 controles tienen corrección automática.
 
 ## Objetivo
 

@@ -84,3 +84,118 @@ remediation:
       path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service'
       name: 'AllowUnencryptedTraffic'
       value: 0
+---
+id: WIN-RDP-003
+title: El cliente RDP no guarda contraseñas
+description: El cliente de Escritorio remoto no debe permitir guardar contraseñas.
+rationale: Las credenciales guardadas para RDP se pueden extraer del Administrador de credenciales y reutilizar para moverse a otros equipos.
+category: Acceso remoto
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [IA-5]
+  mitre_mitigations: [M1027]
+  mitre_techniques: [T1555.004]
+check:
+  probe: registry
+  path: HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services
+  name: DisablePasswordSaving
+  op: eq
+  expected: 1
+  default: 0
+remediation:
+  summary: Habilitar "Do not allow passwords to be saved".
+  gpo: Computer Configuration > Administrative Templates > Windows Components > Remote Desktop Services > Remote Desktop Connection Client > Do not allow passwords to be saved
+  breaking_risk: low
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+      name: 'DisablePasswordSaving'
+      value: 1
+impact: Hay que escribir la contraseña en cada conexión de Escritorio remoto.
+---
+id: WIN-RDP-004
+title: El servidor RDP pide siempre la contraseña
+description: El servidor de Escritorio remoto debe pedir la contraseña al conectar, aunque el cliente la tenga guardada.
+rationale: Evita que un cliente con credenciales guardadas, o un atacante que lo controla, abra sesiones sin conocer la contraseña.
+category: Acceso remoto
+severity: medium
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [IA-2, AC-17]
+  mitre_techniques: [T1021.001]
+check:
+  probe: registry
+  path: HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services
+  name: fPromptForPassword
+  op: eq
+  expected: 1
+  default: 0
+remediation:
+  summary: Habilitar "Always prompt for password upon connection".
+  gpo: Computer Configuration > Administrative Templates > Windows Components > Remote Desktop Services > Remote Desktop Session Host > Security > Always prompt for password upon connection
+  breaking_risk: low
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+      name: 'fPromptForPassword'
+      value: 1
+---
+id: WIN-RDP-005
+title: RDP exige comunicación RPC segura
+description: El servidor de Escritorio remoto solo debe aceptar llamadas RPC cifradas.
+rationale: Sin RPC seguro, la gestión de sesiones remotas puede viajar sin cifrar ni autenticar.
+category: Acceso remoto
+severity: low
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SC-8]
+  mitre_techniques: [T1021.001]
+check:
+  probe: registry
+  path: HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services
+  name: fEncryptRPCTraffic
+  op: eq
+  expected: 1
+  default: 0
+remediation:
+  summary: Habilitar "Require secure RPC communication".
+  gpo: Computer Configuration > Administrative Templates > Windows Components > Remote Desktop Services > Remote Desktop Session Host > Security > Require secure RPC communication
+  breaking_risk: none
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+      name: 'fEncryptRPCTraffic'
+      value: 1
+---
+id: WIN-RDP-006
+title: Cifrado alto en las conexiones RDP
+description: El nivel de cifrado de las conexiones de Escritorio remoto debe ser Alto.
+rationale: Con la capa de seguridad RDP clásica, los niveles bajos permiten cifrados débiles que un intermediario puede romper.
+category: Acceso remoto
+severity: low
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SC-8, SC-13]
+  mitre_techniques: [T1021.001, T1557]
+check:
+  probe: registry
+  path: HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services
+  name: MinEncryptionLevel
+  op: eq
+  expected: 3
+remediation:
+  summary: Fijar "Set client connection encryption level" en "High Level".
+  gpo: Computer Configuration > Administrative Templates > Windows Components > Remote Desktop Services > Remote Desktop Session Host > Security > Set client connection encryption level
+  breaking_risk: low
+  safety: remote-access
+  actions:
+    - type: registry.set
+      path: 'HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+      name: 'MinEncryptionLevel'
+      value: 3
+impact: Clientes RDP muy antiguos sin cifrado de 128 bits no podrán conectar.

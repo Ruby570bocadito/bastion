@@ -190,3 +190,36 @@ remediation:
       mode: '0600'
       owner: root
       group: root
+---
+id: LNX-FS-007
+title: Permisos de los directorios de cron
+description: /etc/cron.d y /etc/cron.hourly, daily, weekly y monthly deben pertenecer a root con permisos 0700.
+rationale: Lo que contienen se ejecuta como root. Si otros usuarios pueden leerlos, conocen las tareas programadas y sus fallos; si pueden escribir, obtienen root.
+category: Sistema de ficheros
+severity: medium
+platforms: [linux]
+profiles: [linux-server-l1]
+references:
+  nist: [AC-3]
+  mitre_mitigations: [M1022]
+  mitre_techniques: [T1053.003]
+check:
+  all:
+    - {label: /etc/cron.d, probe: file, path: /etc/cron.d, field: mode, op: mode_max, expected: "0700", on_missing: na}
+    - {label: /etc/cron.hourly, probe: file, path: /etc/cron.hourly, field: mode, op: mode_max, expected: "0700", on_missing: na}
+    - {label: /etc/cron.daily, probe: file, path: /etc/cron.daily, field: mode, op: mode_max, expected: "0700", on_missing: na}
+    - {label: /etc/cron.weekly, probe: file, path: /etc/cron.weekly, field: mode, op: mode_max, expected: "0700", on_missing: na}
+    - {label: /etc/cron.monthly, probe: file, path: /etc/cron.monthly, field: mode, op: mode_max, expected: "0700", on_missing: na}
+remediation:
+  summary: Dejar los directorios de cron en root:root 0700.
+  commands: |
+    for d in /etc/cron.d /etc/cron.hourly /etc/cron.daily /etc/cron.weekly /etc/cron.monthly; do
+      [ -d "$d" ] && chown root:root "$d" && chmod 700 "$d"
+    done
+  breaking_risk: none
+  actions:
+    - {type: file.mode, path: /etc/cron.d, mode: '0700', owner: root, group: root}
+    - {type: file.mode, path: /etc/cron.hourly, mode: '0700', owner: root, group: root}
+    - {type: file.mode, path: /etc/cron.daily, mode: '0700', owner: root, group: root}
+    - {type: file.mode, path: /etc/cron.weekly, mode: '0700', owner: root, group: root}
+    - {type: file.mode, path: /etc/cron.monthly, mode: '0700', owner: root, group: root}
