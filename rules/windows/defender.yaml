@@ -314,3 +314,31 @@ remediation:
     - type: defender.pref
       name: EnableNetworkProtection
       value: 1
+---
+id: WIN-DEF-013
+title: Sin exclusiones peligrosas en Microsoft Defender
+description: Defender no debe excluir unidades enteras, carpetas temporales o de descargas, extensiones ejecutables ni procesos como PowerShell.
+rationale: Añadir exclusiones es una de las primeras cosas que hace el malware con privilegios (y algunos instaladores descuidados) para que Defender no analice lo que se ejecuta. Una exclusión de C:\, de Descargas o de powershell.exe deja el equipo prácticamente sin antivirus.
+category: Defender
+severity: high
+platforms: [windows]
+profiles: [win-workstation-l1, win-server-l1]
+references:
+  nist: [SI-3]
+  mitre_mitigations: [M1047, M1022]
+  mitre_techniques: [T1562.001]
+check:
+  probe: ps
+  query: defender_exclusions
+  field: Risky
+  op: eq
+  expected: ""
+remediation:
+  summary: Quitar las exclusiones peligrosas (y revisar quién las añadió).
+  commands: |
+    Get-MpPreference | Select-Object ExclusionPath, ExclusionExtension, ExclusionProcess
+    Remove-MpPreference -ExclusionPath 'C:\ruta\excluida'
+    Remove-MpPreference -ExclusionExtension '.exe'
+    Remove-MpPreference -ExclusionProcess 'powershell.exe'
+  breaking_risk: low
+impact: Si un programa legítimo necesitaba la exclusión, sustitúyela por la carpeta concreta del programa en Program Files.

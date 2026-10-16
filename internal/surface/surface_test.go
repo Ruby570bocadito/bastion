@@ -761,3 +761,14 @@ func TestOpenFindingNamesAllRules(t *testing.T) {
 		t.Errorf("asunto y título: %q · %q", f.Subject, f.Title)
 	}
 }
+
+func TestSSHOnWorkstation(t *testing.T) {
+	inv := Inventory{Listeners: []Listener{{Proto: "tcp", Address: "0.0.0.0", Port: 22, Scope: ScopeNetwork, Process: "sshd.exe", Services: []string{"sshd"}}}}
+	if rep := Analyze(inv, platform.Info{Role: "server"}, "test", time.Now()); len(rep.Findings) != 0 {
+		t.Errorf("en un servidor, SSH no es un hallazgo: %+v", rep.Findings)
+	}
+	rep := Analyze(inv, platform.Info{Role: "workstation"}, "test", time.Now())
+	if len(rep.Findings) != 1 || rep.Findings[0].Severity != rule.SevLow || !strings.Contains(rep.Findings[0].Fix, "Stop-Service sshd") {
+		t.Errorf("en una estación de trabajo, SSH abierto es un hallazgo bajo: %+v", rep.Findings)
+	}
+}

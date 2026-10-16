@@ -352,7 +352,7 @@ func (serviceProbe) Collect(_ context.Context, p Params) (Observation, error) {
 // usan comillas dobles para que el paso de argumentos sea seguro.
 // psAdminQueries son las consultas que Windows solo responde con un token
 // elevado: sin él no se ejecutan (y no se confunden con "no disponible").
-var psAdminQueries = map[string]bool{"bitlocker_os": true, "optional_features": true, "smb_shares": true}
+var psAdminQueries = map[string]bool{"bitlocker_os": true, "optional_features": true, "smb_shares": true, "defender_exclusions": true}
 
 var psQueries = map[string]struct{ desc, script string }{
 	"smb_server": {"Get-SmbServerConfiguration",
@@ -363,6 +363,17 @@ var psQueries = map[string]struct{ desc, script string }{
 		`$o=@{}; Get-NetFirewallProfile -PolicyStore ActiveStore | ForEach-Object { $o[[string]$_.Name]=@{Enabled=[string]$_.Enabled;DefaultInboundAction=[string]$_.DefaultInboundAction;DefaultOutboundAction=[string]$_.DefaultOutboundAction;LogBlocked=[string]$_.LogBlocked} }; $o | ConvertTo-Json -Compress`},
 	"defender_status": {"Get-MpComputerStatus",
 		`try { Get-MpComputerStatus | Select-Object AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,BehaviorMonitorEnabled,IsTamperProtected,AntivirusSignatureAge | ConvertTo-Json -Compress } catch { @{__na='defender'} | ConvertTo-Json -Compress }`},
+	// Exclusiones de Defender que anulan la protección: unidades enteras,
+	// carpetas temporales o de descargas, extensiones ejecutables y
+	// procesos que el malware usa para ejecutarse. Sin privilegios Windows
+	// las oculta («N/A: Must be an administrator…»): solo como administrador.
+	"defender_exclusions": {"Get-MpPreference (exclusiones)",
+		`try { $p = Get-MpPreference; $risky = New-Object System.Collections.ArrayList; ` +
+			`foreach ($x in @($p.ExclusionPath)) { if ($x -and ($x -match '^[A-Za-z]:\\?$' -or $x -match '\\(temp|tmp|downloads|descargas|users\\public|appdata\\local\\temp)(\\|$)' -or $x -match '^%(temp|tmp|userprofile|appdata|localappdata)%\\?$' -or $x -match '^[A-Za-z]:\\(users|windows|programdata)\\?$')) { [void]$risky.Add('ruta ' + $x) } }; ` +
+			`foreach ($x in @($p.ExclusionExtension)) { if ($x -and $x.TrimStart('.') -match '^(exe|dll|ps1|bat|cmd|vbs|js|hta|scr|msi|lnk)$') { [void]$risky.Add('extensión ' + $x) } }; ` +
+			`foreach ($x in @($p.ExclusionProcess)) { if ($x -and [IO.Path]::GetFileName($x) -match '^(powershell|pwsh|cmd|wscript|cscript|mshta|rundll32|regsvr32|msiexec|certutil|bitsadmin)\.exe$') { [void]$risky.Add('proceso ' + $x) } }; ` +
+			`$n = @(@($p.ExclusionPath) + @($p.ExclusionExtension) + @($p.ExclusionProcess) | Where-Object { $_ }).Count; ` +
+			`@{Total=$n; Risky=[string]::Join('; ', $risky)} | ConvertTo-Json -Compress } catch { @{__na='defender'} | ConvertTo-Json -Compress }`},
 	"defender_prefs": {"Get-MpPreference",
 		`try { Get-MpPreference | Select-Object MAPSReporting,PUAProtection,EnableNetworkProtection,DisableRealtimeMonitoring,SubmitSamplesConsent,DisableScriptScanning | ConvertTo-Json -Compress } catch { @{__na='defender'} | ConvertTo-Json -Compress }`},
 	"defender_asr": {"Get-MpPreference (reglas ASR)",

@@ -26,7 +26,7 @@
 
 ## Fase 1 · Auditoría 🚧
 
-- [ ] Ampliar el catálogo (154 hoy: 80 Windows, 74 Linux): unas 350 reglas Windows y 300 Linux ([catálogo objetivo](06-catalogo-de-controles.md#2-catálogo-objetivo-)).
+- [ ] Ampliar el catálogo (155 hoy: 81 Windows, 74 Linux): unas 350 reglas Windows y 300 Linux ([catálogo objetivo](06-catalogo-de-controles.md#2-catálogo-objetivo-)).
 - [ ] Mapeo verificado a CIS, STIG y ENS por versión de benchmark ([14](14-marcos-y-licencias.md)).
 - [ ] Probes nuevos: `userrights` (SIDs legibles), `rsop`/`gpo` (quién gestiona cada valor), `listening` (puertos), `auditd_rules`, `pam`.
 - [x] Estado `skipped`: controles sin evaluar por falta de privilegios, fuera de la puntuación.

@@ -307,6 +307,13 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 	for i := range rep.Ports {
 		p := &rep.Ports[i]
 		k, ok := lookup(p.Proto, p.Port)
+		if ok && p.Port == 22 && host.Role == "workstation" {
+			// En un servidor, SSH es lo normal; en un equipo de usuario rara
+			// vez se necesita y conviene saber que está abierto.
+			k.sev = rule.SevLow
+			k.why = "Un servidor SSH en un equipo de usuario amplía la superficie de ataque y rara vez es necesario."
+			k.fix = "Si no lo usas, deshabilítalo (Windows: Stop-Service sshd; Set-Service sshd -StartupType Disabled · Linux: systemctl disable --now ssh). Si lo usas, limítalo a tu red y exige claves."
+		}
 		switch {
 		case ok:
 			p.Known = k.service

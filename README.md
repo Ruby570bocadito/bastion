@@ -30,7 +30,7 @@ calcula una puntuación de postura, la mapea a MITRE ATT&CK y te dice qué corre
 
 | | |
 |---|---|
-| 🔍 **Auditoría de solo lectura** | 154 controles reales para Windows 10/11, Windows Server 2016-2025 (miembro y DC) y Linux (Ubuntu, Debian, RHEL y derivados). `scan` nunca modifica el sistema. |
+| 🔍 **Auditoría de solo lectura** | 155 controles reales para Windows 10/11, Windows Server 2016-2025 (miembro y DC) y Linux (Ubuntu, Debian, RHEL y derivados). `scan` nunca modifica el sistema. |
 | 🛡️ **Hardening seguro** | `bastion harden` corrige 100 controles con simulación, instantánea previa, verificación y **rollback automático**; olas por riesgo de rotura y dead-man switch para SSH/RDP. |
 | 🎯 **Perfiles por rol** | Estación de trabajo, servidor miembro, controlador de dominio y servidor Linux, con niveles L1/L2. Bastion detecta el rol y elige el perfil. |
 | 📊 **Puntuación de postura** | Puntuación ponderada por severidad (0-100, A-F), por categoría y por severidad. |

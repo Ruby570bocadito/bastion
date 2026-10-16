@@ -15,7 +15,7 @@ bastion rules show WIN-CRED-001
 
 <!-- Generado con "bastion rules doc". No editar a mano: edita las reglas en rules/. -->
 
-**154 controles** en el paquete oficial, **121 con corrección automática** (`bastion harden`). ⚡ = afecta al acceso remoto (requiere `--include-remote`).
+**155 controles** en el paquete oficial, **121 con corrección automática** (`bastion harden`). ⚡ = afecta al acceso remoto (requiere `--include-remote`).
 
 ### Perfiles
 
@@ -170,7 +170,7 @@ bastion rules show WIN-CRED-001
 | `LNX-FS-006` | Permisos de /etc/crontab | medio | linux-server-l1 | T1053.003 | ninguno | ✓ |
 | `LNX-FS-007` | Permisos de los directorios de cron | medio | linux-server-l1 | T1053.003 | ninguno | ✓ |
 
-### Windows y Windows Server (80)
+### Windows y Windows Server (81)
 
 #### Acceso remoto
 
@@ -256,6 +256,7 @@ bastion rules show WIN-CRED-001
 | `WIN-DEF-010` | ASR: bloquear scripts ofuscados | medio | win-workstation-l2, win-server-l2 | T1027 | medio | ✓ |
 | `WIN-DEF-011` | ASR: bloquear persistencia por suscripciones WMI | medio | win-workstation-l2, win-server-l2 | T1546.003 | medio | ✓ |
 | `WIN-DEF-012` | Protección de red activada | medio | win-workstation-l2, win-server-l2 | T1071, T1566.002 | bajo | ✓ |
+| `WIN-DEF-013` | Sin exclusiones peligrosas en Microsoft Defender | alto | win-workstation-l1, win-server-l1 | T1562.001 | bajo |  |
 
 #### Firewall
 
