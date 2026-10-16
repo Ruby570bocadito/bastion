@@ -62,7 +62,9 @@ jobs:
           if ($r.admins.Count -eq 0) { throw 'no se leyeron los administradores' }
           if (-not ($r.listeners | Where-Object { $_.process })) { throw 'ningún puerto asociado a su proceso' }
           if (-not $r.firewall -or $r.firewall.profiles.Count -ne 3) { throw 'no se evaluó el Firewall de Windows' }
-          "Servicios en la red: $($r.exposed) · accesibles a través del firewall: $($r.reachable) · reglas de entrada: $($r.firewall.inbound_rules)"
+          # Como administrador, las reglas salen completas del registro.
+          if ($r.firewall.source -ne 'registry' -or $r.firewall.inbound_rules -eq 0) { throw "reglas del firewall no leídas del registro (origen: $($r.firewall.source))" }
+          "Servicios en la red: $($r.exposed) · accesibles a través del firewall: $($r.reachable) · reglas de entrada: $($r.firewall.inbound_rules) ($($r.firewall.source))"
       # Una excepción saca el control de la puntuación y al quitarla vuelve.
       - name: Excepciones (Linux)
         if: runner.os == 'Linux'

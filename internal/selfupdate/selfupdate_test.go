@@ -98,4 +98,11 @@ func TestDownloadVerifiesChecksum(t *testing.T) {
 	if _, _, err := s.Download(context.Background(), tag); err == nil || !strings.Contains(err.Error(), "SHA-256") {
 		t.Errorf("un archivo manipulado debe rechazarse, err = %v", err)
 	}
+
+	if err := s.Published(context.Background(), "v9.9.9"); err != nil {
+		t.Errorf("v9.9.9 está publicada: %v", err)
+	}
+	if err := s.Published(context.Background(), "v9.9.10"); !IsNotFound(err) {
+		t.Errorf("una versión sin publicar debe dar 404: %v", err)
+	}
 }

@@ -114,7 +114,7 @@ Sin ningún servidor: copia el archivo y su `checksums.txt` y usa `--local` / `-
 ```bash
 sudo bastion update                    # descarga, verifica y reemplaza
 sudo bastion update --check            # solo comprobar
-sudo bastion update --version v0.3.2   # una versión concreta (también para volver atrás)
+sudo bastion update --version v0.3.2   # una versión concreta (también para volver atrás); avisa si aún no está publicada
 ```
 
 Las reglas oficiales van dentro del binario: al actualizar Bastion se actualizan también las reglas.

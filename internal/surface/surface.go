@@ -199,6 +199,31 @@ var ports = map[int]knownPort{
 	27017: {"MongoDB", "tcp", rule.SevHigh, "MongoDB expuesto sin autenticación ha causado muchas fugas de datos.", "Usa bindIp 127.0.0.1 y activa la autorización.", ""},
 }
 
+// labels nombra puertos habituales que no son un riesgo por sí mismos, para
+// que el inventario no los muestre como desconocidos. No generan hallazgos.
+var labels = map[string]string{
+	"tcp/443":   "HTTPS",
+	"udp/123":   "NTP",
+	"udp/500":   "IKE (IPsec/VPN)",
+	"udp/4500":  "IKE NAT-T (IPsec/VPN)",
+	"tcp/2869":  "UPnP (host de dispositivos)",
+	"udp/3702":  "WS-Discovery",
+	"tcp/5040":  "Dispositivos conectados (CDP)",
+	"tcp/5357":  "WSD (detección de dispositivos)",
+	"tcp/5358":  "WSD (detección de dispositivos)",
+	"tcp/7680":  "Optimización de distribución (Windows Update)",
+	"tcp/27036": "Steam (Remote Play)",
+	"udp/27036": "Steam (Remote Play)",
+	"udp/41641": "Tailscale (WireGuard)",
+}
+
+func label(proto string, port int) string {
+	if port >= 47984 && port <= 48010 {
+		return "Sunshine/GameStream"
+	}
+	return labels[proto+"/"+strconv.Itoa(port)]
+}
+
 // Lookup devuelve el servicio conocido de un puerto y protocolo.
 func lookup(proto string, port int) (knownPort, bool) {
 	k, ok := ports[port]
@@ -252,6 +277,8 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 			p.Known = k.service
 		case p.Proto == "tcp" && p.Port >= 49152 && rpcProcs[strings.ToLower(p.Process)]:
 			p.Known = "RPC dinámico (Windows)"
+		default:
+			p.Known = label(p.Proto, p.Port)
 		}
 		if p.Scope != ScopeNetwork || p.Ephemeral {
 			continue
@@ -305,7 +332,7 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		}
 		f := Finding{
 			ID: a.id, Severity: a.k.sev, Subject: strings.Join(a.subjects, ", "),
-			Title:  fmt.Sprintf("%s accesible desde la red (%s)", a.k.service, strings.Join(a.who, "; ")),
+			Title:  fmt.Sprintf("%s accesible desde la red (%s)", a.k.service, shortWho(a.who)),
 			Detail: detail, Fix: a.k.fix,
 		}
 		if a.limited {
@@ -316,7 +343,7 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 				continue
 			}
 			limit := joinHuman(a.limits)
-			f.Title = fmt.Sprintf("%s accesible solo %s (%s)", a.k.service, accessFrom(limit), strings.Join(a.who, "; "))
+			f.Title = fmt.Sprintf("%s accesible solo %s (%s)", a.k.service, accessFrom(limit), shortWho(a.who))
 			f.Fix = "Ya solo se llega " + accessFrom(limit) + ": revisa quién tiene acceso a esa red. Además: " + a.k.fix
 		}
 		rep.Findings = append(rep.Findings, f)
@@ -336,7 +363,7 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 			}
 			rep.Findings = append(rep.Findings, Finding{
 				ID: "SURF-FW-USERALLOWALL", Severity: rule.SevMedium, Subject: strings.Join(names, ", "),
-				Title: fmt.Sprintf("%s %s toda la entrada a los programas de un usuario (perfil %s)", joinHuman(names), verb, ProfileNames(profiles&7)),
+				Title: fmt.Sprintf("%s %s toda la entrada a los programas de un usuario (perfil %s)", shortList(names, 3), verb, ProfileNames(profiles&7)),
 				Detail: "Cualquier programa que ejecute ese usuario, incluido uno malicioso, puede aceptar conexiones de cualquier puerto desde esas redes. " +
 					"Los servicios del sistema no quedan cubiertos. Estas reglas suelen crearlas apps como la de Xbox para el juego en red.",
 				Fix: fmt.Sprintf("Si no las necesitas, desactívalas: Get-NetFirewallRule -DisplayName %s -Direction Inbound | Disable-NetFirewallRule "+

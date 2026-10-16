@@ -380,6 +380,9 @@ var psQueries = map[string]struct{ desc, script string }{
 	// y acción de entrada por defecto, y reglas de entrada habilitadas.
 	"firewall_policy": {"HNetCfg.FwPolicy2 (Firewall de Windows)",
 		`try { $p=New-Object -ComObject HNetCfg.FwPolicy2; $cur=[int]$p.CurrentProfileTypes; $prof=@(); foreach($b in 1,2,4){ $prof+=@{Bit=$b;Enabled=[bool]$p.FirewallEnabled($b);BlockInbound=([int]$p.DefaultInboundAction($b) -eq 0);Active=(($cur -band $b) -ne 0)} }; $rules=New-Object System.Collections.ArrayList; foreach($r in $p.Rules){ if($r.Enabled -and $r.Direction -eq 1){ $ifs=''; try { if($r.Interfaces){ $ifs=[string]::Join(',', @($r.Interfaces)) } } catch {}; $pk=''; $uo=''; try { $pk=[string]$r.LocalAppPackageId; $uo=[string]$r.LocalUserOwner } catch {}; [void]$rules.Add(@{N=[string]$r.Name;A=[int]$r.Action;P=[int]$r.Protocol;L=[string]$r.LocalPorts;App=[string]$r.ApplicationName;S=[string]$r.ServiceName;Pr=[int]$r.Profiles;LA=[string]$r.LocalAddresses;R=[string]$r.RemoteAddresses;I=$ifs;IT=[string]$r.InterfaceTypes;Pk=$pk;U=$uo}) } }; @{profiles=$prof;rules=$rules} | ConvertTo-Json -Compress -Depth 4 } catch { @{__err=$_.Exception.Message} | ConvertTo-Json -Compress }`},
+	// Solo los perfiles: las reglas se leen del registro (bastion surface).
+	"firewall_profiles": {"HNetCfg.FwPolicy2 (perfiles del Firewall de Windows)",
+		`try { $p=New-Object -ComObject HNetCfg.FwPolicy2; $cur=[int]$p.CurrentProfileTypes; $prof=@(); foreach($b in 1,2,4){ $prof+=@{Bit=$b;Enabled=[bool]$p.FirewallEnabled($b);BlockInbound=([int]$p.DefaultInboundAction($b) -eq 0);Active=(($cur -band $b) -ne 0)} }; @{profiles=$prof} | ConvertTo-Json -Compress -Depth 4 } catch { @{__err=$_.Exception.Message} | ConvertTo-Json -Compress }`},
 	// Miembros del grupo Administradores por SID (S-1-5-32-544). Si
 	// Get-LocalGroupMember falla (SIDs huérfanos), se usa ADSI.
 	"local_admins": {"miembros de Administradores (S-1-5-32-544)",

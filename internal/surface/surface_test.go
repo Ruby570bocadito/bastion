@@ -476,3 +476,139 @@ func TestParsePSFirewall(t *testing.T) {
 		t.Error("sin perfiles no hay evaluación")
 	}
 }
+
+func TestParseRegRule(t *testing.T) {
+	const rafag = "S-1-5-21-1236394060-1900707475-1329702642-1001"
+	// Cadenas como las que guarda Windows 11 en
+	// HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules.
+	raw := []string{
+		`v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=6|Profile=Private|LPort=445|RA4=LocalSubnet|RA6=LocalSubnet|App=System|Name=@FirewallAPI.dll,-28502|Desc=@FirewallAPI.dll,-28503|EmbedCtxt=@FirewallAPI.dll,-28502|`,
+		`v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=6|LPort=445|App=System|Name=Solo controlador de WFD (TCP de entrada)|EmbedCtxt=@wfdprov.dll,-100|TTK=WFDKmDriver|`,
+		`v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=17|Profile=Public|LPort=1900|App=%SystemRoot%\system32\svchost.exe|Svc=Ssdpsrv|Name=Detección de red de Teredo (SSDP de entrada)|Edge=TRUE|TTK=UPnP|`,
+		`v2.33|Action=Allow|Active=TRUE|Dir=In|Profile=Domain|Profile=Private|Name=XBOX|LUOwn=` + rafag + `|AppPkgId=S-1-15-2-1430448594-2639229838-973813799-439329657-1197984847-4069523365-1300003023|EmbedCtxt=XBOX|Platform=2:6:2|Platform2=GTEQ|`,
+		`v2.33|Action=Allow|Active=TRUE|Dir=In|Profile=Private|Name=@{Microsoft.WindowsStore_22409.1401.5.0_x64__8wekyb3d8bbwe?ms-resource://Microsoft.WindowsStore/Resources/StoreTitle}|PFN=Microsoft.WindowsStore_8wekyb3d8bbwe|`,
+		`v2.33|Action=Allow|Active=TRUE|Dir=In|Profile=Domain|Profile=Private|LA4=100.127.45.81|LA6=fd7a:115c:a1e0::bf01:2dbf|Name=Tailscale-In|`,
+		`v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=6|Profile=Private|Profile=Public|LPort=3389|App=%SystemRoot%\system32\svchost.exe|Svc=termservice|Name=Escritorio remoto - Modo usuario (TCP de entrada)|`,
+		`v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=6|LPort=5986|Name=WinRM con IPsec|Security=AuthenticateEncrypt|`,
+		`v2.33|Action=Allow|Active=FALSE|Dir=In|Protocol=6|LPort=22|Name=Desactivada|`,
+		`v2.33|Action=Allow|Active=TRUE|Dir=Out|Protocol=6|RPort=443|Name=Salida|`,
+		`v2.33|Action=Block|Active=TRUE|Dir=In|Protocol=17|LPort=5355|Name=Bloquear LLMNR|`,
+		`v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=6|LPort=RPC|LPort2_10=IPTLSIn|LPort2_10=IPHTTPSIn|App=System|Name=Puertos con palabras clave|`,
+		`no es una regla`,
+	}
+	var rules []FirewallRule
+	for _, s := range raw {
+		if r, ok := parseRegRule(s); ok {
+			rules = append(rules, r)
+		}
+	}
+	if len(rules) != 10 {
+		t.Fatalf("reglas de entrada activas: %d, quiero 10", len(rules))
+	}
+	smb, wfd, xbox, store, ts, rdp := rules[0], rules[1], rules[3], rules[4], rules[5], rules[6]
+	if smb.Protocol != 6 || smb.Profiles != 2 || smb.LocalPorts != "445" || smb.Remote != "LocalSubnet,LocalSubnet" || smb.App != "System" || !smb.Allow {
+		t.Errorf("SMB: %+v", smb)
+	}
+	if wfd.Profiles != 7 || wfd.Trust != "WFDKmDriver" {
+		t.Errorf("WFD: sin Profile son todos y TTK es un límite: %+v", wfd)
+	}
+	if xbox.Protocol != 256 || xbox.Profiles != 3 || xbox.UserOwner != rafag || xbox.Package == "" || !xbox.storeApp() {
+		t.Errorf("XBOX es de una app de la Store: %+v", xbox)
+	}
+	if store.Package != "Microsoft.WindowsStore_8wekyb3d8bbwe" || !store.storeApp() {
+		t.Errorf("con PFN también es de la Store: %+v", store)
+	}
+	if ts.Local != "100.127.45.81,fd7a:115c:a1e0::bf01:2dbf" || ts.Remote != "" {
+		t.Errorf("Tailscale-In: %+v", ts)
+	}
+	if rdp.Service != "termservice" || rdp.Profiles != 6 {
+		t.Errorf("RDP: %+v", rdp)
+	}
+	if !rules[7].Secure || rules[8].Allow || rules[9].LocalPorts != "RPC,IPTLSIn,IPHTTPSIn" {
+		t.Errorf("IPsec, bloqueo o palabras clave de puertos: %+v %+v %+v", rules[7], rules[8], rules[9])
+	}
+
+	// La evaluación con estas reglas: lo que en el equipo de la prueba salía
+	// «abierto a cualquiera» por WFD, Teredo y XBOX queda limitado o filtrado.
+	fw := &Firewall{Source: "registry", Rules: rules, Profiles: []FirewallProfile{
+		{Name: "Dominio", Bit: 1, Enabled: true, BlockInbound: true},
+		{Name: "Privado", Bit: 2, Enabled: true, BlockInbound: true, Active: true},
+		{Name: "Público", Bit: 4, Enabled: true, BlockInbound: true, Active: true},
+	}}
+	all := []string{"0.0.0.0", "::"}
+	cases := []struct {
+		name  string
+		p     Port
+		state string
+		limit string
+	}{
+		{"SMB", Port{Proto: "tcp", Port: 445, Addresses: all, Process: "System"}, FirewallLimited, "la red local, Wi-Fi Direct y Tailscale"},
+		{"SSDP", Port{Proto: "udp", Port: 1900, Addresses: all, Process: "svchost.exe", Services: []string{"SSDPSRV"}}, FirewallLimited, "Tailscale y dispositivos UPnP"},
+		{"programa del usuario: XBOX no lo cubre, solo Tailscale-In", Port{Proto: "tcp", Port: 4530, Addresses: []string{"0.0.0.0"}, Process: "NinjaTrader.exe", UserSID: rafag}, FirewallLimited, "Tailscale"},
+		{"en la IP de la LAN no llega nada", Port{Proto: "tcp", Port: 4530, Addresses: []string{"192.168.1.131"}, Process: "NinjaTrader.exe", UserSID: rafag}, FirewallFiltered, ""},
+		{"RDP", Port{Proto: "tcp", Port: 3389, Addresses: all, Process: "svchost.exe", Services: []string{"TermService"}}, FirewallOpen, ""},
+		{"WinRM con IPsec", Port{Proto: "tcp", Port: 5986, Addresses: []string{"192.168.1.131"}, Process: "System"}, FirewallLimited, "con IPsec"},
+		{"LLMNR bloqueado", Port{Proto: "udp", Port: 5355, Addresses: []string{"192.168.1.131"}, Process: "svchost.exe", Services: []string{"Dnscache"}}, FirewallFiltered, ""},
+		{"IP-HTTPS", Port{Proto: "tcp", Port: 443, Addresses: []string{"192.168.1.131"}, Process: "System"}, FirewallOpen, ""},
+	}
+	for _, c := range cases {
+		a := fw.Evaluate(c.p)
+		if a.State != c.state || a.Limit != c.limit {
+			t.Errorf("%s: %s %q (%s), quiero %s %q", c.name, a.State, a.Limit, a.Why, c.state, c.limit)
+		}
+	}
+	if a := fw.Evaluate(cases[5].p); a.Why != "solo con IPsec (regla «WinRM con IPsec»)" {
+		t.Errorf("explicación con IPsec: %q", a.Why)
+	}
+	if n := len(fw.AllowAll()) + len(fw.UserAllowAll()); n != 0 {
+		t.Errorf("ninguna de estas reglas lo permite todo: %d", n)
+	}
+	// Una regla de bloqueo limitada a dispositivos de confianza no bloquea todo.
+	fw.Rules = append(fw.Rules, FirewallRule{Name: "Bloqueo WFD", Protocol: 6, LocalPorts: "3389", Profiles: 7, Trust: "WFDKmDriver"})
+	if a := fw.Evaluate(cases[4].p); a.State != FirewallOpen {
+		t.Errorf("RDP con un bloqueo parcial: %+v", a)
+	}
+}
+
+func TestDescribeKeywords(t *testing.T) {
+	for in, want := range map[string]string{
+		"LocalSubnet,LocalSubnet":    "la red local",
+		"LocalSubnet,DNS":            "la red local y los servidores DNS",
+		"IntrAnet,10.0.0.0/8":        "la intranet y desde 10.0.0.0/8",
+		"Ply2Renders":                "dispositivos de «Reproducir en»",
+		"192.168.1.0/24,192.168.2.1": "desde 192.168.1.0/24, 192.168.2.1",
+		"Desconocida":                "desde Desconocida",
+	} {
+		if got := parseAddrs(in).describe(false); got != want {
+			t.Errorf("%s: %q, quiero %q", in, got, want)
+		}
+	}
+	if got := trustLabel("WFDPrint,WFDDisplay,ProxApp,Otra"); got != "Wi-Fi Direct, dispositivos cercanos y dispositivos de confianza (Otra)" {
+		t.Errorf("trustLabel: %q", got)
+	}
+}
+
+func TestLabelsAndShortLists(t *testing.T) {
+	for _, c := range []struct {
+		proto string
+		port  int
+		want  string
+	}{{"tcp", 5357, "WSD (detección de dispositivos)"}, {"udp", 47998, "Sunshine/GameStream"}, {"udp", 41641, "Tailscale (WireGuard)"}, {"tcp", 41641, ""}} {
+		if got := label(c.proto, c.port); got != c.want {
+			t.Errorf("%s/%d: %q, quiero %q", c.proto, c.port, got, c.want)
+		}
+	}
+	if got := shortList([]string{"«A»", "«B»", "«C»", "«D»", "«E»"}, 3); got != "«A», «B», «C» y 2 más" {
+		t.Errorf("shortList: %q", got)
+	}
+	if got := shortList([]string{"«A»", "«B»"}, 3); got != "«A» y «B»" {
+		t.Errorf("shortList corta: %q", got)
+	}
+	inv := Inventory{Listeners: []Listener{
+		{Proto: "tcp", Address: "0.0.0.0", Port: 7680, Scope: ScopeNetwork, Process: "svchost.exe", Services: []string{"DoSvc"}},
+	}}
+	rep := Analyze(inv, platform.Info{}, "test", time.Now())
+	if len(rep.Findings) != 0 || rep.Ports[0].Known != "Optimización de distribución (Windows Update)" {
+		t.Errorf("un puerto etiquetado no es un hallazgo: %+v %+v", rep.Ports, rep.Findings)
+	}
+}

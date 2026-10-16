@@ -43,6 +43,12 @@ type FirewallRule struct {
 	// programa. UserOwner limita la regla a los procesos de ese usuario.
 	Package   string
 	UserOwner string
+	// Trust son las palabras clave de dispositivos de confianza (TTK en el
+	// registro: WFDKmDriver, UPnP, ProxApp…): la regla solo admite tráfico
+	// de dispositivos Wi-Fi Direct, UPnP o cercanos ya emparejados.
+	Trust string
+	// Secure indica que la regla exige autenticación IPsec.
+	Secure bool
 }
 
 // Firewall es la política de entrada efectiva del Firewall de Windows.
@@ -51,6 +57,9 @@ type Firewall struct {
 	Rules    []FirewallRule    `json:"-"`
 	// InboundRules es el número de reglas de entrada habilitadas.
 	InboundRules int `json:"inbound_rules"`
+	// Source indica de dónde se han leído las reglas: "registry" (completas)
+	// o "com" (HNetCfg.FwPolicy2, sin dispositivos de confianza ni IPsec).
+	Source string `json:"source,omitempty"`
 }
 
 // Access es el resultado de evaluar un puerto.
@@ -144,9 +153,28 @@ func joinHuman(xs []string) string {
 	return strings.Join(xs[:len(xs)-1], ", ") + " y " + xs[len(xs)-1]
 }
 
+// shortList une como joinHuman, pero si hay más de max elementos resume el
+// resto: "A, B, C y 5 más".
+func shortList(xs []string, max int) string {
+	if len(xs) <= max {
+		return joinHuman(xs)
+	}
+	return fmt.Sprintf("%s y %d más", strings.Join(xs[:max], ", "), len(xs)-max)
+}
+
+// shortWho resume los procesos de un hallazgo para el título.
+func shortWho(who []string) string {
+	if len(who) <= 3 {
+		return strings.Join(who, "; ")
+	}
+	return fmt.Sprintf("%s y %d más", strings.Join(who[:3], "; "), len(who)-3)
+}
+
 func accessFrom(label string) string {
-	if strings.HasPrefix(label, "desde ") || strings.HasPrefix(label, "hacia ") || strings.HasPrefix(label, "en ") {
-		return label
+	for _, prefix := range []string{"desde ", "hacia ", "en ", "con "} {
+		if strings.HasPrefix(label, prefix) {
+			return label
+		}
 	}
 	return "desde " + label
 }
@@ -163,12 +191,11 @@ func (fw *Firewall) AllowAll() []FirewallRule {
 	}
 	var out []FirewallRule
 	for _, r := range fw.Rules {
-		if !r.Allow || r.Profiles&active == 0 || r.Package != "" || r.UserOwner != "" {
+		if !r.Allow || r.Profiles&active == 0 || r.storeApp() || r.UserOwner != "" {
 			continue
 		}
 		anyPort := strings.TrimSpace(r.LocalPorts) == "" || strings.TrimSpace(r.LocalPorts) == "*"
-		if r.Protocol == 256 && anyPort && strings.TrimSpace(r.App) == "" && strings.TrimSpace(r.Service) == "" &&
-			anyAddr(r.Local) && anyAddr(r.Remote) && r.Interfaces == "" && anyIfType(r.IfTypes) {
+		if r.Protocol == 256 && anyPort && strings.TrimSpace(r.App) == "" && strings.TrimSpace(r.Service) == "" && r.unrestricted() {
 			out = append(out, r)
 		}
 	}
@@ -186,12 +213,11 @@ func (fw *Firewall) UserAllowAll() []FirewallRule {
 	}
 	var out []FirewallRule
 	for _, r := range fw.Rules {
-		if !r.Allow || r.UserOwner == "" || r.Package != "" || r.Profiles&active == 0 {
+		if !r.Allow || r.UserOwner == "" || r.storeApp() || r.Profiles&active == 0 {
 			continue
 		}
 		anyPort := strings.TrimSpace(r.LocalPorts) == "" || strings.TrimSpace(r.LocalPorts) == "*"
-		if r.Protocol == 256 && anyPort && strings.TrimSpace(r.App) == "" && strings.TrimSpace(r.Service) == "" &&
-			anyAddr(r.Local) && anyAddr(r.Remote) && r.Interfaces == "" && anyIfType(r.IfTypes) {
+		if r.Protocol == 256 && anyPort && strings.TrimSpace(r.App) == "" && strings.TrimSpace(r.Service) == "" && r.unrestricted() {
 			out = append(out, r)
 		}
 	}
@@ -233,11 +259,24 @@ func (fw *Firewall) fullBlock(p Port, profile int) *FirewallRule {
 		if r.Allow || !r.matches(p, profile) {
 			continue
 		}
-		if anyAddr(r.Local) && anyAddr(r.Remote) && r.Interfaces == "" && anyIfType(r.IfTypes) {
+		if r.unrestricted() {
 			return r
 		}
 	}
 	return nil
+}
+
+// unrestricted indica si la regla se aplica desde cualquier dirección,
+// interfaz y dispositivo, sin exigir IPsec.
+func (r *FirewallRule) unrestricted() bool {
+	return anyAddr(r.Local) && anyAddr(r.Remote) && r.Interfaces == "" && anyIfType(r.IfTypes) && r.Trust == "" && !r.Secure
+}
+
+// storeApp indica si es una regla de una app de la Microsoft Store. La
+// interfaz COM no siempre devuelve el paquete (LocalAppPackageId), pero el
+// nombre sin traducir de muchas lo delata: "@{Paquete_versión…?ms-resource://…}".
+func (r *FirewallRule) storeApp() bool {
+	return r.Package != "" || strings.HasPrefix(r.Name, "@{")
 }
 
 // systemProcs son procesos que nunca corren como un usuario interactivo ni
@@ -252,7 +291,7 @@ func (r *FirewallRule) matches(p Port, profile int) bool {
 	}
 	// Las reglas de apps de la Store solo afectan a su AppContainer: no
 	// abren puertos de programas normales ni de servicios del sistema.
-	if r.Package != "" {
+	if r.storeApp() {
 		return false
 	}
 	if r.UserOwner != "" {
@@ -297,7 +336,35 @@ func (r *FirewallRule) limit(p Port) (string, bool) {
 	} else if !anyIfType(r.IfTypes) {
 		parts = append(parts, "en "+ifTypesLabel(r.IfTypes))
 	}
+	if r.Trust != "" {
+		parts = append(parts, trustLabel(r.Trust))
+	}
+	if r.Secure {
+		parts = append(parts, "con IPsec")
+	}
 	return strings.Join(parts, ", "), true
+}
+
+// trustLabel describe las palabras clave de dispositivos de confianza.
+func trustLabel(s string) string {
+	var out []string
+	for _, k := range strings.Split(s, ",") {
+		k = strings.TrimSpace(k)
+		low := strings.ToLower(k)
+		switch {
+		case k == "":
+			continue
+		case strings.HasPrefix(low, "wfd"):
+			out = appendOnce(out, "Wi-Fi Direct")
+		case strings.HasPrefix(low, "prox"):
+			out = appendOnce(out, "dispositivos cercanos")
+		case low == "upnp":
+			out = appendOnce(out, "dispositivos UPnP")
+		default:
+			out = appendOnce(out, "dispositivos de confianza ("+k+")")
+		}
+	}
+	return joinHuman(out)
 }
 
 func anyAddr(s string) bool {
@@ -357,6 +424,9 @@ func parseAddrs(s string) addrSet {
 		tok = strings.TrimSpace(tok)
 		if tok == "" || tok == "*" {
 			continue
+		}
+		if containsFold(set.raw, tok) {
+			continue // LA4/LA6 o RA4/RA6 repiten LocalSubnet, DNS…
 		}
 		set.raw = append(set.raw, tok)
 		if lo, hi, ok := strings.Cut(tok, "-"); ok {
@@ -437,17 +507,43 @@ func (s addrSet) describe(local bool) string {
 	if ts {
 		return "Tailscale"
 	}
-	if len(s.keywords) == 1 && len(s.raw) == 1 && strings.EqualFold(s.keywords[0], "LocalSubnet") {
-		return "la red local"
+	var named, other []string
+	for _, tok := range s.raw {
+		if label, ok := addrKeywords[strings.ToLower(tok)]; ok {
+			named = append(named, label)
+		} else {
+			other = append(other, tok)
+		}
 	}
-	list := strings.Join(s.raw, ", ")
-	if len(s.raw) > 3 {
-		list = strings.Join(s.raw[:3], ", ") + "…"
+	if len(other) == 0 {
+		return joinHuman(named)
+	}
+	list := strings.Join(other, ", ")
+	if len(other) > 3 {
+		list = strings.Join(other[:3], ", ") + "…"
 	}
 	if local {
-		return "hacia " + list
+		list = "hacia " + list
+	} else {
+		list = "desde " + list
 	}
-	return "desde " + list
+	return joinHuman(append(named, list))
+}
+
+// addrKeywords son las palabras clave de direcciones de las reglas.
+var addrKeywords = map[string]string{
+	"localsubnet": "la red local", "intranet": "la intranet", "rmtintranet": "la intranet remota",
+	"dns": "los servidores DNS", "dhcp": "los servidores DHCP", "wins": "los servidores WINS",
+	"defaultgateway": "la puerta de enlace", "ply2renders": "dispositivos de «Reproducir en»",
+}
+
+func containsFold(xs []string, x string) bool {
+	for _, y := range xs {
+		if strings.EqualFold(x, y) {
+			return true
+		}
+	}
+	return false
 }
 
 // matchPorts interpreta la lista de puertos locales de una regla.
@@ -469,7 +565,7 @@ func matchPorts(spec string, p Port) bool {
 				return true
 			}
 			continue
-		case "iphttps", "iphttpsin":
+		case "iphttps", "iphttpsin", "iptlsin":
 			if p.Port == 443 {
 				return true
 			}

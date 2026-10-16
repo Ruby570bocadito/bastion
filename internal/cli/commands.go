@@ -432,6 +432,15 @@ BASTION_REPO / BASTION_RELEASES_URL para usar un espejo interno).`,
 					return nil
 				}
 			}
+			if wanted != "" {
+				// Antes de pedir la elevación: que la versión exista.
+				if err := src.Published(ctx, latest); selfupdate.IsNotFound(err) {
+					return fmt.Errorf("la versión %s no está publicada en %s. Si acabas de crear la etiqueta, "+
+						"la release tarda unos minutos en aparecer: vuelve a intentarlo luego", latest, src.Base())
+				} else if err != nil {
+					return fmt.Errorf("no se pudo comprobar la versión %s: %w", latest, err)
+				}
+			}
 			if check {
 				fmt.Printf("  %s Hay una versión nueva. Ejecuta: bastion update\n", s.Yellow(report.Sym("↑")))
 				return nil

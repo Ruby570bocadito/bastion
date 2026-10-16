@@ -60,7 +60,7 @@ func get(ctx context.Context, url string, w io.Writer, limit int64) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GET %s: %s", url, resp.Status)
+		return &statusError{url: url, status: resp.Status, code: resp.StatusCode}
 	}
 	n, err := io.Copy(w, io.LimitReader(resp.Body, limit+1))
 	if err != nil {
@@ -70,6 +70,25 @@ func get(ctx context.Context, url string, w io.Writer, limit int64) error {
 		return fmt.Errorf("GET %s: respuesta demasiado grande", url)
 	}
 	return nil
+}
+
+type statusError struct {
+	url, status string
+	code        int
+}
+
+func (e *statusError) Error() string { return fmt.Sprintf("GET %s: %s", e.url, e.status) }
+
+// IsNotFound indica que el servidor de releases respondió 404.
+func IsNotFound(err error) bool {
+	var se *statusError
+	return errors.As(err, &se) && se.code == http.StatusNotFound
+}
+
+// Published comprueba que la release tag está publicada (su checksums.txt
+// existe). GitHub tarda unos minutos en publicarla tras crear la etiqueta.
+func (s Source) Published(ctx context.Context, tag string) error {
+	return get(ctx, fmt.Sprintf("%s/download/%s/checksums.txt", s.Base(), tag), io.Discard, 1<<20)
 }
 
 // Latest devuelve la etiqueta de la última versión publicada.

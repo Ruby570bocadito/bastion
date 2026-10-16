@@ -425,6 +425,95 @@ func parsePSFirewall(data map[string]any) *Firewall {
 	return fw
 }
 
+// profileBits traduce los perfiles de una regla del registro.
+var profileBits = map[string]int{"domain": 1, "private": 2, "public": 4}
+
+// parseRegRule interpreta una regla del Firewall de Windows tal como se
+// guarda en el registro (MS-GPFAS, «Firewall Rule and the Firewall Rule
+// Grammar Rule»), por ejemplo:
+//
+//	v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=6|Profile=Private|LPort=445|RA4=LocalSubnet|App=System|Name=@FirewallAPI.dll,-28502|
+//
+// Trae lo que la interfaz COM no siempre devuelve: el paquete de las apps
+// de la Store (AppPkgId, PFN), los dispositivos de confianza (TTK) y la
+// exigencia de IPsec. ok es false si no es una regla de entrada activa.
+func parseRegRule(s string) (r FirewallRule, ok bool) {
+	fields := strings.Split(strings.TrimSpace(s), "|")
+	if len(fields) < 2 || !strings.HasPrefix(fields[0], "v") {
+		return r, false
+	}
+	r.Protocol = 256 // sin Protocol, cualquiera
+	var active, in bool
+	var ports, local, remote, ifs, ifTypes, trust []string
+	var pfn string
+	for _, f := range fields[1:] {
+		k, v, found := strings.Cut(f, "=")
+		if !found || v == "" {
+			continue
+		}
+		switch {
+		case k == "Action":
+			// ByPass: permite el tráfico autenticado con IPsec aunque haya
+			// reglas de bloqueo.
+			r.Allow = v == "Allow" || v == "ByPass"
+			r.Secure = r.Secure || v == "ByPass"
+		case k == "Active":
+			active = strings.EqualFold(v, "TRUE")
+		case k == "Dir":
+			in = v == "In"
+		case k == "Protocol":
+			if n, err := strconv.Atoi(v); err == nil {
+				r.Protocol = n
+			}
+		case k == "Profile":
+			r.Profiles |= profileBits[strings.ToLower(v)]
+		case strings.HasPrefix(k, "LPort"): // LPort, LPort2_10 (IPTLSIn…), LPort2_20…
+			ports = append(ports, v)
+		case k == "LA4" || k == "LA6":
+			local = append(local, v)
+		case strings.HasPrefix(k, "RA4") || strings.HasPrefix(k, "RA6"): // RA4, RA6, RA42, RA62
+			remote = append(remote, v)
+		case k == "App":
+			r.App = v
+		case k == "Svc":
+			r.Service = v
+		case k == "Name":
+			r.Name = v
+		case k == "IF":
+			ifs = append(ifs, v)
+		case k == "IFType":
+			ifTypes = append(ifTypes, v)
+		case k == "LUOwn":
+			r.UserOwner = v
+		case k == "AppPkgId":
+			r.Package = v
+		case k == "PFN":
+			pfn = v
+		case strings.HasPrefix(k, "TTK"): // TTK, TTK2_22, TTK2_27, TTK2_28
+			trust = append(trust, v)
+		case strings.HasPrefix(k, "Security"), k == "RMAuth", k == "RUAuth":
+			// Security, Security2, Security2_9: Authenticate, AuthenticateEncrypt…
+			// RMAuth/RUAuth: equipos o usuarios remotos autorizados (IPsec).
+			if !strings.EqualFold(v, "NotRequired") {
+				r.Secure = true
+			}
+		}
+	}
+	if r.Profiles == 0 {
+		r.Profiles = 7 // sin Profile, todos
+	}
+	if r.Package == "" {
+		r.Package = pfn
+	}
+	r.LocalPorts = strings.Join(ports, ",")
+	r.Local = strings.Join(local, ",")
+	r.Remote = strings.Join(remote, ",")
+	r.Interfaces = strings.Join(ifs, ",")
+	r.IfTypes = strings.Join(ifTypes, ",")
+	r.Trust = strings.Join(trust, ",")
+	return r, active && in
+}
+
 func num(v any) float64 {
 	switch x := v.(type) {
 	case float64:

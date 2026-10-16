@@ -210,7 +210,8 @@ Consultas PowerShell permitidas (`ps`). La regla elige el nombre; el código es 
 | `optional_features` | `Get-WindowsOptionalFeature` | `SMB1Protocol`, `MicrosoftWindowsPowerShellV2Root` |
 | `smb_shares` | `Get-SmbShare` + `Get-SmbShareAccess` (sin los administrativos) | `shares[].Name`, `Path`, `Access[].SID`, `Right` (la usa `bastion surface`) |
 | `local_admins` | Miembros de S-1-5-32-544 (`Get-LocalGroupMember` o ADSI) | `members[].Name`, `Type`, `Source` (la usa `bastion surface`) |
-| `firewall_policy` | `HNetCfg.FwPolicy2`: perfiles y reglas de entrada habilitadas | `profiles[].Enabled`, `BlockInbound`, `Active`; `rules[]` (la usa `bastion surface`) |
+| `firewall_profiles` | `HNetCfg.FwPolicy2`: solo los perfiles (las reglas se leen del registro) | `profiles[].Enabled`, `BlockInbound`, `Active` (la usa `bastion surface`) |
+| `firewall_policy` | `HNetCfg.FwPolicy2`: perfiles y reglas de entrada habilitadas | Igual, más `rules[]` (la usa `bastion surface` si no puede leer el registro) |
 
 Las consultas que Windows solo responde con un token elevado (`bitlocker_os`, `optional_features`, `smb_shares`) no se lanzan sin privilegios: el control queda **sin evaluar**.
 
