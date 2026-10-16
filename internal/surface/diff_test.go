@@ -77,10 +77,12 @@ func TestDiffGroupedFindings(t *testing.T) {
 		f("SURF-NETBIOS", "137/udp, 138/udp, 139/tcp", "NetBIOS…"),
 		f("SURF-APPS-OPEN", "4530/tcp, 8766/tcp, 57621/tcp", "3 programas…"),
 		f("SURF-FW-ALLOWALL", "firewall", "La regla de firewall «Vieja» permite toda la entrada (perfil Privado)"),
+		f("SURF-SUNSHINE", "47984/tcp, 47989/tcp, 47990/tcp, 48010/tcp", "Sunshine/GameStream…"),
 	}}
 	cur := &Report{Findings: []Finding{
-		f("SURF-NETBIOS", "137/udp, 138/udp", "NetBIOS…"),         // se ha filtrado 139: no es nuevo
-		f("SURF-APPS-OPEN", "4530/tcp, 8766/tcp", "2 programas…"), // se ha cerrado Spotify: no es nuevo
+		f("SURF-SUNSHINE", "47984/tcp, 47989/tcp, 47990/tcp, 47998/udp, 48010/tcp", "Sunshine/GameStream…"), // transmitiendo: no es nuevo
+		f("SURF-NETBIOS", "137/udp, 138/udp", "NetBIOS…"),                                                   // se ha filtrado 139: no es nuevo
+		f("SURF-APPS-OPEN", "4530/tcp, 8766/tcp", "2 programas…"),                                           // se ha cerrado Spotify: no es nuevo
 		f("SURF-FW-ALLOWALL", "firewall", "La regla de firewall «Vieja» permite toda la entrada (perfil Privado)"),
 		f("SURF-FW-ALLOWALL", "firewall", "La regla de firewall «Nueva» permite toda la entrada (perfil Público)"),
 	}}

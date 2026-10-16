@@ -57,13 +57,14 @@ func runFwPS(ctx context.Context, script string, env ...string) (string, error) 
 }
 
 func (firewallRemote) Capture(ctx context.Context, p probes.Params) (State, error) {
-	out, err := runFwPS(ctx, fwRule+`$a = $r[0] | Get-NetFirewallAddressFilter; `+
-		`@{remote=[string]::Join(',', @($a.RemoteAddress)); display=[string]$r[0].DisplayName} | ConvertTo-Json -Compress`,
+	out, err := runFwPS(ctx, fwRule+`$a = $r[0] | Get-NetFirewallAddressFilter; $pf = $r[0] | Get-NetFirewallPortFilter; `+
+		`@{remote=[string]::Join(',', @($a.RemoteAddress)); display=[string]$r[0].DisplayName; `+
+		`proto=[string]$pf.Protocol; ports=[string]::Join(',', @($pf.LocalPort))} | ConvertTo-Json -Compress`,
 		"BASTION_FW_RULE="+p.String("rule"))
 	if err != nil {
 		return nil, err
 	}
-	var v struct{ Remote, Display string }
+	var v struct{ Remote, Display, Proto, Ports string }
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	if err := json.Unmarshal([]byte(strings.TrimSpace(lines[len(lines)-1])), &v); err != nil || v.Remote == "" {
 		return nil, fmt.Errorf("respuesta inesperada de Get-NetFirewallAddressFilter: %s", strings.TrimSpace(out))
@@ -71,15 +72,11 @@ func (firewallRemote) Capture(ctx context.Context, p probes.Params) (State, erro
 	if strings.EqualFold(v.Remote, p.String("remote")) {
 		return skipState("la regla «" + v.Display + "» ya está limitada a " + v.Remote), nil
 	}
-	return State{"remote": v.Remote, "display": v.Display}, nil
+	return State{"remote": v.Remote, "display": v.Display, "proto": v.Proto, "ports": v.Ports}, nil
 }
 
 func (firewallRemote) Describe(p probes.Params, before State) string {
-	name := textOf(before["display"])
-	if name == "—" || name == "" {
-		name = p.String("rule")
-	}
-	return fmt.Sprintf("regla «%s»: direcciones remotas %s → %s", name, textOf(before["remote"]), p.String("remote"))
+	return describeFwRemote(p.String("rule"), p.String("remote"), before)
 }
 
 func (firewallRemote) Apply(ctx context.Context, p probes.Params) error {

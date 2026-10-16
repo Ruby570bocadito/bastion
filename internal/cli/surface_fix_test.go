@@ -74,6 +74,35 @@ func TestSurfaceFixRules(t *testing.T) {
 	}
 }
 
+// Una regla que abre puertos de dos hallazgos (hydra en el puerto de SSDP y
+// en los suyos) se limita una sola vez, con el primero.
+func TestSurfaceFixSharedRules(t *testing.T) {
+	hydraUDP := "UDP Query User{4916}C:\\hydra-python-rpc.exe"
+	rep := &surface.Report{Findings: []surface.Finding{
+		{ID: "SURF-PORT-1900", Severity: rule.SevMedium, FirewallRules: []string{hydraUDP}},
+		{ID: "SURF-SUNSHINE", Severity: rule.SevMedium, FirewallRules: []string{"{SUNSHINE}"}},
+		{ID: "SURF-APPS-OPEN", Severity: rule.SevLow, FirewallRules: []string{"TCP Query User{45D8}C:\\hydra-python-rpc.exe", hydraUDP}},
+		{ID: "SURF-FOO", Severity: rule.SevLow, FirewallRules: []string{hydraUDP}},
+	}}
+	rules, _ := surfaceFixRules(rep, nil)
+	if len(rules) != 4 {
+		t.Fatalf("reglas: %d", len(rules))
+	}
+	if n := len(rules[2].Remediation.Actions); n != 1 || rules[2].Remediation.Actions[0].Params["rule"] != "TCP Query User{45D8}C:\\hydra-python-rpc.exe" {
+		t.Errorf("SURF-APPS-OPEN solo limita la regla TCP: %+v", rules[2].Remediation.Actions)
+	}
+	if len(rules[3].Remediation.Actions) != 0 || rules[3].Remediation.Summary != "sus reglas ya se limitan con SURF-PORT-1900" {
+		t.Errorf("sin reglas propias: %+v", rules[3].Remediation)
+	}
+	if rules[1].Remediation.Safety != "remote-access" {
+		t.Error("Sunshine es acceso remoto: requiere --include-remote")
+	}
+	// Pedido solo SURF-APPS-OPEN, se queda con las dos reglas.
+	if rules, _ := surfaceFixRules(rep, []string{"SURF-APPS-OPEN"}); len(rules) != 1 || len(rules[0].Remediation.Actions) != 2 {
+		t.Errorf("solo programas: %+v", rules)
+	}
+}
+
 func TestSurfaceFixCycle(t *testing.T) {
 	fw := &fakeFirewall{remote: map[string]string{"{CFB7}": "Any", "TCP Query User{AAB2}C:\\x.exe": "Any"}}
 	remediate.Register(fw)

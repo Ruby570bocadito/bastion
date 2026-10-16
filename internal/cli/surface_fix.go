@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -38,9 +39,9 @@ Windows que los abren. Sin --apply es una SIMULACIÓN: muestra el plan.
 
 Con --apply se hace como en "harden": instantánea del estado previo, cambio,
 verificación y, si algo falla, vuelta atrás; el cambio queda en "bastion
-history" y se deshace con "bastion rollback". RDP, SSH y WinRM solo se
-incluyen con --include-remote y con dead-man switch: si no confirmas que
-sigues pudiendo entrar, se revierte solo.
+history" y se deshace con "bastion rollback". RDP, SSH, WinRM, VNC y
+Sunshine solo se incluyen con --include-remote y con dead-man switch: si no
+confirmas que sigues pudiendo entrar, se revierte solo.
 
 Por ahora, solo en Windows y para las reglas del almacén local. Lo que llega
 por otras reglas ya limitadas (una VPN como Tailscale, por ejemplo) sigue
@@ -55,7 +56,7 @@ llegando.`,
 	fl := cmd.Flags()
 	fl.BoolVar(&f.apply, "apply", false, "aplicar los cambios (sin esto es una simulación)")
 	fl.BoolVarP(&f.yes, "yes", "y", false, "no pedir confirmación")
-	fl.BoolVar(&f.includeRemote, "include-remote", false, "incluir RDP, SSH y WinRM (con dead-man switch)")
+	fl.BoolVar(&f.includeRemote, "include-remote", false, "incluir RDP, SSH, WinRM, VNC y Sunshine (con dead-man switch)")
 	fl.BoolVar(&f.noDeadman, "no-deadman", false, "sin dead-man switch (solo máquinas desechables o laboratorios)")
 	fl.DurationVar(&f.confirmTimeout, "confirm-timeout", 2*time.Minute, "plazo para confirmar el acceso remoto")
 	return cmd
@@ -64,17 +65,23 @@ llegando.`,
 // remoteAccessPorts son los hallazgos cuyo arreglo puede cortar el acceso
 // remoto con el que se administra el equipo.
 var remoteAccessPorts = map[string]bool{"SURF-PORT-22": true, "SURF-PORT-3389": true, "SURF-PORT-5985": true,
-	"SURF-PORT-5986": true, "SURF-PORT-5900": true}
+	"SURF-PORT-5986": true, "SURF-PORT-5900": true, "SURF-SUNSHINE": true}
 
 // surfaceFixRules convierte los hallazgos con reglas conocidas en reglas
 // con acciones tipadas, una por regla del firewall. ids limita a esos
 // hallazgos; devuelve también los pedidos que no se pueden arreglar.
+//
+// Una regla del firewall que abre puertos de dos hallazgos (un programa que
+// abre el de SSDP y otros suyos) se limita solo con el primero, el más
+// grave; si al otro no le queda ninguna, sale sin acciones y con la nota en
+// el resumen.
 func surfaceFixRules(rep *surface.Report, ids []string) (rules []*rule.Rule, unknown []string) {
 	want := map[string]bool{}
 	for _, id := range ids {
 		want[strings.ToUpper(id)] = true
 	}
 	seen := map[string]bool{}
+	owner := map[string]string{}
 	for _, f := range rep.Findings {
 		if len(want) > 0 && !want[f.ID] {
 			continue
@@ -88,9 +95,20 @@ func surfaceFixRules(rep *surface.Report, ids []string) (rules []*rule.Rule, unk
 		if remoteAccessPorts[f.ID] {
 			r.Remediation.Safety = "remote-access"
 		}
+		var shared []string
 		for _, name := range f.FirewallRules {
+			if o, ok := owner[name]; ok {
+				if !slices.Contains(shared, o) {
+					shared = append(shared, o)
+				}
+				continue
+			}
+			owner[name] = f.ID
 			r.Remediation.Actions = append(r.Remediation.Actions, rule.Action{Type: "firewall.remote_address",
 				Params: map[string]any{"rule": name, "remote": "LocalSubnet"}})
+		}
+		if len(r.Remediation.Actions) == 0 {
+			r.Remediation.Summary = "sus reglas ya se limitan con " + strings.Join(shared, " y ")
 		}
 		rules = append(rules, r)
 	}
@@ -132,6 +150,10 @@ func runSurfaceFix(f surfaceFixFlags, ids []string) error {
 
 	var items []*remediate.Item
 	for _, r := range rules {
+		if len(r.Remediation.Actions) == 0 {
+			items = append(items, &remediate.Item{Rule: r, Status: remediate.ItemNothing, Reason: r.Remediation.Summary})
+			continue
+		}
 		if r.Remediation.Safety == "remote-access" && !f.includeRemote {
 			items = append(items, &remediate.Item{Rule: r, Status: remediate.ItemRemote,
 				Reason: "puede cortar el acceso remoto: requiere --include-remote (con dead-man switch)"})

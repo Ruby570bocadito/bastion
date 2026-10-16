@@ -160,6 +160,9 @@ var groups = map[string]knownPort{
 	"netbios": {service: "NetBIOS sobre TCP/IP", sev: rule.SevMedium,
 		why: "NetBIOS (137-139) permite enumerar el equipo, envenenar resoluciones de nombres y retransmitir autenticaciones.",
 		fix: "Deshabilita NetBIOS sobre TCP/IP en los adaptadores (control WIN-NET-007: bastion harden --wave 2)."},
+	"sunshine": {service: "Sunshine/GameStream", sev: rule.SevMedium,
+		why: "Sunshine transmite el escritorio y recibe el teclado y el ratón de los clientes emparejados; su panel web (47990/tcp) gestiona el emparejamiento y la configuración. Una contraseña débil o un fallo dan el control del equipo.",
+		fix: "Si solo juegas en casa o a través de una VPN como Tailscale, limita sus reglas a la red local y no abras estos puertos en el router; protege el panel web con una contraseña robusta."},
 }
 
 // ports es el catálogo de servicios cuyo riesgo depende de estar expuestos.
@@ -204,6 +207,16 @@ var ports = map[int]knownPort{
 	10250: {"kubelet", "tcp", rule.SevHigh, "La API del kubelet permite ejecutar comandos en los contenedores si no exige autenticación.", "Verifica --anonymous-auth=false y authorization-mode=Webhook.", ""},
 	11211: {"memcached", "", rule.SevHigh, "memcached no tiene autenticación y se usa en amplificación masiva (UDP).", "Escucha solo en 127.0.0.1 y desactiva UDP (-U 0).", ""},
 	27017: {"MongoDB", "tcp", rule.SevHigh, "MongoDB expuesto sin autenticación ha causado muchas fugas de datos.", "Usa bindIp 127.0.0.1 y activa la autorización.", ""},
+	// Sunshine (y Apollo): HTTPS, HTTP, panel web y RTSP en TCP; vídeo,
+	// control, audio y micrófono en UDP, solo mientras se transmite.
+	47984: {"Sunshine/GameStream", "tcp", rule.SevMedium, "", "", "sunshine"},
+	47989: {"Sunshine/GameStream", "tcp", rule.SevMedium, "", "", "sunshine"},
+	47990: {"Sunshine (panel web)", "tcp", rule.SevMedium, "", "", "sunshine"},
+	47998: {"Sunshine/GameStream", "udp", rule.SevMedium, "", "", "sunshine"},
+	47999: {"Sunshine/GameStream", "udp", rule.SevMedium, "", "", "sunshine"},
+	48000: {"Sunshine/GameStream", "udp", rule.SevMedium, "", "", "sunshine"},
+	48002: {"Sunshine/GameStream", "udp", rule.SevMedium, "", "", "sunshine"},
+	48010: {"Sunshine/GameStream", "", rule.SevMedium, "", "", "sunshine"},
 }
 
 // labels nombra puertos habituales que no son un riesgo por sí mismos, para
@@ -224,7 +237,16 @@ var labels = map[string]string{
 	"tcp/27036": "Steam (Remote Play)",
 	"udp/27036": "Steam (Remote Play)",
 	"udp/41641": "Tailscale (WireGuard)",
+	"udp/51820": "WireGuard",
+	"udp/9993":  "ZeroTier",
+	"udp/6771":  "BitTorrent (descubrimiento local)",
 }
+
+// appLabels son los puertos etiquetados que abre un programa del usuario y
+// no un protocolo del sistema: si el firewall los deja abiertos a
+// cualquiera, cuentan como programas abiertos. Los demás (HTTPS, VPN que
+// solo responden a pares autenticados…) se abren a propósito.
+var appLabels = map[string]bool{"tcp/27036": true, "udp/27036": true, "udp/6771": true}
 
 func label(proto string, port int) string {
 	if port >= 47984 && port <= 48010 {
@@ -289,6 +311,12 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		limited  bool
 		port     int
 		pids     []int
+		// Programas del usuario con algún puerto abierto, y si alguno de
+		// los procesos es del sistema: SSDP de Windows limitado y un
+		// programa que abre el mismo puerto a cualquiera.
+		openApps []string
+		openSys  bool
+		system   bool
 	}
 	// Reglas que abren cada puerto y proceso, para unir al hallazgo de un
 	// puerto TCP las del mismo puerto en UDP (RDP usa los dos).
@@ -342,7 +370,7 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		if p.Firewall == FirewallOpen && len(p.access.IDs) > 0 {
 			openIDs[fmt.Sprintf("%d/%d", p.Port, p.PID)] = append(openIDs[fmt.Sprintf("%d/%d", p.Port, p.PID)], p.access.IDs...)
 		}
-		if p.Firewall == FirewallOpen && p.Known == "" && userApp(*p) {
+		if p.Firewall == FirewallOpen && (p.Known == "" || appLabels[p.Proto+"/"+strconv.Itoa(p.Port)]) && userApp(*p) {
 			ap := apps[p.Process]
 			if ap == nil {
 				ap = &app{why: p.FirewallWhy}
@@ -373,6 +401,15 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 			order = append(order, key)
 		}
 		a.pids = append(a.pids, p.PID)
+		app := userApp(*p)
+		a.system = a.system || !app
+		if p.Firewall == FirewallOpen {
+			if app {
+				a.openApps = appendOnce(a.openApps, p.Process)
+			} else {
+				a.openSys = true
+			}
+		}
 		if p.Firewall == FirewallLimited {
 			for _, x := range p.access.Limits {
 				a.limits = appendOnce(a.limits, x)
@@ -434,7 +471,13 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 			limit := joinHuman(a.limits)
 			f.Title = fmt.Sprintf("%s accesible solo %s (%s)", a.k.service, accessFrom(limit), shortWho(a.who))
 			f.Fix = "Ya solo se llega " + accessFrom(limit) + ": revisa quién tiene acceso a esa red. Además: " + a.k.fix
-		} else if len(a.ids) > 0 && !a.noIDs {
+		} else if a.system && !a.openSys && len(a.openApps) > 0 {
+			// Lo que queda abierto no es el servicio del catálogo, sino un
+			// programa que usa el mismo puerto.
+			f.Fix = fmt.Sprintf("Lo deja abierto a cualquiera %s, no el servicio de Windows: si no necesitas que acepte conexiones "+
+				"de otros equipos, limita su regla a la red local o desactívala. Sobre el servicio: %s", joinHuman(a.openApps), a.k.fix)
+		}
+		if !a.limited && len(a.ids) > 0 && !a.noIDs {
 			if a.k.group == "" {
 				for _, pid := range a.pids {
 					for _, id := range openIDs[fmt.Sprintf("%d/%d", a.port, pid)] {

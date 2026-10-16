@@ -1,6 +1,7 @@
 package surface
 
 import (
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -770,5 +771,68 @@ func TestSSHOnWorkstation(t *testing.T) {
 	rep := Analyze(inv, platform.Info{Role: "workstation"}, "test", time.Now())
 	if len(rep.Findings) != 1 || rep.Findings[0].Severity != rule.SevLow || !strings.Contains(rep.Findings[0].Fix, "Stop-Service sshd") {
 		t.Errorf("en una estación de trabajo, SSH abierto es un hallazgo bajo: %+v", rep.Findings)
+	}
+}
+
+// Un equipo de juegos (la prueba real en Windows 11): Steam y Sunshine se
+// abren a cualquiera, un programa abre el puerto de SSDP y Tailscale escucha
+// en su puerto de WireGuard.
+func TestGamingPC(t *testing.T) {
+	fw := &Firewall{Source: "registry", Profiles: []FirewallProfile{
+		{Name: "Privado", Bit: 2, Enabled: true, BlockInbound: true, Active: true},
+		{Name: "Público", Bit: 4, Enabled: true, BlockInbound: true, Active: true},
+	}, Rules: []FirewallRule{
+		{ID: "{STEAM}", Name: "Steam", Allow: true, Protocol: 256, App: `C:\Program Files (x86)\Steam\steam.exe`, Profiles: 6},
+		{ID: "{SUNSHINE}", Name: "Sunshine", Allow: true, Protocol: 256, App: `C:\Program Files\Sunshine\sunshine.exe`, Profiles: 6},
+		{ID: "UDP Query User{4916}C:\\hydra-python-rpc.exe", Name: "hydra-python-rpc.exe", Allow: true, Protocol: 17, App: `C:\hydra-python-rpc.exe`, Profiles: 4},
+		{ID: "SSDP-In", Name: "Detección de redes (SSDP de entrada)", Allow: true, Protocol: 17, LocalPorts: "1900", Service: "SSDPSRV", Remote: "LocalSubnet", Profiles: 6},
+		{ID: "{TS}", Name: "tailscaled", Allow: true, Protocol: 17, App: `C:\Program Files\Tailscale\tailscaled.exe`, Profiles: 6},
+	}}
+	lan := "192.168.1.131"
+	inv := Inventory{Firewall: fw, Listeners: []Listener{
+		{Proto: "tcp", Address: "0.0.0.0", Port: 27036, Scope: ScopeNetwork, PID: 7900, Process: "steam.exe"},
+		{Proto: "udp", Address: "0.0.0.0", Port: 27036, Scope: ScopeNetwork, PID: 7900, Process: "steam.exe"},
+		{Proto: "tcp", Address: "0.0.0.0", Port: 47984, Scope: ScopeNetwork, PID: 9696, Process: "sunshine.exe"},
+		{Proto: "tcp", Address: "0.0.0.0", Port: 47990, Scope: ScopeNetwork, PID: 9696, Process: "sunshine.exe"},
+		{Proto: "tcp", Address: "0.0.0.0", Port: 48010, Scope: ScopeNetwork, PID: 9696, Process: "sunshine.exe"},
+		{Proto: "udp", Address: "100.127.45.81", Port: 1900, Scope: ScopeNetwork, PID: 15200, Process: "svchost.exe", Services: []string{"SSDPSRV"}},
+		{Proto: "udp", Address: lan, Port: 1900, Scope: ScopeNetwork, PID: 13976, Process: "hydra-python-rpc.exe"},
+		{Proto: "udp", Address: "0.0.0.0", Port: 41641, Scope: ScopeNetwork, PID: 7464, Process: "tailscaled.exe"},
+	}}
+	rep := Analyze(inv, platform.Info{Role: "workstation"}, "test", time.Now())
+	byID := map[string]Finding{}
+	for _, f := range rep.Findings {
+		byID[f.ID] = f
+	}
+	if len(rep.Findings) != 3 {
+		t.Errorf("hallazgos: Sunshine, SSDP y Steam; tengo %+v", rep.Findings)
+	}
+
+	// Sunshine: un hallazgo para todos sus puertos, como el escritorio
+	// remoto que es.
+	sun, ok := byID["SURF-SUNSHINE"]
+	if !ok || sun.Severity != rule.SevMedium || sun.Subject != "47984/tcp, 47990/tcp, 48010/tcp" ||
+		sun.Title != "Sunshine/GameStream accesible desde la red (sunshine.exe)" || !reflect.DeepEqual(sun.FirewallRules, []string{"{SUNSHINE}"}) {
+		t.Errorf("Sunshine: %+v", sun)
+	}
+	for _, p := range rep.Ports {
+		if p.Port == 47990 && p.Known != "Sunshine (panel web)" {
+			t.Errorf("47990: %q", p.Known)
+		}
+	}
+
+	// SSDP: el servicio de Windows está limitado; lo abierto es de hydra y
+	// la solución habla del programa.
+	ssdp := byID["SURF-PORT-1900"]
+	if !strings.HasPrefix(ssdp.Fix, "Lo deja abierto a cualquiera hydra-python-rpc.exe, no el servicio de Windows") ||
+		!strings.Contains(ssdp.Fix, "Sobre el servicio: Desactiva el servicio de detección SSDP") {
+		t.Errorf("solución de SSDP: %s", ssdp.Fix)
+	}
+
+	// Steam tiene etiqueta (Remote Play), pero es un programa abierto a
+	// cualquiera; WireGuard de Tailscale se abre a propósito y no cuenta.
+	apps := byID["SURF-APPS-OPEN"]
+	if apps.Title != "steam.exe (27036/tcp, 27036/udp) acepta conexiones desde cualquier dirección" || apps.Subject != "27036/tcp, 27036/udp" {
+		t.Errorf("programas abiertos: %+v", apps)
 	}
 }

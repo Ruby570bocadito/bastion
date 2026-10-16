@@ -165,9 +165,21 @@ func TestLinuxFirewallEmptyAndAnalyze(t *testing.T) {
 		t.Errorf("hallazgos: %+v", rep.Findings)
 	}
 
+	// WireGuard solo responde a pares autenticados: abierto a propósito,
+	// no es un programa abierto.
+	inv.Listeners = append(inv.Listeners, Listener{Proto: "udp", Address: "0.0.0.0", Port: 51820, Scope: ScopeNetwork, Process: "wg-quick"})
+	rep = Analyze(inv, platform.Info{}, "test", time.Now())
+	if len(rep.Findings) != 1 {
+		t.Errorf("WireGuard abierto no es un hallazgo: %+v", rep.Findings)
+	}
+
 	// Un programa abierto a cualquiera: la solución habla de ufw, no de
 	// perfiles de Windows.
-	inv.Listeners = append(inv.Listeners, Listener{Proto: "udp", Address: "0.0.0.0", Port: 51820, Scope: ScopeNetwork, Process: "myvpn"})
+	fw, err = newLinuxFirewall(nil, "*filter\n:INPUT DROP [0:0]\n-A INPUT -p tcp -m tcp --dport 8766 -j ACCEPT\nCOMMIT\n", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv = Inventory{Firewall: fw, Listeners: []Listener{{Proto: "tcp", Address: "0.0.0.0", Port: 8766, Scope: ScopeNetwork, Process: "autoclaw"}}}
 	rep = Analyze(inv, platform.Info{}, "test", time.Now())
 	var apps *Finding
 	for i := range rep.Findings {
@@ -175,8 +187,8 @@ func TestLinuxFirewallEmptyAndAnalyze(t *testing.T) {
 			apps = &rep.Findings[i]
 		}
 	}
-	if apps == nil || !strings.Contains(apps.Fix, "ufw allow from 192.168.1.0/24 to any port 51820 proto udp") ||
-		strings.Contains(apps.Detail, "perfil") || !strings.Contains(apps.Detail, "«input #10»") {
+	if apps == nil || !strings.Contains(apps.Fix, "ufw allow from 192.168.1.0/24 to any port 8766 proto tcp") ||
+		strings.Contains(apps.Detail, "perfil") || !strings.Contains(apps.Detail, "«INPUT #1»") {
 		t.Errorf("programa abierto en Linux: %+v", apps)
 	}
 }
