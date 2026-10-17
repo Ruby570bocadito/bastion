@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -63,6 +64,8 @@ func Collect(ctx context.Context) (Inventory, error) {
 		}
 	}
 
+	collectSignatures(ctx, &inv)
+
 	if data, err := probes.QueryPS(ctx, "smb_shares"); err == nil {
 		inv.Shares = parsePSShares(data)
 	} else if reason, ok := probes.AsPrivilege(err); ok {
@@ -118,6 +121,61 @@ func collectFirewall(ctx context.Context) (*Firewall, error) {
 		fw.Rules, fw.InboundRules, fw.Source = rules, len(rules), "registry"
 	}
 	return fw, nil
+}
+
+// collectSignatures anota la ruta del ejecutable de cada proceso que
+// escucha en la red y su firma Authenticode (incrustada o de catálogo).
+func collectSignatures(ctx context.Context, inv *Inventory) {
+	paths := map[int]string{}
+	var list []string
+	seen := map[string]bool{}
+	for i := range inv.Listeners {
+		l := &inv.Listeners[i]
+		if l.Scope != ScopeNetwork || l.Ephemeral || l.PID <= 4 { // 0 y 4: inactivo y System
+			continue
+		}
+		p, ok := paths[l.PID]
+		if !ok {
+			p = imagePath(l.PID)
+			paths[l.PID] = p
+		}
+		l.Path = p
+		if p != "" && !seen[strings.ToLower(p)] && len(list) < 200 {
+			seen[strings.ToLower(p)] = true
+			list = append(list, p)
+		}
+	}
+	if len(list) == 0 {
+		return
+	}
+	data, err := probes.QueryPSEnv(ctx, "file_signatures", "BASTION_PATHS="+strings.Join(list, "\n"))
+	if err != nil {
+		inv.Notes = append(inv.Notes, "No se pudo comprobar la firma de los programas que escuchan en la red: "+err.Error())
+		return
+	}
+	sigs := parsePSSignatures(data)
+	for i := range inv.Listeners {
+		l := &inv.Listeners[i]
+		if s, ok := sigs[strings.ToLower(l.Path)]; ok && l.Path != "" {
+			l.Signature, l.Signer = s.status, s.signer
+		}
+	}
+}
+
+// imagePath devuelve la ruta del ejecutable de un proceso (vacía si no se
+// puede abrir: sin privilegios, los de otros usuarios).
+func imagePath(pid int) string {
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	if err != nil {
+		return ""
+	}
+	defer windows.CloseHandle(h)
+	buf := make([]uint16, windows.MAX_LONG_PATH)
+	n := uint32(len(buf))
+	if err := windows.QueryFullProcessImageName(h, 0, &buf[0], &n); err != nil {
+		return ""
+	}
+	return windows.UTF16ToString(buf[:n])
 }
 
 func run(ctx context.Context, name string, args ...string) (string, error) {

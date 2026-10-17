@@ -182,6 +182,15 @@ __STYLE__
   var heads = ["Puerto", "Dirección"].concat(fw ? ["Firewall"] : [], ["Proceso", "Servicio"]);
   var tbl = el("table", { class: "ptable" }, [el("thead", null, [el("tr", null, heads.map(function (h) { return el("th", { text: h }); }))])]);
   var tb = el("tbody");
+  // De dónde viene el ejecutable: firma (Windows) o paquete (Linux).
+  function origin(p) {
+    var t = { valid: "firmado por " + (p.signer || "?"), unsigned: "sin firma digital", invalid: "firma no válida",
+      untrusted: "certificado sin confianza" + (p.signer ? ": " + p.signer : ""), package: "paquete " + (p.signer || "?"),
+      unpackaged: "fuera de los paquetes" }[p.signature];
+    if (!t) return null;
+    var color = p.signature === "invalid" ? "var(--critical)" : (p.signature === "unsigned" || p.signature === "untrusted" || p.signature === "unpackaged") ? "var(--serious)" : "";
+    return el("div", { class: "sub", text: t, title: p.path || "", style: color ? "color:" + color + ";font-weight:600" : "" });
+  }
   ports.forEach(function (p) {
     var cells = [el("td", { class: "port", text: p.port + "/" + p.proto }), el("td", { text: (p.addresses || []).join(", ") })];
     if (fw) {
@@ -191,7 +200,7 @@ __STYLE__
       cells.push(el("td", null, [st, p.firewall_why ? el("div", { class: "sub", text: p.firewall_why }) : null]));
     }
     var proc = (p.process || "?") + (p.pid ? " (" + p.pid + ")" : "");
-    cells.push(el("td", null, [proc, p.services && p.services.length ? el("div", { class: "sub", text: p.services.join(", ") }) : null]));
+    cells.push(el("td", null, [proc, p.services && p.services.length ? el("div", { class: "sub", text: p.services.join(", ") }) : null, origin(p)]));
     cells.push(el("td", { text: p.known || "" }));
     tb.appendChild(el("tr", null, cells));
   });

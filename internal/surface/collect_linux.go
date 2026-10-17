@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -44,6 +45,7 @@ func Collect(ctx context.Context) (Inventory, error) {
 		}
 		inv.Listeners = append(inv.Listeners, l)
 	}
+	collectPackages(ctx, &inv)
 
 	if b, err := os.ReadFile("/etc/exports"); err == nil {
 		inv.Shares = append(inv.Shares, parseExports(string(b))...)
@@ -88,30 +90,191 @@ func collectNetfilter(ctx context.Context) (*Firewall, error) {
 	return newLinuxFirewall(nft, string(save4), string(save6))
 }
 
-// runTool ejecuta una herramienta del sistema por su ruta absoluta (sudo
+// toolPath busca una herramienta del sistema por su ruta absoluta (sudo
 // puede no tener /usr/sbin en el PATH).
-func runTool(ctx context.Context, name string, args ...string) ([]byte, error) {
+func toolPath(name string) (string, error) {
 	path, err := exec.LookPath(name)
 	if err != nil {
 		for _, dir := range []string{"/usr/sbin", "/sbin", "/usr/bin", "/bin"} {
 			if fi, e := os.Stat(filepath.Join(dir, name)); e == nil && !fi.IsDir() {
-				path, err = filepath.Join(dir, name), nil
-				break
+				return filepath.Join(dir, name), nil
 			}
 		}
 	}
+	return path, err
+}
+
+// runTool ejecuta una herramienta del sistema y falla si termina con error.
+func runTool(ctx context.Context, name string, args ...string) ([]byte, error) {
+	out, code, err := runToolCode(ctx, name, args...)
+	if err == nil && code != 0 {
+		err = fmt.Errorf("%s terminó con el código %d", name, code)
+	}
 	if err != nil {
 		return nil, err
+	}
+	return out, nil
+}
+
+// runToolCode ejecuta una herramienta del sistema y devuelve su salida y su
+// código de salida (dpkg-query y rpm terminan con 1 si algún fichero no es
+// de ningún paquete, pero la salida de los demás vale).
+func runToolCode(ctx context.Context, name string, args ...string) ([]byte, int, error) {
+	path, err := toolPath(name)
+	if err != nil {
+		return nil, 0, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	var out bytes.Buffer
 	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
 	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		return nil, err
+	err = cmd.Run()
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && ctx.Err() == nil {
+		return out.Bytes(), exitErr.ExitCode(), nil
 	}
-	return out.Bytes(), nil
+	return out.Bytes(), 0, err
+}
+
+// collectPackages anota la ruta del ejecutable de cada proceso que escucha
+// en la red y el paquete que lo instala. Lo que no es de ningún paquete no
+// recibe actualizaciones de seguridad con el sistema.
+func collectPackages(ctx context.Context, inv *Inventory) {
+	paths := map[int]string{}
+	var list []string
+	seen := map[string]bool{}
+	for i := range inv.Listeners {
+		l := &inv.Listeners[i]
+		if l.Scope != ScopeNetwork || l.Ephemeral || l.PID <= 0 {
+			continue
+		}
+		p, ok := paths[l.PID]
+		if !ok {
+			p = exePath(l.PID)
+			paths[l.PID] = p
+		}
+		l.Path = p
+		if p != "" && !seen[p] {
+			seen[p] = true
+			list = append(list, p)
+		}
+	}
+	if len(list) == 0 {
+		return
+	}
+	owners := packageOwners(ctx, list)
+	if owners == nil {
+		return // sin gestor de paquetes conocido
+	}
+	for i := range inv.Listeners {
+		l := &inv.Listeners[i]
+		if l.Path == "" {
+			continue
+		}
+		if pkg, ok := owners[l.Path]; ok {
+			l.Signature, l.Signer = SigPackage, pkg
+		} else {
+			l.Signature = SigNoPackage
+		}
+	}
+}
+
+// exePath es la ruta del ejecutable de un proceso. Vacía si no se puede
+// leer (sin root, los de otros usuarios) o si el proceso está en un
+// contenedor o un chroot: su ruta no es la del sistema y sus paquetes no
+// son los del equipo.
+func exePath(pid int) string {
+	proc := "/proc/" + strconv.Itoa(pid)
+	self, err1 := os.Readlink("/proc/self/ns/mnt")
+	ns, err2 := os.Readlink(proc + "/ns/mnt")
+	root, err3 := os.Readlink(proc + "/root")
+	if err1 != nil || err2 != nil || err3 != nil || ns != self || root != "/" {
+		return ""
+	}
+	p, err := os.Readlink(proc + "/exe")
+	if err != nil {
+		return ""
+	}
+	// Un binario sustituido por una actualización sigue en memoria.
+	return strings.TrimSuffix(p, " (deleted)")
+}
+
+// packageOwners devuelve el paquete de cada ruta que pertenece a alguno, o
+// nil si el sistema no tiene un gestor de paquetes conocido.
+func packageOwners(ctx context.Context, paths []string) map[string]string {
+	owners := map[string]string{}
+	var rest []string
+	for _, p := range paths {
+		if s := snapName(p); s != "" {
+			owners[p] = "snap " + s
+		} else {
+			rest = append(rest, p)
+		}
+	}
+	if len(rest) == 0 {
+		return owners
+	}
+	switch {
+	case hasTool("dpkg-query"):
+		out, _, err := runToolCode(ctx, "dpkg-query", append([]string{"-S", "--"}, rest...)...)
+		if err != nil {
+			return nil
+		}
+		found := parseDpkgSearch(string(out))
+		// Con /usr fusionado, dpkg puede tener el fichero como /bin/x.
+		alt := map[string]string{}
+		var alts []string
+		for _, p := range rest {
+			if a := usrMergeAlt(p); a != "" && found[p] == "" {
+				alt[a] = p
+				alts = append(alts, a)
+			}
+		}
+		if len(alts) > 0 {
+			if out, _, err := runToolCode(ctx, "dpkg-query", append([]string{"-S", "--"}, alts...)...); err == nil {
+				for a, pkg := range parseDpkgSearch(string(out)) {
+					if p, ok := alt[a]; ok {
+						found[p] = pkg
+					}
+				}
+			}
+		}
+		for _, p := range rest {
+			if pkg := found[p]; pkg != "" {
+				owners[p] = pkg
+			}
+		}
+	case hasTool("rpm"):
+		for _, p := range rest {
+			out, code, err := runToolCode(ctx, "rpm", "-qf", "--qf", "%{NAME}\n", "--", p)
+			if err != nil {
+				return nil
+			}
+			if pkgs := parseRpmQuery([]string{p}, strings.SplitN(string(out), "\n", 2)[0]); code == 0 && pkgs[p] != "" {
+				owners[p] = pkgs[p]
+			}
+		}
+	case hasTool("pacman"):
+		for _, p := range rest {
+			out, code, err := runToolCode(ctx, "pacman", "-Qqo", "--", p)
+			if err != nil {
+				return nil
+			}
+			if name := strings.TrimSpace(string(out)); code == 0 && name != "" && !strings.Contains(name, " ") {
+				owners[p] = name
+			}
+		}
+	default:
+		return nil
+	}
+	return owners
+}
+
+func hasTool(name string) bool {
+	_, err := toolPath(name)
+	return err == nil
 }
 
 // socketOwners asocia el inodo de cada socket con el PID que lo tiene

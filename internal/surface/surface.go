@@ -43,7 +43,23 @@ type Listener struct {
 	// User es la cuenta con la que corre el proceso (y su SID, en Windows).
 	User    string `json:"user,omitempty"`
 	UserSID string `json:"user_sid,omitempty"`
+	// Path es la ruta del ejecutable y Signature, de dónde viene (ver
+	// SigValid…); Signer, quién lo firma (Windows) o el paquete que lo
+	// instala (Linux).
+	Path      string `json:"path,omitempty"`
+	Signature string `json:"signature,omitempty"`
+	Signer    string `json:"signer,omitempty"`
 }
+
+// Origen del ejecutable de un proceso a la escucha.
+const (
+	SigValid     = "valid"      // firma Authenticode válida
+	SigUnsigned  = "unsigned"   // sin firma
+	SigInvalid   = "invalid"    // firmado, pero modificado después
+	SigUntrusted = "untrusted"  // firmado con un certificado sin confianza
+	SigPackage   = "package"    // Linux: lo instala un paquete
+	SigNoPackage = "unpackaged" // Linux: no es de ningún paquete
+)
 
 // Port agrupa los sockets del mismo puerto, protocolo y proceso (IPv4, IPv6
 // o varias direcciones). Es lo que se muestra y lo que genera hallazgos.
@@ -59,6 +75,9 @@ type Port struct {
 	Ephemeral bool     `json:"ephemeral,omitempty"`
 	User      string   `json:"user,omitempty"`
 	UserSID   string   `json:"user_sid,omitempty"`
+	Path      string   `json:"path,omitempty"`
+	Signature string   `json:"signature,omitempty"`
+	Signer    string   `json:"signer,omitempty"`
 	// Firewall: "open" (desde cualquier dirección), "limited" (solo desde
 	// ciertas redes o interfaces, ver FirewallLimit), "filtered" (lo bloquea)
 	// o vacío si no se ha podido evaluar.
@@ -332,6 +351,10 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 	}
 	var appOrder []string
 	apps := map[string]*app{}
+	// Ejecutables sin firma (o fuera de los paquetes) o con una firma que
+	// no vale, accesibles desde la red.
+	var bins []*exposedBinary
+	binIdx := map[string]*exposedBinary{}
 	for i := range rep.Ports {
 		p := &rep.Ports[i]
 		k, ok := lookup(p.Proto, p.Port)
@@ -369,6 +392,20 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		}
 		if p.Firewall == FirewallOpen && len(p.access.IDs) > 0 {
 			openIDs[fmt.Sprintf("%d/%d", p.Port, p.PID)] = append(openIDs[fmt.Sprintf("%d/%d", p.Port, p.PID)], p.access.IDs...)
+		}
+		switch p.Signature {
+		case SigUnsigned, SigNoPackage, SigInvalid, SigUntrusted:
+			key := strings.ToLower(p.Path)
+			b := binIdx[key]
+			if b == nil {
+				b = &exposedBinary{name: p.Process, path: p.Path, signer: p.Signer, status: p.Signature}
+				if b.name == "" {
+					b.name = baseName(p.Path)
+				}
+				binIdx[key] = b
+				bins = append(bins, b)
+			}
+			b.ports = appendOnce(b.ports, fmt.Sprintf("%d/%s", p.Port, p.Proto))
 		}
 		if p.Firewall == FirewallOpen && (p.Known == "" || appLabels[p.Proto+"/"+strconv.Itoa(p.Port)]) && userApp(*p) {
 			ap := apps[p.Process]
@@ -544,6 +581,7 @@ func Analyze(inv Inventory, host platform.Info, version string, now time.Time) *
 		}
 		rep.Findings = append(rep.Findings, f)
 	}
+	rep.Findings = append(rep.Findings, binaryFindings(bins)...)
 	rep.Findings = append(rep.Findings, shareFindings(inv.Shares)...)
 	if inv.Firewall != nil {
 		if rules := inv.Firewall.UserAllowAll(); len(rules) > 0 {
@@ -635,7 +673,8 @@ func groupPorts(ls []Listener) []Port {
 			i = len(out)
 			idx[key] = i
 			out = append(out, Port{Proto: l.Proto, Port: l.Port, Scope: l.Scope, PID: l.PID, Process: l.Process,
-				Services: l.Services, Ephemeral: l.Ephemeral, User: l.User, UserSID: l.UserSID})
+				Services: l.Services, Ephemeral: l.Ephemeral, User: l.User, UserSID: l.UserSID,
+				Path: l.Path, Signature: l.Signature, Signer: l.Signer})
 		}
 		p := &out[i]
 		p.Addresses = appendOnce(p.Addresses, l.Address)

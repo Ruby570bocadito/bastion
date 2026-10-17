@@ -213,6 +213,13 @@ func ReadSecpol(ctx context.Context) (map[string]map[string]string, error) { ret
 
 // QueryPS ejecuta una consulta PowerShell de la lista blanca (sin caché).
 func QueryPS(ctx context.Context, name string) (map[string]any, error) {
+	return QueryPSEnv(ctx, name)
+}
+
+// QueryPSEnv ejecuta una consulta de la lista blanca pasándole datos por
+// variables de entorno (NOMBRE=valor): el script los lee de $env y nunca
+// forman parte de su texto.
+func QueryPSEnv(ctx context.Context, name string, env ...string) (map[string]any, error) {
 	q, ok := psQueries[name]
 	if !ok {
 		return nil, fmt.Errorf("consulta PowerShell %q no permitida", name)
@@ -220,7 +227,7 @@ func QueryPS(ctx context.Context, name string) (map[string]any, error) {
 	if psAdminQueries[name] && !Privileged() {
 		return nil, NeedsPrivilege("%s solo responde como administrador", q.desc)
 	}
-	data, err := runPS(ctx, q.script)
+	data, err := runPS(ctx, q.script, env...)
 	if err != nil {
 		return nil, err
 	}
@@ -400,6 +407,11 @@ var psQueries = map[string]struct{ desc, script string }{
 	// Get-LocalGroupMember falla (SIDs huérfanos), se usa ADSI.
 	"local_admins": {"miembros de Administradores (S-1-5-32-544)",
 		`$m=@(); try { Get-LocalGroupMember -SID S-1-5-32-544 -ErrorAction Stop | ForEach-Object { $m+=@{Name=[string]$_.Name;Type=[string]$_.ObjectClass;Source=[string]$_.PrincipalSource} } } catch { try { $g=(New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')).Translate([System.Security.Principal.NTAccount]).Value.Split('\')[-1]; ([ADSI]"WinNT://$env:COMPUTERNAME/$g,group").psbase.Invoke('Members') | ForEach-Object { $m+=[string]$_.GetType().InvokeMember('Name','GetProperty',$null,$_,$null) } } catch { $m=@{__err=$_.Exception.Message} } }; if ($m -is [hashtable]) { $m | ConvertTo-Json -Compress } else { @{members=$m} | ConvertTo-Json -Compress -Depth 4 }`},
+	// Firma Authenticode de los ficheros de BASTION_PATHS (una ruta por
+	// línea): la incrustada o la de un catálogo, como la de casi todo
+	// Windows.
+	"file_signatures": {"Get-AuthenticodeSignature",
+		`$o=@{}; foreach ($p in ($env:BASTION_PATHS -split [char]10)) { if (-not $p) { continue }; try { $s=Get-AuthenticodeSignature -LiteralPath $p; $o[$p]=@{status=[string]$s.Status; signer=[string]$s.SignerCertificate.Subject} } catch { $o[$p]=@{status='Error'; signer=''} } }; @{files=$o} | ConvertTo-Json -Compress -Depth 4`},
 	"optional_features": {"Get-WindowsOptionalFeature",
 		`$want=@('SMB1Protocol','MicrosoftWindowsPowerShellV2Root','MicrosoftWindowsPowerShellV2','TelnetClient','TFTP'); $o=@{}; try { Get-WindowsOptionalFeature -Online | Where-Object { $want -contains $_.FeatureName } | ForEach-Object { $o[[string]$_.FeatureName]=[string]$_.State } } catch { $o=@{__err=$_.Exception.Message} }; $o | ConvertTo-Json -Compress`},
 }
@@ -445,9 +457,9 @@ func (psProbe) Collect(ctx context.Context, p Params) (Observation, error) {
 	return Observation{Found: true, Source: "PowerShell " + q.desc, Fields: data}, nil
 }
 
-func runPS(ctx context.Context, script string) (map[string]any, error) {
+func runPS(ctx context.Context, script string, env ...string) (map[string]any, error) {
 	prefix := `$ProgressPreference='SilentlyContinue';$ErrorActionPreference='Stop';[Console]::OutputEncoding=[Text.Encoding]::UTF8;`
-	res, err := runCmd(ctx, sys32(`WindowsPowerShell\v1.0\powershell.exe`),
+	res, err := runCmdEnv(ctx, env, sys32(`WindowsPowerShell\v1.0\powershell.exe`),
 		"-NoLogo", "-NoProfile", "-NonInteractive", "-Command", prefix+script)
 	if err != nil {
 		return nil, err

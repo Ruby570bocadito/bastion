@@ -118,6 +118,13 @@ func SurfaceConsole(w io.Writer, rep *surface.Report, all bool, s Style) {
 		if proc == "" {
 			procCell = Styled("?", s.Dim)
 		}
+		// Solo lo que conviene revisar: la tabla ya es ancha.
+		if text, warn := p.Origin(); warn {
+			if proc == "" {
+				proc = "?"
+			}
+			procCell = Styled(truncate(proc+" · "+text, 46), s.Yellow)
+		}
 		scope := Styled("red", s.Yellow)
 		switch {
 		case p.Ephemeral:

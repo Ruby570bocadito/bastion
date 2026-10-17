@@ -68,7 +68,8 @@ jobs:
           jq -e '.firewall.source == "iptables" and .firewall.input_policy == "drop"
             and ([.ports[] | select(.port == 22)][0].firewall == "open")
             and ([.ports[] | select(.port == 3306)][0].firewall_limit == "Tailscale y 192.168.1.0/24")
-            and ([.ports[] | select(.port == 8080)][0].firewall_limit == "Tailscale")' fw.json
+            and ([.ports[] | select(.port == 8080)][0].firewall_limit == "Tailscale")
+            and ([.ports[] | select(.port == 22)][0].signature == "package")' fw.json
       # Análisis programado de verdad: temporizador de systemd en el runner,
       # ejecución inmediata del servicio, registro de la ejecución y avisos
       # (journald y un webhook local que guarda el primer POST que recibe).
@@ -116,6 +117,8 @@ jobs:
           if ($r.admins.Count -eq 0) { throw 'no se leyeron los administradores' }
           if (-not ($r.listeners | Where-Object { $_.process })) { throw 'ningún puerto asociado a su proceso' }
           if (-not $r.firewall -or $r.firewall.profiles.Count -ne 3) { throw 'no se evaluó el Firewall de Windows' }
+          $r.ports | Where-Object { $_.scope -eq 'network' } | Select-Object port, proto, process, signature, signer | Format-Table | Out-String | Write-Host
+          if (-not ($r.ports | Where-Object { $_.signature -eq 'valid' -and $_.signer -match 'Microsoft' })) { throw 'no se comprobó la firma de los programas que escuchan en la red' }
           # Como administrador, las reglas salen completas del registro.
           if ($r.firewall.source -ne 'registry' -or $r.firewall.inbound_rules -eq 0) { throw "reglas del firewall no leídas del registro (origen: $($r.firewall.source))" }
           "Servicios en la red: $($r.exposed) · accesibles a través del firewall: $($r.reachable) · reglas de entrada: $($r.firewall.inbound_rules) ($($r.firewall.source))"

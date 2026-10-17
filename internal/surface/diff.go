@@ -109,17 +109,17 @@ func exposedPorts(r *Report) map[string]Port {
 // abiertos) o varias reglas (reglas de usuario), solo por ID: su asunto
 // cambia al cerrar uno de ellos (o al empezar a transmitir) y no es un
 // hallazgo nuevo; lo que cambia en sus puertos ya lo cuentan los cambios de
-// puertos. Cada regla que lo permite todo es un hallazgo propio,
-// distinguido por su título.
+// puertos. Cada regla que lo permite todo y cada programa con una firma que
+// no vale es un hallazgo propio, distinguido por su título.
 func findingMap(r *Report) map[string]Finding {
 	out := map[string]Finding{}
 	for _, f := range r.Findings {
 		key := f.ID + "|" + f.Subject
 		_, group := groups[strings.ToLower(strings.TrimPrefix(f.ID, "SURF-"))]
 		switch {
-		case group, f.ID == "SURF-APPS-OPEN", f.ID == "SURF-FW-USERALLOWALL":
+		case group, f.ID == "SURF-APPS-OPEN", f.ID == "SURF-FW-USERALLOWALL", f.ID == "SURF-UNSIGNED", f.ID == "SURF-UNPACKAGED":
 			key = f.ID
-		case f.ID == "SURF-FW-ALLOWALL":
+		case f.ID == "SURF-FW-ALLOWALL", f.ID == "SURF-BADSIG":
 			key = f.ID + "|" + f.Title
 		}
 		out[key] = f

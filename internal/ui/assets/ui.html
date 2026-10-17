@@ -797,7 +797,7 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
           p.firewall === "filtered" ? el("span", { style: "color:var(--good-text);font-weight:600", text: "filtrado" }) : el("span", { class: "sub", text: "—" }),
           p.firewall_why ? el("div", { class: "sub", text: p.firewall_why }) : null]));
       }
-      cells.push(el("td", null, [el("div", { text: proc }), p.services && p.services.length ? el("div", { class: "sub", text: p.services.join(", ") }) : null]),
+      cells.push(el("td", null, [el("div", { text: proc }), p.services && p.services.length ? el("div", { class: "sub", text: p.services.join(", ") }) : null, originLine(p)]),
         el("td", { text: p.known || "" }));
       tb.appendChild(el("tr", null, cells));
     });
@@ -830,6 +830,16 @@ footer { color: var(--muted); font-size: 12.5px; padding: 24px 0 8px; }
   }
 
   // ---- Historial ----
+  // De dónde viene el ejecutable de un puerto: firma (Windows) o paquete (Linux).
+  function originLine(p) {
+    var t = { valid: "firmado por " + (p.signer || "?"), unsigned: "sin firma digital", invalid: "firma no válida",
+      untrusted: "certificado sin confianza" + (p.signer ? ": " + p.signer : ""), package: "paquete " + (p.signer || "?"),
+      unpackaged: "fuera de los paquetes" }[p.signature];
+    if (!t) return null;
+    var color = p.signature === "invalid" ? "var(--critical)" : (p.signature === "unsigned" || p.signature === "untrusted" || p.signature === "unpackaged") ? "var(--serious)" : null;
+    return el("div", { class: "sub", text: t, title: p.path || "", style: color ? "color:" + color : null });
+  }
+
   function scheduleCard() {
     var x = S.schedule;
     if (x === null) return card("Análisis programado", [loadingBox("Consultando el planificador…")]);

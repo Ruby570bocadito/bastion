@@ -36,10 +36,16 @@ type cmdResult struct {
 // Un código de salida distinto de 0 no se trata como error: muchos comandos
 // (systemctl is-enabled, rpm -q) lo usan para informar de estado.
 func runCmd(ctx context.Context, name string, args ...string) (cmdResult, error) {
+	return runCmdEnv(ctx, nil, name, args...)
+}
+
+// runCmdEnv es runCmd con variables de entorno adicionales: así llegan los
+// datos a un script sin formar parte de él.
+func runCmdEnv(ctx context.Context, env []string, name string, args ...string) (cmdResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
+	cmd.Env = append(append(os.Environ(), "LC_ALL=C", "LANG=C"), env...)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb

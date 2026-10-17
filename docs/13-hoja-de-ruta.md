@@ -35,7 +35,7 @@
 - [x] `bastion surface` v1: puertos con proceso, catálogo de servicios de riesgo, recursos compartidos, administradores y puntuación de exposición (también en `bastion ui`).
 - [x] `surface`: evaluar el Firewall de Windows (perfiles, acción por defecto, reglas de permiso y bloqueo).
 - [x] `surface`: firewall de Linux (nftables e iptables, que cubren ufw, firewalld y Docker).
-- [ ] `surface`: firma de los binarios que escuchan en la red.
+- [x] `surface`: origen de los binarios que escuchan en la red (firma Authenticode en Windows, paquete en Linux).
 - [ ] Firma de releases (cosign) y Authenticode.
 - [ ] Prueba de los instaladores de punta a punta en CI (espejo local).
 - [x] UI local: `bastion ui` (127.0.0.1 con token): postura, tendencia, plan por olas, historial de escaneos y cambios, excepciones ([ADR-0008](adr/0008-consola-local.md)).

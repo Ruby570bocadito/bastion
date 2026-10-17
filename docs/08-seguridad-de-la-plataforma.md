@@ -20,6 +20,7 @@ Bastion se ejecuta como **SYSTEM/root** en equipos críticos. Para un atacante e
 - Las reglas son YAML declarativo. Los parámetros de un probe nunca se interpolan en comandos.
 - Comandos usados por los probes: `secedit /export`, `auditpol /backup`, `powershell.exe -NoProfile -NonInteractive -Command <consulta fija>`, `sshd -T`, `systemctl show`, `dpkg-query`, `rpm -q`. Todos son de **solo lectura**.
 - Las consultas PowerShell no usan `-EncodedCommand` ni `-ExecutionPolicy Bypass`, para no parecerse a malware ni generar ruido en el EDR. Quedan en el ScriptBlock Logging de forma legible.
+- Cuando una consulta necesita datos (las rutas de los programas cuya firma comprueba `bastion surface`, el nombre de una regla del firewall en `surface fix`), le llegan por variables de entorno y el script fijo los lee de `$env`: nunca forman parte de su texto, así que una ruta o un nombre manipulados no pueden inyectar código.
 
 ### Cambios controlados (`harden`)
 - Solo **acciones tipadas** (13 tipos). Ninguna ejecuta comandos libres: los cmdlets de Defender reciben GUIDs, enteros o nombres de una lista blanca, ya validados.

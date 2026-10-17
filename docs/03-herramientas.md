@@ -74,6 +74,7 @@ Implementado (v1):
 - ✅ **Administradores:** miembros del grupo Administradores (S-1-5-32-544) en Windows; cuentas con UID 0 y miembros de `sudo`, `wheel` y `admin` en Linux.
 - ✅ **Firewall de Windows:** con la política efectiva (perfiles activos, acción por defecto y reglas de entrada leídas del registro, con sus direcciones, interfaces, dispositivos de confianza, IPsec y paquete de la app; sin privilegios, con `HNetCfg.FwPolicy2`) cada puerto se marca como **abierto** (a cualquiera), **limitado** (solo red local, una VPN como Tailscale, ciertas direcciones o interfaces) o **filtrado**, con la regla que lo explica. Lo limitado baja un nivel de severidad; lo filtrado no genera hallazgos.
 - ✅ **Firewall de Linux:** con root, nftables (`nft -j list ruleset`) e iptables (`iptables-save`), lo que cubre ufw, firewalld y Docker; mismos estados abierto, limitado y filtrado.
+- ✅ Origen de cada programa que escucha en la red: firma Authenticode (incrustada o de catálogo) en Windows y paquete (dpkg, rpm, pacman, snap) en Linux; hallazgos para los que no tienen firma o paquete y, más graves, para las firmas que no valen.
 - ✅ Sockets UDP de cliente (puertos dinámicos) separados de los servicios, IPv4 e IPv6 en una fila, RPC dinámico de Windows etiquetado y NetBIOS como un único hallazgo.
 - ✅ **Puntuación de exposición** de 0 a 100 (crítico −30, alto −15, medio −7, bajo −3) y pestaña **Superficie** en `bastion ui`.
 
